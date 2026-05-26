@@ -1,0 +1,225 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  Int                  @id @default(autoincrement())
+  uuid                String               @unique @default(uuid())
+  email               String               @unique
+  password            String
+  name                String
+  isActive            Boolean              @default(true)
+  isFirstLogin        Boolean              @default(true)
+  roleId              Int
+  role                Role                 @relation(fields: [roleId], references: [id])
+  warehouseId         Int?
+  warehouse           Warehouse?           @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  sessions            Session[]
+  auditLogsActor      AuditLog[]           @relation("ActorRelation")
+  auditLogsTarget     AuditLog[]           @relation("TargetRelation")
+  passwordResetTokens PasswordResetToken[]
+  orders              Order[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([email])
+  @@index([uuid])
+}
+
+model Role {
+  id          Int              @id @default(autoincrement())
+  uuid        String           @unique @default(uuid())
+  name        String           @unique // SUPER_ADMIN, WAREHOUSE_ADMIN, OPERATOR, CHECKER, SUPERVISOR, AUDITOR
+  description String?
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([uuid])
+  @@index([name])
+}
+
+model Permission {
+  id          Int              @id @default(autoincrement())
+  uuid        String           @unique @default(uuid())
+  action      String           // e.g., "manage", "create", "read", "update", "delete"
+  subject     String           // e.g., "all", "User", "Warehouse", "Inventory", "AuditLog"
+  conditions  String?          // CASL JSON string conditions (optional)
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([uuid])
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique // Refresh token hash
+  userAgent String?
+  ipAddress String?
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([token])
+  @@index([uuid])
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  isUsed    Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([uuid])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  actorId   Int?
+  actor     User?    @relation("ActorRelation", fields: [actorId], references: [id], onDelete: SetNull)
+  targetId  Int?
+  target    User?    @relation("TargetRelation", fields: [targetId], references: [id], onDelete: SetNull)
+  action    String   // e.g., "LOGIN_SUCCESS", "LOGIN_FAILED", "USER_UPDATE"
+  ipAddress String?
+  userAgent String?
+  details   String?  // JSON serialized changes metadata
+  timestamp DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([uuid])
+}
+
+model Warehouse {
+  id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
+  name        String
+  location    String
+  capacity    Float
+  inventories Inventory[]
+  users       User[]
+  odooAccount OdooAccount?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([uuid])
+}
+
+model OdooAccount {
+  id                 Int       @id @default(autoincrement())
+  uuid               String    @unique @default(uuid())
+  warehouseId        Int       @unique
+  warehouse          Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  baseUrl            String
+  username           String
+  encryptedPassword  String
+  sessionId          String?
+  csrfToken          String?
+  sessionExpiredAt   DateTime?
+  lastLoginAt        DateTime?
+  lastRefreshAt      DateTime?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([warehouseId])
+  @@index([uuid])
+}
+
+model Product {
+  id          Int         @id @default(autoincrement())
+  uuid        String      @unique @default(uuid())
+  sku         String      @unique
+  name        String
+  description String?
+  category    String
+  price       Float
+  inventories Inventory[]
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([uuid])
+  @@index([sku])
+}
+
+model Inventory {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  warehouseId Int
+  productId   Int
+  quantity    Int       @default(0)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([warehouseId, productId])
+  @@index([uuid])
+}
+
+model Order {
+  id         Int         @id @default(autoincrement())
+  uuid       String      @unique @default(uuid())
+  status     OrderStatus @default(PENDING)
+  userId     Int
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([uuid])
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  orderId   Int
+  productId Int
+  quantity  Int
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([uuid])
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}

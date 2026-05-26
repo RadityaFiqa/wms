@@ -1,0 +1,34 @@
+
+> @bulog-wms/web@0.1.0 build C:\Users\raditya\Documents\WMS\apps\web
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 11.5s
+  Running TypeScript ...
+  Finished TypeScript in 13.3s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/13) ...
+  Generating static pages using 7 workers (3/13) 
+  Generating static pages using 7 workers (6/13) 
+  Generating static pages using 7 workers (9/13) 
+✓ Generating static pages using 7 workers (13/13) in 1717ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /dashboard
+├ ○ /dashboard/audit-logs
+├ ○ /dashboard/odoo
+├ ○ /dashboard/profile
+├ ○ /dashboard/roles
+├ ○ /dashboard/users
+├ ○ /forgot-password
+├ ○ /login
+└ ○ /reset-password
+
+
+○  (Static)  prerendered as static content
+
