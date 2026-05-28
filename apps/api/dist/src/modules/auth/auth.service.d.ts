@@ -23,8 +23,16 @@ export declare class AuthService {
                 uuid: any;
                 name: any;
             } | null;
+            accessibleWarehouses: {
+                uuid: string;
+                name: string;
+            }[];
         };
     }>;
+    getAccessibleWarehouses(userId: number, roleName: string): Promise<{
+        uuid: string;
+        name: string;
+    }[]>;
     refresh(refreshToken: string, ipAddress?: string, userAgent?: string): Promise<{
         accessToken: string;
         refreshToken: string;
@@ -39,6 +47,10 @@ export declare class AuthService {
                 uuid: any;
                 name: any;
             } | null;
+            accessibleWarehouses: {
+                uuid: string;
+                name: string;
+            }[];
         };
     }>;
     logout(refreshToken: string): Promise<void>;

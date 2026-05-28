@@ -102,8 +102,26 @@ let AuthService = class AuthService {
                     subject: rp.permission.subject,
                 })),
                 warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
+                accessibleWarehouses: await this.getAccessibleWarehouses(user.id, user.role.name),
             },
         };
+    }
+    async getAccessibleWarehouses(userId, roleName) {
+        if (roleName === 'SUPER_ADMIN') {
+            return this.prisma.warehouse.findMany({
+                select: { uuid: true, name: true },
+                orderBy: { name: 'asc' },
+            });
+        }
+        const accesses = await this.prisma.userWarehouseAccess.findMany({
+            where: { userId },
+            include: { warehouse: { select: { uuid: true, name: true } } },
+            orderBy: { warehouse: { name: 'asc' } },
+        });
+        return accesses.map((acc) => ({
+            uuid: acc.warehouse.uuid,
+            name: acc.warehouse.name,
+        }));
     }
     async refresh(refreshToken, ipAddress, userAgent) {
         const activeSessions = await this.prisma.session.findMany({
@@ -170,6 +188,7 @@ let AuthService = class AuthService {
                     subject: rp.permission.subject,
                 })),
                 warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
+                accessibleWarehouses: await this.getAccessibleWarehouses(user.id, user.role.name),
             },
         };
     }

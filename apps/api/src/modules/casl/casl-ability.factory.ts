@@ -15,6 +15,9 @@ type ExtendedSubjects = Subjects<{
   OrderItem: any;
   AuditLog: any;
   OdooAccount: any;
+  GateOperation: any;
+  GateVerification: any;
+  FileAttachment: any;
 }> | 'all';
 
 export type AppAbility = Ability<[string, ExtendedSubjects], PrismaQuery>;

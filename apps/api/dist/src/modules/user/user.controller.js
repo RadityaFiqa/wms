@@ -16,6 +16,7 @@ exports.UserController = void 0;
 const common_1 = require("@nestjs/common");
 const user_service_1 = require("./user.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const warehouse_guard_1 = require("../../core/warehouse-context/warehouse.guard");
 const policies_guard_1 = require("../casl/policies.guard");
 const policies_decorator_1 = require("../casl/policies.decorator");
 const audit_log_interceptor_1 = require("../audit-log/audit-log.interceptor");
@@ -68,7 +69,7 @@ __decorate([
     __param(3, (0, common_1.Query)('page')),
     __param(4, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Number, Boolean, Number, Number]),
+    __metadata("design:paramtypes", [String, Number, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "findAll", null);
 __decorate([
@@ -118,7 +119,7 @@ __decorate([
 ], UserController.prototype, "resetPassword", null);
 exports.UserController = UserController = __decorate([
     (0, common_1.Controller)('users'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, policies_guard_1.PoliciesGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, warehouse_guard_1.WarehouseGuard, policies_guard_1.PoliciesGuard),
     (0, common_1.UseInterceptors)(audit_log_interceptor_1.AuditLogInterceptor),
     __metadata("design:paramtypes", [user_service_1.UserService])
 ], UserController);

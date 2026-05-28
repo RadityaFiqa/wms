@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Body, Param, UseGuards, UseInterceptors } from '@nestjs/common';
 import { RoleService } from './role.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
 import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
@@ -10,7 +11,7 @@ import type { CreateRoleInput } from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 
 @Controller('roles')
-@UseGuards(JwtAuthGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}

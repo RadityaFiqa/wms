@@ -173,9 +173,10 @@ let UserService = class UserService {
         if (query.roleId) {
             where.roleId = Number(query.roleId);
         }
-        if (query.isActive !== undefined) {
+        if (query.isActive !== "") {
             where.isActive = String(query.isActive) === 'true';
         }
+        console.log(`isActive`, where);
         if (query.search) {
             where.OR = [
                 { name: { contains: query.search, mode: 'insensitive' } },

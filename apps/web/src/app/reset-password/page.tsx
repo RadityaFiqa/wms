@@ -5,13 +5,14 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ResetPasswordSchema } from '@bulog-wms/schema';
 import type { ResetPasswordInput } from '@bulog-wms/schema';
-import { api } from '@/lib/axios';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { resetPassword } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
 
@@ -49,8 +50,8 @@ function ResetPasswordForm() {
   const onSubmit = async (data: ResetPasswordInput) => {
     setIsLoading(true);
     try {
-      const response = await api.post('/auth/reset-password', data);
-      toast.success(response.data?.message || 'Password Anda berhasil diperbarui!');
+      const response = await resetPassword(data);
+      toast.success(response?.message || 'Password Anda berhasil diperbarui!');
       router.push('/login');
     } catch (error: any) {
       const errMsg = error.response?.data?.message || 'Gagal mengatur ulang password.';

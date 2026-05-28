@@ -118,6 +118,7 @@ let AuthController = class AuthController {
                 subject: rp.permission.subject,
             })),
             warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
+            accessibleWarehouses: await this.authService.getAccessibleWarehouses(user.id, user.role.name),
         };
     }
 };

@@ -155,7 +155,7 @@ export class UserService {
   async findAll(query: {
     search?: string;
     roleId?: number;
-    isActive?: boolean;
+    isActive?: string;
     page?: number;
     limit?: number;
   }) {
@@ -169,9 +169,12 @@ export class UserService {
       where.roleId = Number(query.roleId);
     }
 
-    if (query.isActive !== undefined) {
+    if (query.isActive !== "") {
       where.isActive = String(query.isActive) === 'true';
     }
+
+
+    console.log(`isActive`, where)
 
     if (query.search) {
       where.OR = [

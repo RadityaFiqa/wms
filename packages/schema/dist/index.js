@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -59,4 +59,28 @@ exports.UpdateOdooAccountSchema = zod_1.z.object({
     username: zod_1.z.string().min(1, 'Username Odoo harus diisi'),
     password: zod_1.z.string().min(4, 'Password Odoo minimal 4 karakter').optional().nullable().or(zod_1.z.literal('')),
     isActive: zod_1.z.boolean(),
+});
+// Gate Operation Schemas
+exports.CardTypeEnum = zod_1.z.enum(['IN', 'OUT']);
+exports.VerificationStatusEnum = zod_1.z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+exports.GateOperationProductSchema = zod_1.z.object({
+    productId: zod_1.z.number().int('ID Produk harus berupa angka'),
+    quantity: zod_1.z.number().positive('Quantity harus lebih besar dari 0'),
+});
+exports.CreateGateOperationSchema = zod_1.z.object({
+    cardType: exports.CardTypeEnum,
+    driverName: zod_1.z.string().min(2, 'Nama driver minimal harus 2 karakter'),
+    licensePlate: zod_1.z.string().min(3, 'Plat nomor minimal harus 3 karakter'),
+    notes: zod_1.z.string().optional().nullable().or(zod_1.z.literal('')),
+    vehiclePhotoPath: zod_1.z.string().min(1, 'Foto bukti kendaraan wajib diunggah'),
+    products: zod_1.z.array(exports.GateOperationProductSchema).optional().default([]),
+});
+exports.CreateGateVerificationSchema = zod_1.z.object({
+    status: zod_1.z.enum(['VERIFIED', 'REJECTED']),
+    notes: zod_1.z.string().min(1, 'Catatan verifikasi wajib diisi'),
+    attachmentPath: zod_1.z.string().optional().nullable().or(zod_1.z.literal('')),
+    products: zod_1.z.array(zod_1.z.object({
+        productId: zod_1.z.number().int(),
+        quantity: zod_1.z.number().nonnegative('Quantity tidak boleh negatif'),
+    })).optional().default([]),
 });

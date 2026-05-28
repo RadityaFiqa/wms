@@ -2,13 +2,15 @@ import { OdooRepository } from './odoo.repository';
 import { OdooAuthService } from './odoo-auth.service';
 import { OdooSessionManager } from './odoo-session.manager';
 import type { CreateOdooAccountInput, UpdateOdooAccountInput } from '@bulog-wms/schema';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 export declare class OdooController {
     private readonly repository;
     private readonly authService;
     private readonly sessionManager;
-    constructor(repository: OdooRepository, authService: OdooAuthService, sessionManager: OdooSessionManager);
+    private readonly warehouseContext;
+    constructor(repository: OdooRepository, authService: OdooAuthService, sessionManager: OdooSessionManager, warehouseContext: WarehouseContextService);
     create(body: CreateOdooAccountInput): Promise<any>;
-    findAll(): Promise<any[]>;
+    findOneForWarehouse(): Promise<any>;
     findOne(uuid: string): Promise<any>;
     update(uuid: string, body: UpdateOdooAccountInput): Promise<any>;
     remove(uuid: string): Promise<{

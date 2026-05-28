@@ -14,6 +14,12 @@ import { CaslModule } from './modules/casl/casl.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { EmailModule } from './modules/email/email.module';
 import { OdooModule } from './modules/odoo/odoo.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { WarehouseContextModule } from './core/warehouse-context/warehouse-context.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { GateModule } from './modules/gate/gate.module';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interceptor';
 
 @Module({
   imports: [
@@ -32,6 +38,7 @@ import { OdooModule } from './modules/odoo/odoo.module';
     LoggerModule,
     PrismaModule,
     RedisModule,
+    WarehouseContextModule,
     // Custom Modules
     CaslModule,
     EmailModule,
@@ -40,8 +47,17 @@ import { OdooModule } from './modules/odoo/odoo.module';
     RoleModule,
     AuditLogModule,
     OdooModule,
+    InventoryModule,
+    StorageModule,
+    GateModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: WarehouseInterceptor,
+    },
+  ],
 })
 export class AppModule {}

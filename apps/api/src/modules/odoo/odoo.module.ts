@@ -23,6 +23,6 @@ import { OdooCronService } from './odoo-cron.service';
     OdooQueueProcessor,
     OdooCronService,
   ],
-  exports: [OdooAuthService, OdooSessionManager],
+  exports: [OdooAuthService, OdooSessionManager, OdooClient],
 })
 export class OdooModule {}

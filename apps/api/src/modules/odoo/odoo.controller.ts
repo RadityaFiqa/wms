@@ -15,6 +15,7 @@ import { OdooRepository } from './odoo.repository';
 import { OdooAuthService } from './odoo-auth.service';
 import { OdooSessionManager } from './odoo-session.manager';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
 import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
@@ -23,15 +24,17 @@ import { CreateOdooAccountSchema, UpdateOdooAccountSchema } from '@bulog-wms/sch
 import type { CreateOdooAccountInput, UpdateOdooAccountInput } from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import { encrypt } from '../../core/utils/encryption.util';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 
 @Controller('odoo-accounts')
-@UseGuards(JwtAuthGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class OdooController {
   constructor(
     private readonly repository: OdooRepository,
     private readonly authService: OdooAuthService,
     private readonly sessionManager: OdooSessionManager,
+    private readonly warehouseContext: WarehouseContextService,
   ) {}
 
   @Post()
@@ -58,9 +61,13 @@ export class OdooController {
 
   @Get()
   @CheckPolicies((ability) => ability.can('read', 'OdooAccount'))
-  async findAll() {
-    const accounts = await this.repository.findAll();
-    return accounts.map((acc) => this.sanitize(acc));
+  async findOneForWarehouse() {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+    }
+    const account = await this.repository.findByWarehouseId(warehouseId);
+    return this.sanitize(account);
   }
 
   @Get(':uuid')

@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import useSWR from 'swr';
-import { api } from '@/lib/axios';
+import { useAuditLog } from '@/hooks/useAuditLog';
 import {
   Search,
   ChevronDown,
@@ -15,8 +14,6 @@ import {
   User,
 } from 'lucide-react';
 
-const fetcher = (url: string) => api.get(url).then((res) => res.data);
-
 export default function AuditLogsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -25,10 +22,11 @@ export default function AuditLogsPage() {
   // Track expanded detail rows
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
 
-  const { data: logsData, isLoading } = useSWR(
-    `/audit-logs?page=${page}&limit=${limit}&search=${search}`,
-    fetcher
-  );
+  const { auditLogsData: logsData, isLoading } = useAuditLog({
+    search,
+    page,
+    limit,
+  });
 
   const toggleRow = (id: number) => {
     setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));

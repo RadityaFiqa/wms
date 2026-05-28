@@ -5,8 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ChangePasswordSchema } from '@bulog-wms/schema';
 import type { ChangePasswordInput } from '@bulog-wms/schema';
-import { api } from '@/lib/axios';
-import { useAuthStore } from '@/store/auth';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ShieldAlert, KeyRound, User2, Warehouse, Mail } from 'lucide-react';
@@ -14,7 +13,7 @@ import { ShieldAlert, KeyRound, User2, Warehouse, Mail } from 'lucide-react';
 function ProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, logout } = useAuthStore();
+  const { user, logout, changePassword } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isForceReset, setIsForceReset] = useState(false);
 
@@ -34,10 +33,9 @@ function ProfileContent() {
   const onSubmit = async (data: ChangePasswordInput) => {
     setIsLoading(true);
     try {
-      const response = await api.post('/auth/change-password', data);
-      toast.success(response.data?.message || 'Password berhasil diperbarui. Silakan login ulang.');
+      const response = await changePassword(data);
+      toast.success(response?.message || 'Password berhasil diperbarui. Silakan login ulang.');
       
-      // Perform local logout and redirect to login
       logout();
       router.push('/login');
     } catch (error: any) {

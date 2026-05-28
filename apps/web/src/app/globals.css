@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -23,9 +25,129 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Ensure inputs, selects, and textareas default to dark text to prevent dark mode color inheritance conflicts */
+/* Ensure inputs, selects, and textareas default to light/dark text transition */
 input, select, textarea {
   color: #1e293b;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* Global Dark Mode Styles */
+.dark body {
+  background-color: #0b0f19;
+  color: #f8fafc;
+}
+
+/* Dark mode inputs, selects, textareas */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #3b82f6 !important;
+  background-color: #0f172a !important;
+  box-shadow: 0 0 0 1px #3b82f6 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b;
+}
+
+.dark select option {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+/* Dark mode cards global support */
+.dark .bg-white {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+}
+
+/* Dark mode border overrides */
+.dark .border-slate-200,
+.dark .border-slate-100,
+.dark .border-slate-150,
+.dark .border-slate-250 {
+  border-color: #1f2937 !important;
+}
+
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1f2937 !important;
+}
+
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1f2937 !important;
+}
+
+/* Text color visibility overrides for dark mode */
+.dark .text-slate-800 {
+  color: #e5e7eb !important;
+}
+.dark .text-slate-700 {
+  color: #d1d5db !important;
+}
+.dark .text-slate-900 {
+  color: #f9fafb !important;
+}
+.dark .text-slate-600 {
+  color: #9ca3af !important;
+}
+.dark .text-slate-500 {
+  color: #9ca3af !important;
+}
+.dark .text-slate-400 {
+  color: #6b7280 !important;
+}
+
+/* Hover background color overrides */
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-slate-50\/50:hover,
+.dark .hover\:bg-slate-100\/50:hover,
+.dark .hover\:bg-slate-50\/20:hover {
+  background-color: #1f2937 !important;
+}
+
+/* Table header and zebra stripes overrides */
+.dark thead.bg-slate-50,
+.dark tr.bg-slate-50,
+.dark .bg-slate-50 {
+  background-color: #1f2937 !important;
+}
+
+.dark .bg-slate-50\/50 {
+  background-color: rgba(31, 41, 55, 0.4) !important;
+}
+
+/* Scrollbars for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Ensure sonner toast displays correctly in dark mode */
+.dark [data-sonner-toast] {
+  background-color: #111827 !important;
+  color: #f9fafb !important;
+  border-color: #1f2937 !important;
 }

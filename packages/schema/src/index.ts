@@ -75,3 +75,34 @@ export const UpdateOdooAccountSchema = z.object({
   isActive: z.boolean(),
 });
 export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
+
+// Gate Operation Schemas
+export const CardTypeEnum = z.enum(['IN', 'OUT']);
+export const VerificationStatusEnum = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+
+export const GateOperationProductSchema = z.object({
+  productId: z.number().int('ID Produk harus berupa angka'),
+  quantity: z.number().positive('Quantity harus lebih besar dari 0'),
+});
+
+export const CreateGateOperationSchema = z.object({
+  cardType: CardTypeEnum,
+  driverName: z.string().min(2, 'Nama driver minimal harus 2 karakter'),
+  licensePlate: z.string().min(3, 'Plat nomor minimal harus 3 karakter'),
+  notes: z.string().optional().nullable().or(z.literal('')),
+  vehiclePhotoPath: z.string().min(1, 'Foto bukti kendaraan wajib diunggah'),
+  products: z.array(GateOperationProductSchema).optional().default([]),
+});
+export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
+
+export const CreateGateVerificationSchema = z.object({
+  status: z.enum(['VERIFIED', 'REJECTED']),
+  notes: z.string().min(1, 'Catatan verifikasi wajib diisi'),
+  attachmentPath: z.string().optional().nullable().or(z.literal('')),
+  products: z.array(z.object({
+    productId: z.number().int(),
+    quantity: z.number().nonnegative('Quantity tidak boleh negatif'),
+  })).optional().default([]),
+});
+export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
+

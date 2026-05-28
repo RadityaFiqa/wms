@@ -23,6 +23,12 @@ const casl_module_1 = require("./modules/casl/casl.module");
 const audit_log_module_1 = require("./modules/audit-log/audit-log.module");
 const email_module_1 = require("./modules/email/email.module");
 const odoo_module_1 = require("./modules/odoo/odoo.module");
+const inventory_module_1 = require("./modules/inventory/inventory.module");
+const warehouse_context_module_1 = require("./core/warehouse-context/warehouse-context.module");
+const storage_module_1 = require("./modules/storage/storage.module");
+const gate_module_1 = require("./modules/gate/gate.module");
+const core_1 = require("@nestjs/core");
+const warehouse_interceptor_1 = require("./core/warehouse-context/warehouse.interceptor");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -43,6 +49,7 @@ exports.AppModule = AppModule = __decorate([
             logger_module_1.LoggerModule,
             prisma_module_1.PrismaModule,
             redis_module_1.RedisModule,
+            warehouse_context_module_1.WarehouseContextModule,
             casl_module_1.CaslModule,
             email_module_1.EmailModule,
             auth_module_1.AuthModule,
@@ -50,9 +57,18 @@ exports.AppModule = AppModule = __decorate([
             role_module_1.RoleModule,
             audit_log_module_1.AuditLogModule,
             odoo_module_1.OdooModule,
+            inventory_module_1.InventoryModule,
+            storage_module_1.StorageModule,
+            gate_module_1.GateModule,
         ],
         controllers: [app_controller_1.AppController],
-        providers: [app_service_1.AppService],
+        providers: [
+            app_service_1.AppService,
+            {
+                provide: core_1.APP_INTERCEPTOR,
+                useClass: warehouse_interceptor_1.WarehouseInterceptor,
+            },
+        ],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

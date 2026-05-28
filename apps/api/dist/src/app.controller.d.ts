@@ -5,7 +5,7 @@ export declare class AppController {
     private readonly prisma;
     constructor(appService: AppService, prisma: PrismaService);
     getHello(): string;
-    getWarehouses(): Promise<{
+    getWarehouses(req: any): Promise<{
         uuid: string;
         id: number;
         name: string;

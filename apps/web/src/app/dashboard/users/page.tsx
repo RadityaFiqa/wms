@@ -6,7 +6,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateUserSchema, UpdateUserSchema } from '@bulog-wms/schema';
 import type { CreateUserInput, UpdateUserInput } from '@bulog-wms/schema';
-import { api } from '@/lib/axios';
+import { useUser } from '@/hooks/useUser';
+import { useRole } from '@/hooks/useRole';
+import { useWarehouse } from '@/hooks/useWarehouse';
 import { toast } from 'sonner';
 import {
   Search,
@@ -22,8 +24,6 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-const fetcher = (url: string) => api.get(url).then((res) => res.data);
-
 export default function UserManagementPage() {
   // Query state
   const [search, setSearch] = useState('');
@@ -37,14 +37,23 @@ export default function UserManagementPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
 
-  // SWR fetches
-  const { data: usersData, error: usersError, isLoading: usersLoading } = useSWR(
-    `/users?page=${page}&limit=${limit}&search=${search}&roleId=${roleId}&isActive=${isActive}`,
-    fetcher
-  );
-
-  const { data: roles } = useSWR('/roles', fetcher);
-  const { data: warehouses } = useSWR('/warehouses', fetcher);
+  // Modular Hooks
+  const { roles } = useRole();
+  const { warehouses } = useWarehouse();
+  const {
+    usersData,
+    isLoading: usersLoading,
+    createUser,
+    updateUser,
+    toggleStatus,
+    resetPassword,
+  } = useUser({
+    search,
+    roleId,
+    isActive,
+    page,
+    limit,
+  });
 
   // Create User Form
   const {
@@ -68,7 +77,7 @@ export default function UserManagementPage() {
 
   const onCreateUser = async (data: CreateUserInput) => {
     try {
-      await api.post('/users', {
+      await createUser({
         ...data,
         roleId: Number(data.roleId),
         warehouseId: data.warehouseId ? Number(data.warehouseId) : null,
@@ -76,7 +85,6 @@ export default function UserManagementPage() {
       toast.success('User baru berhasil ditambahkan! Password sementara dikirim ke email.');
       setIsCreateOpen(false);
       resetCreate();
-      mutate((key) => typeof key === 'string' && key.startsWith('/users'));
     } catch (error: any) {
       const msg = error.response?.data?.message || 'Gagal menambahkan user.';
       toast.error(msg);
@@ -85,14 +93,13 @@ export default function UserManagementPage() {
 
   const onEditUser = async (data: UpdateUserInput) => {
     try {
-      await api.put(`/users/${editingUser.uuid}`, {
+      await updateUser(editingUser.uuid, {
         ...data,
         roleId: Number(data.roleId),
         warehouseId: data.warehouseId ? Number(data.warehouseId) : null,
       });
       toast.success('Data user berhasil diperbarui.');
       setIsEditOpen(false);
-      mutate((key) => typeof key === 'string' && key.startsWith('/users'));
     } catch (error: any) {
       const msg = error.response?.data?.message || 'Gagal memperbarui user.';
       toast.error(msg);
@@ -118,9 +125,8 @@ export default function UserManagementPage() {
     if (!confirm(confirmMsg)) return;
 
     try {
-      await api.post(`/users/${user.uuid}/${action}`);
+      await toggleStatus(user.uuid, action);
       toast.success(`User ${user.name} berhasil ${user.isActive ? 'dinonaktifkan' : 'diaktifkan'}.`);
-      mutate((key) => typeof key === 'string' && key.startsWith('/users'));
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Gagal mengubah status user.');
     }
@@ -132,7 +138,7 @@ export default function UserManagementPage() {
     }
 
     try {
-      await api.post(`/users/${user.uuid}/reset-password`);
+      await resetPassword(user.uuid);
       toast.success(`Password user ${user.name} berhasil direset dan dikirimkan.`);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Gagal mereset password.');

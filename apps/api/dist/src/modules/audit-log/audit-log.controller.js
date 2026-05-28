@@ -16,6 +16,7 @@ exports.AuditLogController = void 0;
 const common_1 = require("@nestjs/common");
 const audit_log_service_1 = require("./audit-log.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const warehouse_guard_1 = require("../../core/warehouse-context/warehouse.guard");
 const policies_guard_1 = require("../casl/policies.guard");
 const policies_decorator_1 = require("../casl/policies.decorator");
 let AuditLogController = class AuditLogController {
@@ -41,7 +42,7 @@ __decorate([
 ], AuditLogController.prototype, "findAll", null);
 exports.AuditLogController = AuditLogController = __decorate([
     (0, common_1.Controller)('audit-logs'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, policies_guard_1.PoliciesGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, warehouse_guard_1.WarehouseGuard, policies_guard_1.PoliciesGuard),
     __metadata("design:paramtypes", [audit_log_service_1.AuditLogService])
 ], AuditLogController);
 //# sourceMappingURL=audit-log.controller.js.map

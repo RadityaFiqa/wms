@@ -150,4 +150,86 @@ export declare const UpdateOdooAccountSchema: z.ZodObject<{
     password?: string | null | undefined;
 }>;
 export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
+export declare const CardTypeEnum: z.ZodEnum<["IN", "OUT"]>;
+export declare const VerificationStatusEnum: z.ZodEnum<["PENDING", "VERIFIED", "REJECTED"]>;
+export declare const GateOperationProductSchema: z.ZodObject<{
+    productId: z.ZodNumber;
+    quantity: z.ZodNumber;
+}, "strip", z.ZodTypeAny, {
+    productId: number;
+    quantity: number;
+}, {
+    productId: number;
+    quantity: number;
+}>;
+export declare const CreateGateOperationSchema: z.ZodObject<{
+    cardType: z.ZodEnum<["IN", "OUT"]>;
+    driverName: z.ZodString;
+    licensePlate: z.ZodString;
+    notes: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
+    vehiclePhotoPath: z.ZodString;
+    products: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        productId: z.ZodNumber;
+        quantity: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        productId: number;
+        quantity: number;
+    }, {
+        productId: number;
+        quantity: number;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    cardType: "IN" | "OUT";
+    driverName: string;
+    licensePlate: string;
+    vehiclePhotoPath: string;
+    products: {
+        productId: number;
+        quantity: number;
+    }[];
+    notes?: string | null | undefined;
+}, {
+    cardType: "IN" | "OUT";
+    driverName: string;
+    licensePlate: string;
+    vehiclePhotoPath: string;
+    notes?: string | null | undefined;
+    products?: {
+        productId: number;
+        quantity: number;
+    }[] | undefined;
+}>;
+export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
+export declare const CreateGateVerificationSchema: z.ZodObject<{
+    status: z.ZodEnum<["VERIFIED", "REJECTED"]>;
+    notes: z.ZodString;
+    attachmentPath: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
+    products: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        productId: z.ZodNumber;
+        quantity: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        productId: number;
+        quantity: number;
+    }, {
+        productId: number;
+        quantity: number;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    status: "VERIFIED" | "REJECTED";
+    notes: string;
+    products: {
+        productId: number;
+        quantity: number;
+    }[];
+    attachmentPath?: string | null | undefined;
+}, {
+    status: "VERIFIED" | "REJECTED";
+    notes: string;
+    products?: {
+        productId: number;
+        quantity: number;
+    }[] | undefined;
+    attachmentPath?: string | null | undefined;
+}>;
+export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
 //# sourceMappingURL=index.d.ts.map

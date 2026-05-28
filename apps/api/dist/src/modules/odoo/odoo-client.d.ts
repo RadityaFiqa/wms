@@ -15,4 +15,10 @@ export declare class OdooClient {
         sessionId: string;
         csrfToken: string;
     }>;
+    call(baseUrl: string, sessionId: string, payloadParams: {
+        model: string;
+        method: string;
+        args?: any[];
+        kwargs?: any;
+    }): Promise<any>;
 }

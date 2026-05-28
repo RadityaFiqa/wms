@@ -23,7 +23,7 @@ export declare class UserController {
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    findAll(search?: string, roleId?: number, isActive?: boolean, page?: number, limit?: number): Promise<{
+    findAll(search?: string, roleId?: number, isActive?: string, page?: number, limit?: number): Promise<{
         data: {
             warehouse: {
                 uuid: string;

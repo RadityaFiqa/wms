@@ -19,6 +19,10 @@ export declare class AuthController {
                 uuid: any;
                 name: any;
             } | null;
+            accessibleWarehouses: {
+                uuid: string;
+                name: string;
+            }[];
         };
     }>;
     refresh(req: Request, res: Response): Promise<{
@@ -34,6 +38,10 @@ export declare class AuthController {
                 uuid: any;
                 name: any;
             } | null;
+            accessibleWarehouses: {
+                uuid: string;
+                name: string;
+            }[];
         };
     }>;
     logout(req: Request, res: Response): Promise<{
@@ -59,5 +67,9 @@ export declare class AuthController {
             uuid: any;
             name: any;
         } | null;
+        accessibleWarehouses: {
+            uuid: string;
+            name: string;
+        }[];
     }>;
 }

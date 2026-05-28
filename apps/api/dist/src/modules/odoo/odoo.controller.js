@@ -18,6 +18,7 @@ const odoo_repository_1 = require("./odoo.repository");
 const odoo_auth_service_1 = require("./odoo-auth.service");
 const odoo_session_manager_1 = require("./odoo-session.manager");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const warehouse_guard_1 = require("../../core/warehouse-context/warehouse.guard");
 const policies_guard_1 = require("../casl/policies.guard");
 const policies_decorator_1 = require("../casl/policies.decorator");
 const audit_log_interceptor_1 = require("../audit-log/audit-log.interceptor");
@@ -25,14 +26,17 @@ const audit_log_decorator_1 = require("../audit-log/audit-log.decorator");
 const schema_1 = require("@bulog-wms/schema");
 const zod_validation_pipe_1 = require("../../core/pipes/zod-validation.pipe");
 const encryption_util_1 = require("../../core/utils/encryption.util");
+const warehouse_context_service_1 = require("../../core/warehouse-context/warehouse-context.service");
 let OdooController = class OdooController {
     repository;
     authService;
     sessionManager;
-    constructor(repository, authService, sessionManager) {
+    warehouseContext;
+    constructor(repository, authService, sessionManager, warehouseContext) {
         this.repository = repository;
         this.authService = authService;
         this.sessionManager = sessionManager;
+        this.warehouseContext = warehouseContext;
     }
     async create(body) {
         const existing = await this.repository.findByWarehouseId(body.warehouseId);
@@ -49,9 +53,13 @@ let OdooController = class OdooController {
         });
         return this.sanitize(account);
     }
-    async findAll() {
-        const accounts = await this.repository.findAll();
-        return accounts.map((acc) => this.sanitize(acc));
+    async findOneForWarehouse() {
+        const warehouseId = this.warehouseContext.getWarehouseId();
+        if (!warehouseId) {
+            throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+        }
+        const account = await this.repository.findByWarehouseId(warehouseId);
+        return this.sanitize(account);
     }
     async findOne(uuid) {
         const account = await this.repository.findByUuid(uuid);
@@ -164,7 +172,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
-], OdooController.prototype, "findAll", null);
+], OdooController.prototype, "findOneForWarehouse", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'OdooAccount')),
@@ -239,10 +247,11 @@ __decorate([
 ], OdooController.prototype, "refreshSession", null);
 exports.OdooController = OdooController = __decorate([
     (0, common_1.Controller)('odoo-accounts'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, policies_guard_1.PoliciesGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, warehouse_guard_1.WarehouseGuard, policies_guard_1.PoliciesGuard),
     (0, common_1.UseInterceptors)(audit_log_interceptor_1.AuditLogInterceptor),
     __metadata("design:paramtypes", [odoo_repository_1.OdooRepository,
         odoo_auth_service_1.OdooAuthService,
-        odoo_session_manager_1.OdooSessionManager])
+        odoo_session_manager_1.OdooSessionManager,
+        warehouse_context_service_1.WarehouseContextService])
 ], OdooController);
 //# sourceMappingURL=odoo.controller.js.map

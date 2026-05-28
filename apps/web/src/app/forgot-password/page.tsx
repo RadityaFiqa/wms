@@ -5,12 +5,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ForgotPasswordSchema } from '@bulog-wms/schema';
 import type { ForgotPasswordInput } from '@bulog-wms/schema';
-import { api } from '@/lib/axios';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const { forgotPassword } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
 
@@ -25,7 +26,7 @@ export default function ForgotPasswordPage() {
   const onSubmit = async (data: ForgotPasswordInput) => {
     setIsLoading(true);
     try {
-      await api.post('/auth/forgot-password', data);
+      await forgotPassword(data);
       setIsSent(true);
       toast.success('Instruksi pemulihan telah dikirimkan ke email Anda.');
     } catch (error: any) {

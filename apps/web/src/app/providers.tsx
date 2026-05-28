@@ -1,20 +1,17 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useAuthStore } from '../store/auth';
-import { api } from '../lib/axios';
+import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/auth';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const setAuth = useAuthStore((state) => state.setAuth);
   const setInitialized = useAuthStore((state) => state.setInitialized);
-  const logout = useAuthStore((state) => state.logout);
+  const { refresh, logout } = useAuth();
 
   useEffect(() => {
     async function initAuth() {
       try {
-        const response = await api.post('/auth/refresh');
-        const { accessToken, user } = response.data;
-        setAuth(user, accessToken);
+        await refresh();
       } catch (err) {
         logout();
       } finally {
@@ -22,7 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     initAuth();
-  }, [setAuth, setInitialized, logout]);
+  }, [refresh, setInitialized, logout]);
 
   return <>{children}</>;
 }

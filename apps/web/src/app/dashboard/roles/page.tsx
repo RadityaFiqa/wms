@@ -2,11 +2,9 @@
 
 import React, { useState } from 'react';
 import useSWR, { mutate } from 'swr';
-import { api } from '@/lib/axios';
+import { useRole } from '@/hooks/useRole';
 import { toast } from 'sonner';
 import { ShieldCheck, Edit3, Settings, Lock, Check } from 'lucide-react';
-
-const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 export default function RoleManagementPage() {
   const [selectedRole, setSelectedRole] = useState<any>(null);
@@ -14,12 +12,10 @@ export default function RoleManagementPage() {
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const { data: roles, isLoading: rolesLoading } = useSWR('/roles', fetcher);
-  const { data: permissions } = useSWR('/roles/permissions', fetcher);
+  const { roles, rolesLoading, permissions, updateRole } = useRole();
 
   const handleOpenEdit = (role: any) => {
     setSelectedRole(role);
-    // Extract linked permission IDs
     const linkedIds = role.permissions.map((rp: any) => rp.permission.id);
     setSelectedPermissionIds(linkedIds);
     setIsEditOpen(true);
@@ -34,13 +30,12 @@ export default function RoleManagementPage() {
   const handleSavePermissions = async () => {
     setIsLoading(true);
     try {
-      await api.put(`/roles/${selectedRole.uuid}`, {
+      await updateRole(selectedRole.uuid, {
         description: selectedRole.description,
         permissionIds: selectedPermissionIds,
       });
       toast.success(`Izin akses untuk role ${selectedRole.name} berhasil diperbarui.`);
       setIsEditOpen(false);
-      mutate('/roles');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Gagal menyimpan perubahan.');
     } finally {

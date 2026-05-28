@@ -73,7 +73,7 @@ export declare class UserService {
     findAll(query: {
         search?: string;
         roleId?: number;
-        isActive?: boolean;
+        isActive?: string;
         page?: number;
         limit?: number;
     }): Promise<{

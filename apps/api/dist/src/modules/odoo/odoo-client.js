@@ -87,6 +87,37 @@ let OdooClient = class OdooClient {
         const { csrfToken, cookies } = await this.getLoginPage(baseUrl);
         return this.login(baseUrl, { csrfToken, login: username, pass }, cookies);
     }
+    async call(baseUrl, sessionId, payloadParams) {
+        const url = `${baseUrl.replace(/\/$/, '')}/web/dataset/call_kw/${payloadParams.model}/${payloadParams.method}`;
+        const payload = {
+            id: Math.floor(Math.random() * 1000000),
+            jsonrpc: '2.0',
+            method: 'call',
+            params: {
+                model: payloadParams.model,
+                method: payloadParams.method,
+                args: payloadParams.args || [],
+                kwargs: payloadParams.kwargs || {},
+            },
+        };
+        try {
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': `session_id=${sessionId}`,
+                    'User-Agent': 'Bulog-WMS/1.0',
+                },
+                timeout: 30000,
+            });
+            if (response.data.error) {
+                throw new Error(`Odoo RPC Error: ${JSON.stringify(response.data.error)}`);
+            }
+            return response.data.result;
+        }
+        catch (err) {
+            throw new Error(`Gagal memanggil RPC Odoo: ${err.message}`);
+        }
+    }
 };
 exports.OdooClient = OdooClient;
 exports.OdooClient = OdooClient = __decorate([

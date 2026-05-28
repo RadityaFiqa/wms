@@ -56,6 +56,17 @@ async function main() {
     { action: 'read', subject: 'OdooAccount' },
     { action: 'update', subject: 'OdooAccount' },
     { action: 'delete', subject: 'OdooAccount' },
+    // Gate Operation
+    { action: 'create', subject: 'GateOperation' },
+    { action: 'read', subject: 'GateOperation' },
+    { action: 'update', subject: 'GateOperation' },
+    { action: 'delete', subject: 'GateOperation' },
+    // Gate Verification
+    { action: 'create', subject: 'GateVerification' },
+    { action: 'read', subject: 'GateVerification' },
+    // File Attachment
+    { action: 'create', subject: 'FileAttachment' },
+    { action: 'read', subject: 'FileAttachment' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -91,6 +102,12 @@ async function main() {
         'read:OdooAccount',
         'update:OdooAccount',
         'delete:OdooAccount',
+        'read:GateOperation',
+        'update:GateOperation',
+        'create:GateVerification',
+        'read:GateVerification',
+        'create:FileAttachment',
+        'read:FileAttachment',
       ],
     },
     {
@@ -137,6 +154,18 @@ async function main() {
         'read:Inventory',
         'read:Order',
         'read:AuditLog',
+      ],
+    },
+    {
+      id: 7,
+      name: 'SATPAM',
+      description: 'Satpam registering inbound/outbound vehicle gate operations',
+      permissionKeys: [
+        'read:Warehouse',
+        'create:GateOperation',
+        'read:GateOperation',
+        'create:FileAttachment',
+        'read:FileAttachment',
       ],
     },
   ];
@@ -191,6 +220,76 @@ async function main() {
   });
 
   console.log('Seeded Super Admin user:', adminUser.email);
+
+  // 5. Create Default Satpam User
+  const satpamEmail = 'satpam@wms.com';
+  const satpamPassword = 'SatpamPassword123!';
+  const hashedSatpamPassword = await bcrypt.hash(satpamPassword, 10);
+
+  const satpamUser = await prisma.user.upsert({
+    where: { email: satpamEmail },
+    update: {},
+    create: {
+      name: 'Satpam WMS',
+      email: satpamEmail,
+      password: hashedSatpamPassword,
+      isActive: true,
+      isFirstLogin: false,
+      roleId: 7, // SATPAM
+      warehouseId: 1, // Jakarta Central Warehouse
+    },
+  });
+  console.log('Seeded Satpam user:', satpamUser.email);
+
+  // Link Satpam to Warehouse 1 access
+  await prisma.userWarehouseAccess.upsert({
+    where: {
+      userId_warehouseId: {
+        userId: satpamUser.id,
+        warehouseId: 1,
+      },
+    },
+    update: {},
+    create: {
+      userId: satpamUser.id,
+      warehouseId: 1,
+    },
+  });
+  console.log('Seeded UserWarehouseAccess for Satpam');
+
+  // Link Super Admin to Warehouse 1 access
+  await prisma.userWarehouseAccess.upsert({
+    where: {
+      userId_warehouseId: {
+        userId: adminUser.id,
+        warehouseId: 1,
+      },
+    },
+    update: {},
+    create: {
+      userId: adminUser.id,
+      warehouseId: 1,
+    },
+  });
+  console.log('Seeded UserWarehouseAccess for Super Admin');
+
+  // Seed default products if none exist
+  const productsCount = await prisma.product.count();
+  if (productsCount === 0) {
+    const mockProducts = [
+      { sku: 'BRS-PREM-10K', name: 'Beras Premium Bulog 10kg', category: 'Beras', price: 145000, uom: 'Kg' },
+      { sku: 'BRS-MED-5K', name: 'Beras Medium Bulog 5kg', category: 'Beras', price: 65000, uom: 'Kg' },
+      { sku: 'MYK-GORENG-1L', name: 'Minyak Goreng Kita 1L', category: 'Minyak', price: 14000, uom: 'Liter' },
+      { sku: 'GULA-PASIR-1K', name: 'Gula Pasir Maniskita 1kg', category: 'Gula', price: 16000, uom: 'Kg' },
+    ];
+    for (const prod of mockProducts) {
+      await prisma.product.create({
+        data: prod,
+      });
+    }
+    console.log('Seeded default mock products.');
+  }
+
   console.log('Seeding completed successfully!');
 }
 

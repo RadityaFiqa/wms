@@ -35,7 +35,7 @@ exports.OdooModule = OdooModule = __decorate([
             odoo_queue_processor_1.OdooQueueProcessor,
             odoo_cron_service_1.OdooCronService,
         ],
-        exports: [odoo_auth_service_1.OdooAuthService, odoo_session_manager_1.OdooSessionManager],
+        exports: [odoo_auth_service_1.OdooAuthService, odoo_session_manager_1.OdooSessionManager, odoo_client_1.OdooClient],
     })
 ], OdooModule);
 //# sourceMappingURL=odoo.module.js.map

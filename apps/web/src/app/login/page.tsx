@@ -5,14 +5,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { LoginSchema } from '@bulog-wms/schema';
 import type { LoginInput } from '@bulog-wms/schema';
-import { api } from '@/lib/axios';
-import { useAuthStore } from '@/store/auth';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, token, setAuth } = useAuthStore();
+  const { user, token, login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   // If user is already logged in, redirect them
@@ -37,13 +36,11 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     setIsLoading(true);
     try {
-      const response = await api.post('/auth/login', data);
-      const { accessToken, user } = response.data;
-      
-      setAuth(user, accessToken);
-      toast.success(`Selamat datang kembali, ${user.name}!`);
+      const response = await login(data);
+      const userPayload = response.user;
+      toast.success(`Selamat datang kembali, ${userPayload.name}!`);
 
-      if (user.isFirstLogin) {
+      if (userPayload.isFirstLogin) {
         router.push('/dashboard/profile?force_reset=true');
       } else {
         router.push('/dashboard');

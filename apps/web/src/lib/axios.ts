@@ -14,6 +14,11 @@ api.interceptors.request.use((config) => {
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  const activeWarehouse = useAuthStore.getState().activeWarehouse;
+  if (activeWarehouse && config.headers) {
+    config.headers['x-warehouse-id'] = activeWarehouse.uuid;
+  }
   return config;
 });
 

@@ -13,12 +13,12 @@ export declare class AuditLogService {
         uuid: string;
         id: number;
         action: string;
-        userAgent: string | null;
-        ipAddress: string | null;
-        details: string | null;
-        timestamp: Date;
         actorId: number | null;
         targetId: number | null;
+        ipAddress: string | null;
+        userAgent: string | null;
+        details: string | null;
+        timestamp: Date;
     }>;
     findAll(query: {
         search?: string;
@@ -27,13 +27,13 @@ export declare class AuditLogService {
         limit?: number;
     }): Promise<{
         data: ({
-            target: {
+            actor: {
                 uuid: string;
                 id: number;
                 name: string;
                 email: string;
             } | null;
-            actor: {
+            target: {
                 uuid: string;
                 id: number;
                 name: string;
@@ -43,12 +43,12 @@ export declare class AuditLogService {
             uuid: string;
             id: number;
             action: string;
-            userAgent: string | null;
-            ipAddress: string | null;
-            details: string | null;
-            timestamp: Date;
             actorId: number | null;
             targetId: number | null;
+            ipAddress: string | null;
+            userAgent: string | null;
+            details: string | null;
+            timestamp: Date;
         })[];
         meta: {
             total: number;

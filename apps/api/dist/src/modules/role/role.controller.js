@@ -16,6 +16,7 @@ exports.RoleController = void 0;
 const common_1 = require("@nestjs/common");
 const role_service_1 = require("./role.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const warehouse_guard_1 = require("../../core/warehouse-context/warehouse.guard");
 const policies_guard_1 = require("../casl/policies.guard");
 const policies_decorator_1 = require("../casl/policies.decorator");
 const audit_log_interceptor_1 = require("../audit-log/audit-log.interceptor");
@@ -87,7 +88,7 @@ __decorate([
 ], RoleController.prototype, "update", null);
 exports.RoleController = RoleController = __decorate([
     (0, common_1.Controller)('roles'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, policies_guard_1.PoliciesGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, warehouse_guard_1.WarehouseGuard, policies_guard_1.PoliciesGuard),
     (0, common_1.UseInterceptors)(audit_log_interceptor_1.AuditLogInterceptor),
     __metadata("design:paramtypes", [role_service_1.RoleService])
 ], RoleController);

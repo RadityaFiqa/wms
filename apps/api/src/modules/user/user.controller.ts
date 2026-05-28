@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
 import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
@@ -10,7 +11,7 @@ import type { CreateUserInput, UpdateUserInput } from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class UserController {
   constructor(private readonly userService: UserService) {}
@@ -27,7 +28,7 @@ export class UserController {
   async findAll(
     @Query('search') search?: string,
     @Query('roleId') roleId?: number,
-    @Query('isActive') isActive?: boolean,
+    @Query('isActive') isActive?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
