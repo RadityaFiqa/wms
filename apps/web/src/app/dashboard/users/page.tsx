@@ -9,6 +9,7 @@ import type { CreateUserInput, UpdateUserInput } from '@bulog-wms/schema';
 import { useUser } from '@/hooks/useUser';
 import { useRole } from '@/hooks/useRole';
 import { useWarehouse } from '@/hooks/useWarehouse';
+import { useAuthStore } from '@/store/auth';
 import { toast } from 'sonner';
 import {
   Search,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 
 export default function UserManagementPage() {
+  const { user } = useAuthStore();
   // Query state
   const [search, setSearch] = useState('');
   const [roleId, setRoleId] = useState('');
@@ -192,7 +194,7 @@ export default function UserManagementPage() {
             className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
           >
             <option value="">Semua Role</option>
-            {roles?.map((role: any) => (
+            {roles?.filter((r: any) => user?.role === 'SUPER_ADMIN' || r.name !== 'SUPER_ADMIN').map((role: any) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>
@@ -400,7 +402,7 @@ export default function UserManagementPage() {
                     className="w-full border border-slate-200 bg-white text-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   >
                     <option value="">Pilih Role</option>
-                    {roles?.map((role: any) => (
+                    {roles?.filter((r: any) => user?.role === 'SUPER_ADMIN' || r.name !== 'SUPER_ADMIN').map((role: any) => (
                       <option key={role.id} value={role.id}>
                         {role.name}
                       </option>
@@ -419,7 +421,11 @@ export default function UserManagementPage() {
                     })}
                     className="w-full border border-slate-200 bg-white text-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   >
-                    <option value="">Semua Gudang (Super)</option>
+                    {user?.role === 'SUPER_ADMIN' ? (
+                      <option value="">Semua Gudang (Super)</option>
+                    ) : (
+                      <option value="">Pilih Gudang</option>
+                    )}
                     {warehouses?.map((wh: any) => (
                       <option key={wh.id} value={wh.id}>
                         {wh.name}
@@ -497,7 +503,7 @@ export default function UserManagementPage() {
                     className="w-full border border-slate-200 bg-white text-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   >
                     <option value="">Pilih Role</option>
-                    {roles?.map((role: any) => (
+                    {roles?.filter((r: any) => user?.role === 'SUPER_ADMIN' || r.name !== 'SUPER_ADMIN').map((role: any) => (
                       <option key={role.id} value={role.id}>
                         {role.name}
                       </option>
@@ -516,7 +522,11 @@ export default function UserManagementPage() {
                     })}
                     className="w-full border border-slate-200 bg-white text-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   >
-                    <option value="null">Semua Gudang (Super)</option>
+                    {user?.role === 'SUPER_ADMIN' ? (
+                      <option value="null">Semua Gudang (Super)</option>
+                    ) : (
+                      <option value="">Pilih Gudang</option>
+                    )}
                     {warehouses?.map((wh: any) => (
                       <option key={wh.id} value={wh.id}>
                         {wh.name}

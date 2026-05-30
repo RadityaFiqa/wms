@@ -29,7 +29,7 @@ model User {
   sessions                  Session[]
   role                      Role                  @relation(fields: [roleId], references: [id])
   warehouse                 Warehouse?            @relation(fields: [warehouseId], references: [id])
-  warehouseAccesses         UserWarehouseAccess[]
+  warehouseAccesses         WarehouseAccess[]
 
   @@index([email])
   @@index([uuid])
@@ -124,21 +124,29 @@ model AuditLog {
 }
 
 model Warehouse {
-  id             Int                   @id @default(autoincrement())
-  uuid           String                @unique @default(uuid())
-  name           String
-  location       String
-  capacity       Float
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  gateOperations GateOperation[]
-  inventories    Inventory[]
-  locations      Location[]
-  odooAccount    OdooAccount?
-  users          User[]
-  userAccesses   UserWarehouseAccess[]
+  id                 Int                  @id @default(autoincrement())
+  uuid               String               @unique @default(uuid())
+  code               String               @unique @default("TEMP")
+  name               String
+  location           String
+  capacity           Float
+  type               String?
+  address            String?
+  isActive           Boolean              @default(true)
+  odooReference      String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  gateOperations     GateOperation[]
+  inventories        Inventory[]
+  locations          Location[]
+  odooAccount        OdooAccount?
+  users              User[]
+  warehouseAccesses  WarehouseAccess[]
+  documentReferences DocumentReference[]
+  odooSyncLogs       OdooSyncLog[]
 
   @@index([uuid])
+  @@index([code])
 }
 
 model OdooAccount {
@@ -168,7 +176,7 @@ model OdooAccount {
 }
 
 model Product {
-  id                       Int                       @id @default(autoincrement())
+  id                       Int                       @id
   uuid                     String                    @unique @default(uuid())
   sku                      String                    @unique
   name                     String
@@ -189,9 +197,8 @@ model Product {
 }
 
 model Location {
-  id             Int       @id @default(autoincrement())
+  id             Int       @id
   uuid           String    @unique @default(uuid())
-  odooLocationId Int
   displayName    String
   warehouseId    Int
   createdAt      DateTime  @default(now())
@@ -199,14 +206,12 @@ model Location {
   warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   quants         Quant[]
 
-  @@unique([warehouseId, odooLocationId])
   @@index([warehouseId])
 }
 
 model Quant {
-  id                Int      @id @default(autoincrement())
+  id                Int      @id
   uuid              String   @unique @default(uuid())
-  odooQuantId       Int      @unique
   productId         Int
   locationId        Int
   quantity          Float    @default(0)
@@ -264,28 +269,29 @@ model OrderItem {
   @@index([uuid])
 }
 
-model UserWarehouseAccess {
-  userId      Int       @map("user_id")
-  warehouseId Int       @map("warehouse_id")
+model WarehouseAccess {
+  userId      Int
+  warehouseId Int
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@id([userId, warehouseId])
-  @@map("user_warehouse_access")
 }
 
 model FileAttachment {
-  id                     Int               @id @default(autoincrement())
-  uuid                   String            @unique @default(uuid())
-  filePath               String
-  fileName               String
-  mimeType               String
-  sizeBytes              Int
-  uploadedById           Int
-  uploadedAt             DateTime          @default(now())
-  uploadedBy             User              @relation(fields: [uploadedById], references: [id])
-  gateOperationVehicle   GateOperation?
-  gateVerificationAttach GateVerification?
+  id                 Int               @id @default(autoincrement())
+  uuid               String            @unique @default(uuid())
+  filePath           String
+  fileName           String
+  mimeType           String
+  sizeBytes          Int
+  uploadedById       Int
+  uploadedAt         DateTime          @default(now())
+  uploadedBy         User              @relation(fields: [uploadedById], references: [id])
+  gateOperationId    Int?
+  gateVerificationId Int?
+  gateOperation      GateOperation?    @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
+  gateVerification   GateVerification? @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
 }
 
 model GateOperation {
@@ -293,7 +299,6 @@ model GateOperation {
   uuid            String                 @unique @default(uuid())
   opNumber        String                 @unique
   cardType        CardType
-  vehiclePhotoId  Int?                   @unique
   driverName      String
   licensePlate    String
   notes           String?
@@ -303,10 +308,12 @@ model GateOperation {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   createdByUser   User                   @relation("GateOpCreator", fields: [createdByUserId], references: [id])
-  vehiclePhoto    FileAttachment?        @relation(fields: [vehiclePhotoId], references: [id])
   warehouse       Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   products        GateOperationProduct[]
   verification    GateVerification?
+  poReferences    String[]               @default([])
+  soReferences    String[]               @default([])
+  attachments     FileAttachment[]
 
   @@index([uuid])
   @@index([opNumber])
@@ -315,13 +322,15 @@ model GateOperation {
 }
 
 model GateOperationProduct {
-  id              Int           @id @default(autoincrement())
-  uuid            String        @unique @default(uuid())
+  id              Int                      @id @default(autoincrement())
+  uuid            String                   @unique @default(uuid())
   gateOperationId Int
   productId       Int
   quantity        Float
-  gateOperation   GateOperation @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
-  product         Product       @relation(fields: [productId], references: [id])
+  notes           String?
+  gateOperation   GateOperation            @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
+  product         Product                  @relation(fields: [productId], references: [id])
+  references      GateDocumentReference[]
 
   @@index([gateOperationId])
   @@index([productId])
@@ -333,13 +342,13 @@ model GateVerification {
   gateOperationId Int                       @unique
   verifiedById    Int
   verifiedAt      DateTime                  @default(now())
-  status          VerificationStatus        @default(VERIFIED)
+  status          VerificationStatus        @default(PENDING)
   notes           String?
-  attachmentId    Int?                      @unique
-  attachment      FileAttachment?           @relation(fields: [attachmentId], references: [id])
   gateOperation   GateOperation             @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
   verifiedBy      User                      @relation("GateVerifier", fields: [verifiedById], references: [id])
   products        GateVerificationProduct[]
+  attachments     FileAttachment[]
+  references      GateDocumentReference[]
 
   @@index([uuid])
   @@index([gateOperationId])
@@ -373,6 +382,111 @@ enum CardType {
 
 enum VerificationStatus {
   PENDING
+  PARTIAL
+  COMPLETED
+  CANCELED
   VERIFIED
   REJECTED
+}
+
+model DocumentReference {
+  id                        Int                      @id
+  uuid                      String                   @unique @default(uuid())
+  warehouseId               Int
+  documentNumber            String
+  state                     String
+  pickingTypeCode           String
+  partnerName               String?
+  purchaseName              String?
+  origin                    String?
+  sourceLocationName        String?
+  destinationLocationName   String?
+  scheduledDate             DateTime?
+  dateDone                  DateTime?
+  driver                    String?
+  plateNumber               String?
+  totalItems                Int
+  totalQuantity             Float
+  rawPayload                Json
+  lastSyncedAt              DateTime                 @default(now())
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  warehouse                 Warehouse                @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  items                     DocumentReferenceItem[]
+  references                GateDocumentReference[]
+
+  @@index([warehouseId])
+  @@index([uuid])
+  @@index([documentNumber])
+}
+
+model DocumentReferenceItem {
+  id                  Int                      @id
+  uuid                String                   @unique @default(uuid())
+  documentReferenceId Int
+  productId           Int
+  productName         String
+  uom                 String
+  analyticAccountName String?
+  quantity            Float
+  productQty          Float
+  secondaryQuantity   Float?
+  secondaryUom        String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  documentReference   DocumentReference        @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
+  references          GateDocumentReference[]
+
+  @@index([documentReferenceId])
+}
+
+enum OdooSyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model OdooSyncLog {
+  id                 Int            @id @default(autoincrement())
+  uuid               String         @unique @default(uuid())
+  warehouseId        Int
+  status             OdooSyncStatus
+  startedAt          DateTime       @default(now())
+  finishedAt         DateTime?
+  totalDocuments     Int            @default(0)
+  processedDocuments Int            @default(0)
+  errorMessage       String?
+  createdBy          String
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  warehouse          Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@index([uuid])
+}
+
+model GateDocumentReference {
+  id                 Int                   @id @default(autoincrement())
+  uuid               String                @unique @default(uuid())
+  gateVerificationId Int
+  gateItemId         Int
+  erpDocumentId      Int
+  erpDocumentItemId  Int
+  productId          Int
+  assignedQuantity   Float
+  createdAt          DateTime              @default(now())
+  createdBy          String
+
+  gateVerification   GateVerification      @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
+  gateItem           GateOperationProduct  @relation(fields: [gateItemId], references: [id], onDelete: Cascade)
+  erpDocument        DocumentReference     @relation(fields: [erpDocumentId], references: [id], onDelete: Cascade)
+  erpDocumentItem    DocumentReferenceItem @relation(fields: [erpDocumentItemId], references: [id], onDelete: Cascade)
+
+  @@index([gateVerificationId])
+  @@index([gateItemId])
+  @@index([erpDocumentId])
+  @@index([erpDocumentItemId])
+  @@index([productId])
 }

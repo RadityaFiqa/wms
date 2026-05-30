@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
+var InventoryService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InventoryService = void 0;
 const common_1 = require("@nestjs/common");
@@ -18,10 +19,11 @@ const prisma_service_1 = require("../../core/prisma/prisma.service");
 const odoo_client_1 = require("../odoo/odoo-client");
 const odoo_session_manager_1 = require("../odoo/odoo-session.manager");
 const pdfkit_1 = __importDefault(require("pdfkit"));
-let InventoryService = class InventoryService {
+let InventoryService = InventoryService_1 = class InventoryService {
     prisma;
     odooClient;
     odooSessionManager;
+    logger = new common_1.Logger(InventoryService_1.name);
     constructor(prisma, odooClient, odooSessionManager) {
         this.prisma = prisma;
         this.odooClient = odooClient;
@@ -38,45 +40,13 @@ let InventoryService = class InventoryService {
         if (!account.isActive) {
             throw new common_1.BadRequestException('Akun Odoo untuk gudang ini tidak aktif.');
         }
-        try {
-            await this.odooSessionManager.validateAndRefreshSession(account.id);
-        }
-        catch (err) {
-            await this.prisma.odooAccount.update({
-                where: { id: account.id },
-                data: {
-                    lastSyncAt: new Date(),
-                    lastSyncStatus: 'FAILED',
-                    lastSyncError: `Gagal memvalidasi sesi: ${err.message}`,
-                    lastSyncBy: triggeredBy,
-                },
-            }).catch((e) => console.error('Failed to log sync status error', e));
-            throw new common_1.BadRequestException(`Gagal memvalidasi/menyegarkan sesi Odoo: ${err.message}`);
-        }
-        const refreshedAccount = await this.prisma.odooAccount.findUnique({
-            where: { id: account.id },
-        });
-        const sessionId = refreshedAccount?.sessionId;
-        const baseUrl = refreshedAccount?.baseUrl;
-        if (!sessionId || !baseUrl) {
-            const errorMsg = 'Session ID Odoo kosong setelah refresh.';
-            await this.prisma.odooAccount.update({
-                where: { id: account.id },
-                data: {
-                    lastSyncAt: new Date(),
-                    lastSyncStatus: 'FAILED',
-                    lastSyncError: errorMsg,
-                    lastSyncBy: triggeredBy,
-                },
-            }).catch((e) => console.error('Failed to log sync status error', e));
-            throw new common_1.BadRequestException(errorMsg);
-        }
         const domain = [
             ['quantity', '>=', 0.01],
             ['product_id.type', '=', 'product'],
             ['location_id.usage', '=', 'internal'],
         ];
         const specification = {
+            id: {},
             product_id: {
                 fields: {
                     display_name: {},
@@ -105,14 +75,10 @@ let InventoryService = class InventoryService {
         };
         let response;
         try {
-            response = await this.odooClient.call(baseUrl, sessionId, {
-                model: 'stock.quant',
-                method: 'web_search_read',
-                kwargs: {
-                    domain,
-                    specification,
-                    limit: 5000,
-                },
+            response = await this.safeOdooCall(warehouseId, 'stock.quant', 'web_search_read', [], {
+                domain,
+                specification,
+                limit: 5000,
             });
         }
         catch (err) {
@@ -142,12 +108,14 @@ let InventoryService = class InventoryService {
                         : `OP-${odooProdId}`;
                     const uom = odooProd.uom_id?.display_name || 'Unit';
                     await tx.product.upsert({
-                        where: { sku },
+                        where: { id: odooProdId },
                         update: {
+                            sku,
                             name: productName,
                             uom,
                         },
                         create: {
+                            id: odooProdId,
                             sku,
                             name: productName,
                             uom,
@@ -156,8 +124,6 @@ let InventoryService = class InventoryService {
                         },
                     });
                 }
-                const allProducts = await tx.product.findMany({});
-                const productMapBySku = new Map(allProducts.map((p) => [p.sku, p.id]));
                 const uniqueOdooLocations = new Map();
                 for (const record of records) {
                     const odooLoc = record.location_id;
@@ -168,16 +134,13 @@ let InventoryService = class InventoryService {
                 for (const [odooLocId, displayName] of uniqueOdooLocations.entries()) {
                     await tx.location.upsert({
                         where: {
-                            warehouseId_odooLocationId: {
-                                warehouseId,
-                                odooLocationId: odooLocId,
-                            },
+                            id: odooLocId,
                         },
                         update: {
                             displayName,
                         },
                         create: {
-                            odooLocationId: odooLocId,
+                            id: odooLocId,
                             displayName,
                             warehouseId,
                         },
@@ -186,7 +149,6 @@ let InventoryService = class InventoryService {
                 const allLocations = await tx.location.findMany({
                     where: { warehouseId },
                 });
-                const locationMapByOdooId = new Map(allLocations.map((l) => [l.odooLocationId, l.id]));
                 const locationIds = allLocations.map((l) => l.id);
                 await tx.quant.deleteMany({
                     where: {
@@ -197,25 +159,19 @@ let InventoryService = class InventoryService {
                 for (const record of records) {
                     const odooProd = record.product_id;
                     const odooLoc = record.location_id;
-                    if (!odooProd || !odooLoc)
+                    if (!odooProd || !odooLoc || !record.id)
                         continue;
-                    const rawSku = odooProd.default_code;
-                    const sku = rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
-                        ? rawSku.trim()
-                        : `OP-${odooProd.id}`;
-                    const localProductId = productMapBySku.get(sku);
-                    const localLocationId = locationMapByOdooId.get(odooLoc.id);
-                    if (!localProductId || !localLocationId)
-                        continue;
+                    const odooProdId = odooProd.id;
+                    const odooLocId = odooLoc.id;
                     const lotName = record.lot_id ? (record.lot_id.display_name || null) : null;
                     const quantity = Number(record.quantity) || 0.0;
                     const reservedQuantity = Number(record.reserved_quantity) || 0.0;
                     const availableQuantity = Number(record.available_quantity) || 0.0;
                     const secondaryUnitQty = record.sh_secondary_unit_qty !== undefined ? (Number(record.sh_secondary_unit_qty) || 0.0) : 0.0;
                     quantsToCreate.push({
-                        odooQuantId: record.id,
-                        productId: localProductId,
-                        locationId: localLocationId,
+                        id: record.id,
+                        productId: odooProdId,
+                        locationId: odooLocId,
                         quantity,
                         reservedQuantity,
                         availableQuantity,
@@ -350,7 +306,6 @@ let InventoryService = class InventoryService {
                 uniqueLocationIds.add(q.locationId);
             }
             return {
-                id: product.id,
                 uuid: product.uuid,
                 sku: product.sku,
                 name: product.name,
@@ -422,15 +377,14 @@ let InventoryService = class InventoryService {
         const locationsMap = new Map();
         for (const q of product.quants) {
             const loc = q.location;
-            if (!locationsMap.has(loc.id)) {
-                locationsMap.set(loc.id, {
-                    location_id: loc.id,
-                    location_display_name: loc.displayName,
+            if (!locationsMap.has(loc.uuid)) {
+                locationsMap.set(loc.uuid, {
+                    locationUuid: loc.uuid,
+                    locationDisplayName: loc.displayName,
                     quants: [],
                 });
             }
-            locationsMap.get(loc.id).quants.push({
-                id: q.id,
+            locationsMap.get(loc.uuid).quants.push({
                 uuid: q.uuid,
                 lotName: q.lotName || '-',
                 quantity: q.quantity,
@@ -441,7 +395,6 @@ let InventoryService = class InventoryService {
         }
         return {
             product: {
-                id: product.id,
                 uuid: product.uuid,
                 sku: product.sku,
                 name: product.name,
@@ -501,8 +454,8 @@ let InventoryService = class InventoryService {
             const drawPageHeader = (pageDoc, isFirstPage = false) => {
                 let y = 15;
                 if (isFirstPage) {
-                    pageDoc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold').text('LAPORAN STATUS PERSEDIAAN WMS', 15, y, { align: 'center', width: 565 });
-                    pageDoc.fontSize(6.8).font('Helvetica').fillColor('#64748b').text(`Cetak: ${new Date().toLocaleString('id-ID')}  |  Warehouse: ${warehouseName}  |  Total Item: ${totalItems}`, 15, y + 14, { align: 'center', width: 565 });
+                    pageDoc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold').text('LAPORAN INVENTORY', 15, y, { align: 'center', width: 565 });
+                    pageDoc.fontSize(6.8).font('Helvetica').fillColor('#64748b').text(`Cetak: ${new Date().toLocaleString('id-ID')}  |  Warehouse: ${warehouseName}`, 15, y + 14, { align: 'center', width: 565 });
                     y = 48;
                 }
                 pageDoc.fillColor('#475569').fontSize(6.5).font('Helvetica-Bold');
@@ -570,7 +523,7 @@ let InventoryService = class InventoryService {
                     }
                     doc.moveTo(15, currentY).lineTo(580, currentY).lineWidth(0.4).stroke('#475569');
                     doc.fillColor('#1e293b').fontSize(6.8).font('Helvetica-Bold');
-                    doc.text(`Total Produk ${product.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
+                    doc.text(`${product.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
                     doc.text(productQtyTotal.toLocaleString('id-ID'), 360, currentY + 4, { width: 50, align: 'right' });
                     doc.text(product.uom || 'Unit', 415, currentY + 4, { width: 75, ellipsis: true });
                     const prodSecQtyText = productSecQtyTotal > 0 ? productSecQtyTotal.toLocaleString('id-ID') : '-';
@@ -594,7 +547,7 @@ let InventoryService = class InventoryService {
                         }
                         doc.moveTo(165, currentY).lineTo(580, currentY).lineWidth(0.2).stroke('#94a3b8');
                         doc.fillColor('#475569').fontSize(6.5).font('Helvetica-Bold');
-                        doc.text(`Total Lokasi ${locData.name}`, 165, currentY + 3, { width: 190, ellipsis: true });
+                        doc.text(`${locData.name}`, 165, currentY + 3, { width: 190, ellipsis: true });
                         doc.text(locQtyTotal.toLocaleString('id-ID'), 360, currentY + 3, { width: 50, align: 'right' });
                         doc.text(product.uom || 'Unit', 415, currentY + 3, { width: 75, ellipsis: true });
                         const locSecQtyText = locSecQtyTotal > 0 ? locSecQtyTotal.toLocaleString('id-ID') : '-';
@@ -642,9 +595,69 @@ let InventoryService = class InventoryService {
             doc.end();
         });
     }
+    async safeOdooCall(warehouseId, model, method, args = [], kwargs = {}) {
+        const account = await this.prisma.odooAccount.findUnique({
+            where: { warehouseId },
+        });
+        if (!account) {
+            throw new common_1.NotFoundException('Akun Odoo untuk gudang aktif ini belum dikonfigurasi.');
+        }
+        await this.odooSessionManager.validateAndRefreshSession(account.id);
+        let refreshedAccount = await this.prisma.odooAccount.findUnique({
+            where: { id: account.id },
+        });
+        if (!refreshedAccount?.sessionId || !refreshedAccount?.baseUrl) {
+            throw new common_1.BadRequestException('Session ID Odoo kosong setelah refresh.');
+        }
+        const triedSessionId = refreshedAccount.sessionId;
+        try {
+            return await this.odooClient.call(refreshedAccount.baseUrl, triedSessionId, {
+                model,
+                method,
+                args,
+                kwargs,
+            });
+        }
+        catch (err) {
+            const isSessionExpired = err.message.includes('Session expired') ||
+                err.message.includes('Session Expired') ||
+                err.message.includes('SessionExpiredException') ||
+                err.message.includes('session expired');
+            if (isSessionExpired) {
+                const currentAccount = await this.prisma.odooAccount.findUnique({
+                    where: { id: account.id },
+                });
+                const latestSessionId = currentAccount?.sessionId;
+                if (latestSessionId && latestSessionId !== triedSessionId) {
+                    this.logger.log(`Session Odoo untuk gudang ${account.warehouseId} telah diperbarui oleh proses lain. Mencoba ulang dengan session baru...`);
+                    return await this.odooClient.call(currentAccount.baseUrl, latestSessionId, {
+                        model,
+                        method,
+                        args,
+                        kwargs,
+                    });
+                }
+                this.logger.log(`Session Odoo untuk gudang ${account.warehouseId} kedaluwarsa. Melakukan refresh session...`);
+                await this.odooSessionManager.invalidateSession(account.id);
+                await this.odooSessionManager.validateAndRefreshSession(account.id);
+                refreshedAccount = await this.prisma.odooAccount.findUnique({
+                    where: { id: account.id },
+                });
+                if (refreshedAccount?.sessionId) {
+                    return await this.odooClient.call(refreshedAccount.baseUrl, refreshedAccount.sessionId, {
+                        model,
+                        method,
+                        args,
+                        kwargs,
+                    });
+                }
+            }
+            throw err;
+        }
+    }
 };
 exports.InventoryService = InventoryService;
-exports.InventoryService = InventoryService = __decorate([
+exports.InventoryService = InventoryService = InventoryService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         odoo_client_1.OdooClient,

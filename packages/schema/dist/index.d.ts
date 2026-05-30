@@ -151,7 +151,7 @@ export declare const UpdateOdooAccountSchema: z.ZodObject<{
 }>;
 export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
 export declare const CardTypeEnum: z.ZodEnum<["IN", "OUT"]>;
-export declare const VerificationStatusEnum: z.ZodEnum<["PENDING", "VERIFIED", "REJECTED"]>;
+export declare const VerificationStatusEnum: z.ZodEnum<["PENDING", "PARTIAL", "COMPLETED", "CANCELED"]>;
 export declare const GateOperationProductSchema: z.ZodObject<{
     productId: z.ZodNumber;
     quantity: z.ZodNumber;
@@ -166,8 +166,8 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
     cardType: z.ZodEnum<["IN", "OUT"]>;
     driverName: z.ZodString;
     licensePlate: z.ZodString;
-    notes: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
-    vehiclePhotoPath: z.ZodString;
+    notes: z.ZodString;
+    attachmentPaths: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     products: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         productId: z.ZodNumber;
         quantity: z.ZodNumber;
@@ -182,18 +182,18 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
     cardType: "IN" | "OUT";
     driverName: string;
     licensePlate: string;
-    vehiclePhotoPath: string;
+    notes: string;
+    attachmentPaths: string[];
     products: {
         productId: number;
         quantity: number;
     }[];
-    notes?: string | null | undefined;
 }, {
     cardType: "IN" | "OUT";
     driverName: string;
     licensePlate: string;
-    vehiclePhotoPath: string;
-    notes?: string | null | undefined;
+    notes: string;
+    attachmentPaths?: string[] | undefined;
     products?: {
         productId: number;
         quantity: number;
@@ -201,9 +201,9 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
 }>;
 export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
 export declare const CreateGateVerificationSchema: z.ZodObject<{
-    status: z.ZodEnum<["VERIFIED", "REJECTED"]>;
+    status: z.ZodEnum<["PENDING", "PARTIAL", "COMPLETED", "CANCELED"]>;
     notes: z.ZodString;
-    attachmentPath: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
+    attachmentPaths: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     products: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         productId: z.ZodNumber;
         quantity: z.ZodNumber;
@@ -214,22 +214,129 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         productId: number;
         quantity: number;
     }>, "many">>>;
+    poReferences: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    soReferences: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
 }, "strip", z.ZodTypeAny, {
-    status: "VERIFIED" | "REJECTED";
+    status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELED";
     notes: string;
+    attachmentPaths: string[];
     products: {
         productId: number;
         quantity: number;
     }[];
-    attachmentPath?: string | null | undefined;
+    poReferences: string[];
+    soReferences: string[];
 }, {
-    status: "VERIFIED" | "REJECTED";
+    status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELED";
     notes: string;
+    attachmentPaths?: string[] | undefined;
     products?: {
         productId: number;
         quantity: number;
     }[] | undefined;
-    attachmentPath?: string | null | undefined;
+    poReferences?: string[] | undefined;
+    soReferences?: string[] | undefined;
 }>;
 export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
+export declare const AssignReferencesSchema: z.ZodObject<{
+    gateItemId: z.ZodNumber;
+    assignments: z.ZodArray<z.ZodObject<{
+        erpDocumentItemId: z.ZodNumber;
+        assignedQuantity: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        erpDocumentItemId: number;
+        assignedQuantity: number;
+    }, {
+        erpDocumentItemId: number;
+        assignedQuantity: number;
+    }>, "many">;
+}, "strip", z.ZodTypeAny, {
+    gateItemId: number;
+    assignments: {
+        erpDocumentItemId: number;
+        assignedQuantity: number;
+    }[];
+}, {
+    gateItemId: number;
+    assignments: {
+        erpDocumentItemId: number;
+        assignedQuantity: number;
+    }[];
+}>;
+export type AssignReferencesInput = z.infer<typeof AssignReferencesSchema>;
+export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
+    search: z.ZodOptional<z.ZodString>;
+    page: z.ZodOptional<z.ZodNumber>;
+    limit: z.ZodOptional<z.ZodNumber>;
+    type: z.ZodOptional<z.ZodEnum<["IN", "OUT"]>>;
+    state: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    type?: "IN" | "OUT" | undefined;
+    search?: string | undefined;
+    page?: number | undefined;
+    limit?: number | undefined;
+    state?: string | undefined;
+}, {
+    type?: "IN" | "OUT" | undefined;
+    search?: string | undefined;
+    page?: number | undefined;
+    limit?: number | undefined;
+    state?: string | undefined;
+}>;
+export type ErpDocumentReferenceQueryInput = z.infer<typeof ErpDocumentReferenceQuerySchema>;
+export declare const CreateWarehouseSchema: z.ZodObject<{
+    code: z.ZodString;
+    name: z.ZodString;
+    location: z.ZodString;
+    address: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    capacity: z.ZodNumber;
+    type: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    odooReference: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+}, "strip", z.ZodTypeAny, {
+    code: string;
+    name: string;
+    location: string;
+    capacity: number;
+    type?: string | null | undefined;
+    address?: string | null | undefined;
+    odooReference?: string | null | undefined;
+}, {
+    code: string;
+    name: string;
+    location: string;
+    capacity: number;
+    type?: string | null | undefined;
+    address?: string | null | undefined;
+    odooReference?: string | null | undefined;
+}>;
+export type CreateWarehouseInput = z.infer<typeof CreateWarehouseSchema>;
+export declare const UpdateWarehouseSchema: z.ZodObject<{
+    code: z.ZodString;
+    name: z.ZodString;
+    location: z.ZodString;
+    address: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    capacity: z.ZodNumber;
+    type: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    odooReference: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isActive: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+}, "strip", z.ZodTypeAny, {
+    code: string;
+    name: string;
+    isActive: boolean;
+    location: string;
+    capacity: number;
+    type?: string | null | undefined;
+    address?: string | null | undefined;
+    odooReference?: string | null | undefined;
+}, {
+    code: string;
+    name: string;
+    location: string;
+    capacity: number;
+    type?: string | null | undefined;
+    isActive?: boolean | undefined;
+    address?: string | null | undefined;
+    odooReference?: string | null | undefined;
+}>;
+export type UpdateWarehouseInput = z.infer<typeof UpdateWarehouseSchema>;
 //# sourceMappingURL=index.d.ts.map

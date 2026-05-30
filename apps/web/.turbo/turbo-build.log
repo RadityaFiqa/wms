@@ -5,15 +5,15 @@
 ▲ Next.js 16.2.6 (Turbopack)
 
   Creating an optimized production build ...
-✓ Compiled successfully in 11.5s
+✓ Compiled successfully in 15.1s
   Running TypeScript ...
-  Finished TypeScript in 13.3s ...
+  Finished TypeScript in 24.3s ...
   Collecting page data using 7 workers ...
-  Generating static pages using 7 workers (0/13) ...
-  Generating static pages using 7 workers (3/13) 
-  Generating static pages using 7 workers (6/13) 
-  Generating static pages using 7 workers (9/13) 
-✓ Generating static pages using 7 workers (13/13) in 1717ms
+  Generating static pages using 7 workers (0/19) ...
+  Generating static pages using 7 workers (4/19) 
+  Generating static pages using 7 workers (9/19) 
+  Generating static pages using 7 workers (14/19) 
+✓ Generating static pages using 7 workers (19/19) in 2.4s
   Finalizing page optimization ...
 
 Route (app)
@@ -21,14 +21,24 @@ Route (app)
 ├ ○ /_not-found
 ├ ○ /dashboard
 ├ ○ /dashboard/audit-logs
+├ ○ /dashboard/erp-documents
+├ ƒ /dashboard/erp-documents/[id]
+├ ○ /dashboard/gate-operations
+├ ƒ /dashboard/gate-operations/[uuid]
+├ ○ /dashboard/gate-operations/new
+├ ○ /dashboard/gate-verification
+├ ƒ /dashboard/gate-verification/[uuid]
+├ ○ /dashboard/inventory
 ├ ○ /dashboard/odoo
 ├ ○ /dashboard/profile
 ├ ○ /dashboard/roles
 ├ ○ /dashboard/users
+├ ○ /dashboard/warehouses
 ├ ○ /forgot-password
 ├ ○ /login
 └ ○ /reset-password
 
 
-○  (Static)  prerendered as static content
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
 

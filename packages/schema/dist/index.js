@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.ErpDocumentReferenceQuerySchema = exports.AssignReferencesSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -62,7 +62,7 @@ exports.UpdateOdooAccountSchema = zod_1.z.object({
 });
 // Gate Operation Schemas
 exports.CardTypeEnum = zod_1.z.enum(['IN', 'OUT']);
-exports.VerificationStatusEnum = zod_1.z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+exports.VerificationStatusEnum = zod_1.z.enum(['PENDING', 'PARTIAL', 'COMPLETED', 'CANCELED']);
 exports.GateOperationProductSchema = zod_1.z.object({
     productId: zod_1.z.number().int('ID Produk harus berupa angka'),
     quantity: zod_1.z.number().positive('Quantity harus lebih besar dari 0'),
@@ -71,16 +71,52 @@ exports.CreateGateOperationSchema = zod_1.z.object({
     cardType: exports.CardTypeEnum,
     driverName: zod_1.z.string().min(2, 'Nama driver minimal harus 2 karakter'),
     licensePlate: zod_1.z.string().min(3, 'Plat nomor minimal harus 3 karakter'),
-    notes: zod_1.z.string().optional().nullable().or(zod_1.z.literal('')),
-    vehiclePhotoPath: zod_1.z.string().min(1, 'Foto bukti kendaraan wajib diunggah'),
+    notes: zod_1.z.string().min(1, 'Keterangan/catatan wajib diisi'),
+    attachmentPaths: zod_1.z.array(zod_1.z.string()).optional().default([]),
     products: zod_1.z.array(exports.GateOperationProductSchema).optional().default([]),
 });
 exports.CreateGateVerificationSchema = zod_1.z.object({
-    status: zod_1.z.enum(['VERIFIED', 'REJECTED']),
+    status: exports.VerificationStatusEnum,
     notes: zod_1.z.string().min(1, 'Catatan verifikasi wajib diisi'),
-    attachmentPath: zod_1.z.string().optional().nullable().or(zod_1.z.literal('')),
+    attachmentPaths: zod_1.z.array(zod_1.z.string()).optional().default([]),
     products: zod_1.z.array(zod_1.z.object({
         productId: zod_1.z.number().int(),
         quantity: zod_1.z.number().nonnegative('Quantity tidak boleh negatif'),
     })).optional().default([]),
+    poReferences: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    soReferences: zod_1.z.array(zod_1.z.string()).optional().default([]),
+});
+exports.AssignReferencesSchema = zod_1.z.object({
+    gateItemId: zod_1.z.number().int(),
+    assignments: zod_1.z.array(zod_1.z.object({
+        erpDocumentItemId: zod_1.z.number().int(),
+        assignedQuantity: zod_1.z.number().positive('Kuantitas harus lebih besar dari 0'),
+    })),
+});
+exports.ErpDocumentReferenceQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    page: zod_1.z.number().int().positive().optional(),
+    limit: zod_1.z.number().int().positive().optional(),
+    type: zod_1.z.enum(['IN', 'OUT']).optional(),
+    state: zod_1.z.string().optional(),
+});
+// Warehouse CRUD Schemas
+exports.CreateWarehouseSchema = zod_1.z.object({
+    code: zod_1.z.string().min(2, 'Kode warehouse minimal 2 karakter').max(50),
+    name: zod_1.z.string().min(3, 'Nama warehouse minimal 3 karakter'),
+    location: zod_1.z.string().min(3, 'Lokasi warehouse minimal 3 karakter'),
+    address: zod_1.z.string().min(5, 'Alamat minimal 5 karakter').optional().nullable(),
+    capacity: zod_1.z.number().nonnegative('Kapasitas tidak boleh negatif'),
+    type: zod_1.z.string().optional().nullable(),
+    odooReference: zod_1.z.string().optional().nullable(),
+});
+exports.UpdateWarehouseSchema = zod_1.z.object({
+    code: zod_1.z.string().min(2, 'Kode warehouse minimal 2 karakter').max(50),
+    name: zod_1.z.string().min(3, 'Nama warehouse minimal 3 karakter'),
+    location: zod_1.z.string().min(3, 'Lokasi warehouse minimal 3 karakter'),
+    address: zod_1.z.string().min(5, 'Alamat minimal 5 karakter').optional().nullable(),
+    capacity: zod_1.z.number().nonnegative('Kapasitas tidak boleh negatif'),
+    type: zod_1.z.string().optional().nullable(),
+    odooReference: zod_1.z.string().optional().nullable(),
+    isActive: zod_1.z.boolean().optional().default(true),
 });

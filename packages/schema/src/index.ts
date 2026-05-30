@@ -78,7 +78,7 @@ export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
 
 // Gate Operation Schemas
 export const CardTypeEnum = z.enum(['IN', 'OUT']);
-export const VerificationStatusEnum = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+export const VerificationStatusEnum = z.enum(['PENDING', 'PARTIAL', 'COMPLETED', 'CANCELED']);
 
 export const GateOperationProductSchema = z.object({
   productId: z.number().int('ID Produk harus berupa angka'),
@@ -89,20 +89,64 @@ export const CreateGateOperationSchema = z.object({
   cardType: CardTypeEnum,
   driverName: z.string().min(2, 'Nama driver minimal harus 2 karakter'),
   licensePlate: z.string().min(3, 'Plat nomor minimal harus 3 karakter'),
-  notes: z.string().optional().nullable().or(z.literal('')),
-  vehiclePhotoPath: z.string().min(1, 'Foto bukti kendaraan wajib diunggah'),
+  notes: z.string().min(1, 'Keterangan/catatan wajib diisi'),
+  attachmentPaths: z.array(z.string()).optional().default([]),
   products: z.array(GateOperationProductSchema).optional().default([]),
 });
 export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
 
 export const CreateGateVerificationSchema = z.object({
-  status: z.enum(['VERIFIED', 'REJECTED']),
+  status: VerificationStatusEnum,
   notes: z.string().min(1, 'Catatan verifikasi wajib diisi'),
-  attachmentPath: z.string().optional().nullable().or(z.literal('')),
+  attachmentPaths: z.array(z.string()).optional().default([]),
   products: z.array(z.object({
     productId: z.number().int(),
     quantity: z.number().nonnegative('Quantity tidak boleh negatif'),
   })).optional().default([]),
+  poReferences: z.array(z.string()).optional().default([]),
+  soReferences: z.array(z.string()).optional().default([]),
 });
 export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
+
+export const AssignReferencesSchema = z.object({
+  gateItemId: z.number().int(),
+  assignments: z.array(z.object({
+    erpDocumentItemId: z.number().int(),
+    assignedQuantity: z.number().positive('Kuantitas harus lebih besar dari 0'),
+  })),
+});
+export type AssignReferencesInput = z.infer<typeof AssignReferencesSchema>;
+
+export const ErpDocumentReferenceQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.number().int().positive().optional(),
+  limit: z.number().int().positive().optional(),
+  type: z.enum(['IN', 'OUT']).optional(),
+  state: z.string().optional(),
+});
+export type ErpDocumentReferenceQueryInput = z.infer<typeof ErpDocumentReferenceQuerySchema>;
+
+// Warehouse CRUD Schemas
+export const CreateWarehouseSchema = z.object({
+  code: z.string().min(2, 'Kode warehouse minimal 2 karakter').max(50),
+  name: z.string().min(3, 'Nama warehouse minimal 3 karakter'),
+  location: z.string().min(3, 'Lokasi warehouse minimal 3 karakter'),
+  address: z.string().min(5, 'Alamat minimal 5 karakter').optional().nullable(),
+  capacity: z.number().nonnegative('Kapasitas tidak boleh negatif'),
+  type: z.string().optional().nullable(),
+  odooReference: z.string().optional().nullable(),
+});
+export type CreateWarehouseInput = z.infer<typeof CreateWarehouseSchema>;
+
+export const UpdateWarehouseSchema = z.object({
+  code: z.string().min(2, 'Kode warehouse minimal 2 karakter').max(50),
+  name: z.string().min(3, 'Nama warehouse minimal 3 karakter'),
+  location: z.string().min(3, 'Lokasi warehouse minimal 3 karakter'),
+  address: z.string().min(5, 'Alamat minimal 5 karakter').optional().nullable(),
+  capacity: z.number().nonnegative('Kapasitas tidak boleh negatif'),
+  type: z.string().optional().nullable(),
+  odooReference: z.string().optional().nullable(),
+  isActive: z.boolean().optional().default(true),
+});
+export type UpdateWarehouseInput = z.infer<typeof UpdateWarehouseSchema>;
 

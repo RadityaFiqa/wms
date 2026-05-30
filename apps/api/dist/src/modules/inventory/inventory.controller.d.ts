@@ -8,7 +8,6 @@ export declare class InventoryController {
     constructor(service: InventoryService, warehouseContext: WarehouseContextService, prisma: PrismaService);
     findAll(search?: string, page?: string, limit?: string): Promise<{
         data: {
-            id: number;
             uuid: string;
             sku: string;
             name: string;
@@ -32,13 +31,13 @@ export declare class InventoryController {
         };
     }>;
     findAllProducts(search?: string): Promise<{
-        id: number;
         uuid: string;
+        id: number;
+        name: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
-        sku: string;
         description: string | null;
+        sku: string;
         category: string;
         price: number;
         uom: string | null;
@@ -53,7 +52,6 @@ export declare class InventoryController {
     exportPdf(res: any, search?: string): Promise<void>;
     findDetail(uuid: string): Promise<{
         product: {
-            id: number;
             uuid: string;
             sku: string;
             name: string;
@@ -62,8 +60,8 @@ export declare class InventoryController {
             category: string;
         };
         locations: {
-            location_id: number;
-            location_display_name: string;
+            locationUuid: string;
+            locationDisplayName: string;
             quants: any[];
         }[];
     }>;

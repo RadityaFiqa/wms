@@ -29,7 +29,7 @@ let AuditLogService = class AuditLogService {
             },
         });
     }
-    async findAll(query) {
+    async findAll(query, currentUser) {
         const page = Number(query.page) || 1;
         const limit = Number(query.limit) || 10;
         const skip = (page - 1) * limit;
@@ -45,6 +45,29 @@ let AuditLogService = class AuditLogService {
                 { target: { email: { contains: query.search, mode: 'insensitive' } } },
                 { action: { contains: query.search, mode: 'insensitive' } },
             ];
+        }
+        if (currentUser.role?.name !== 'SUPER_ADMIN') {
+            const accesses = await this.prisma.warehouseAccess.findMany({
+                where: { userId: currentUser.id },
+                select: { warehouseId: true },
+            });
+            const allowedWarehouseIds = accesses.map((a) => a.warehouseId);
+            const warehouseCondition = {
+                OR: [
+                    { actor: { warehouseId: { in: allowedWarehouseIds } } },
+                    { target: { warehouseId: { in: allowedWarehouseIds } } },
+                ],
+            };
+            if (where.OR) {
+                where.AND = [
+                    { OR: where.OR },
+                    warehouseCondition,
+                ];
+                delete where.OR;
+            }
+            else {
+                where.AND = [warehouseCondition];
+            }
         }
         const [total, data] = await Promise.all([
             this.prisma.auditLog.count({ where }),

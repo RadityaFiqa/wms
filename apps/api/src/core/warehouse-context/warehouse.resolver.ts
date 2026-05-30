@@ -38,7 +38,7 @@ export class WarehouseResolver {
       return true;
     }
 
-    const access = await this.prisma.userWarehouseAccess.findUnique({
+    const access = await this.prisma.warehouseAccess.findUnique({
       where: {
         userId_warehouseId: {
           userId,

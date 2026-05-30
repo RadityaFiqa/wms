@@ -32,14 +32,50 @@ let GateOperationController = class GateOperationController {
         const userId = req.user?.id;
         return this.service.createGateOperation(userId, body);
     }
-    async findAll(search, cardType, status, page, limit) {
+    async findAll(search, cardType, status, startDate, endDate, page, limit) {
         return this.service.getGateOperations({
             search,
             cardType,
             status,
+            startDate,
+            endDate,
             page: page ? parseInt(page) : undefined,
             limit: limit ? parseInt(limit) : undefined,
         });
+    }
+    async addCargoItem(uuid, req, body) {
+        const user = req.user;
+        if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
+            throw new common_1.ForbiddenException('Hanya Admin yang dapat menambah barang muatan.');
+        }
+        const result = await this.service.addCargoItem(uuid, body);
+        req.auditDetails = {
+            product: {
+                sku: result.product?.sku,
+                name: result.product?.name,
+                uom: result.product?.uom,
+            },
+            quantity: result.quantity,
+            notes: result.notes,
+        };
+        return result;
+    }
+    async deleteCargoItem(productUuid, req) {
+        const user = req.user;
+        if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
+            throw new common_1.ForbiddenException('Hanya Admin yang dapat menghapus barang muatan.');
+        }
+        const result = await this.service.deleteCargoItem(productUuid);
+        req.auditDetails = {
+            deletedItem: {
+                sku: result.deletedItem?.product?.sku,
+                name: result.deletedItem?.product?.name,
+                uom: result.deletedItem?.product?.uom,
+                quantity: result.deletedItem?.quantity,
+                notes: result.deletedItem?.notes,
+            },
+        };
+        return result;
     }
     async findOne(uuid) {
         return this.service.getGateOperationByUuid(uuid);
@@ -62,12 +98,35 @@ __decorate([
     __param(0, (0, common_1.Query)('search')),
     __param(1, (0, common_1.Query)('cardType')),
     __param(2, (0, common_1.Query)('status')),
-    __param(3, (0, common_1.Query)('page')),
-    __param(4, (0, common_1.Query)('limit')),
+    __param(3, (0, common_1.Query)('startDate')),
+    __param(4, (0, common_1.Query)('endDate')),
+    __param(5, (0, common_1.Query)('page')),
+    __param(6, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], GateOperationController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Post)(':uuid/products'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'GateOperation')),
+    (0, audit_log_decorator_1.AuditLogAction)('GATE_OPERATION_CARGO_ADD'),
+    __param(0, (0, common_1.Param)('uuid')),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], GateOperationController.prototype, "addCargoItem", null);
+__decorate([
+    (0, common_1.Delete)('products/:productUuid'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'GateOperation')),
+    (0, audit_log_decorator_1.AuditLogAction)('GATE_OPERATION_CARGO_DELETE'),
+    __param(0, (0, common_1.Param)('productUuid')),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], GateOperationController.prototype, "deleteCargoItem", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'GateOperation')),

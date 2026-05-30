@@ -20,6 +20,7 @@ import {
   Boxes,
   Truck,
   ClipboardCheck,
+  FileText,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -100,34 +101,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       show: true,
     },
     {
+      name: 'Manajemen Gudang',
+      href: '/dashboard/warehouses',
+      icon: Warehouse,
+      show: user?.role === 'SUPER_ADMIN',
+    },
+    {
       name: 'Inventory',
       href: '/dashboard/inventory',
       icon: Boxes,
       show: hasPermission('read', 'Inventory'),
-    },
-    {
-      name: 'Manajemen User',
-      href: '/dashboard/users',
-      icon: Users,
-      show: hasPermission('read', 'User'),
-    },
-    {
-      name: 'Hak Akses & Role',
-      href: '/dashboard/roles',
-      icon: ShieldCheck,
-      show: hasPermission('read', 'Role'),
-    },
-    {
-      name: 'Audit Logs',
-      href: '/dashboard/audit-logs',
-      icon: History,
-      show: hasPermission('read', 'AuditLog'),
-    },
-    {
-      name: 'Konfigurasi Odoo',
-      href: '/dashboard/odoo',
-      icon: Settings,
-      show: hasPermission('read', 'OdooAccount'),
     },
     {
       name: 'Gate Operations',
@@ -140,6 +123,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       href: '/dashboard/gate-verification',
       icon: ClipboardCheck,
       show: hasPermission('read', 'GateVerification'),
+    },
+    {
+      name: 'ERP Documents',
+      href: '/dashboard/erp-documents',
+      icon: FileText,
+      show: hasPermission('read', 'DocumentReference'),
+    },
+    {
+      name: 'Manajemen User',
+      href: '/dashboard/users',
+      icon: Users,
+      show: hasPermission('read', 'User'),
+    },
+    {
+      name: 'Hak Akses & Role',
+      href: '/dashboard/roles',
+      icon: ShieldCheck,
+      show: hasPermission('read', 'Role') && user?.role === 'SUPER_ADMIN',
+    },
+    {
+      name: 'Audit Logs',
+      href: '/dashboard/audit-logs',
+      icon: History,
+      show: hasPermission('read', 'AuditLog'),
+    },
+    {
+      name: 'Konfigurasi Odoo',
+      href: '/dashboard/odoo',
+      icon: Settings,
+      show: hasPermission('read', 'OdooAccount'),
     },
   ];
 
@@ -246,9 +259,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Menu className="h-6 w-6" />
             </button>
-            <h2 className="hidden md:block text-sm font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
-              WMS Portal Panel
-            </h2>
           </div>
           <div className="flex items-center space-x-4">
             

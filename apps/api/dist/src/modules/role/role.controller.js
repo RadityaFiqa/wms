@@ -28,19 +28,34 @@ let RoleController = class RoleController {
     constructor(roleService) {
         this.roleService = roleService;
     }
-    async findAll() {
+    async findAll(req) {
+        if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+            throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat Role.');
+        }
         return this.roleService.findAll();
     }
-    async findAllPermissions() {
+    async findAllPermissions(req) {
+        if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+            throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat Permission.');
+        }
         return this.roleService.findAllPermissions();
     }
-    async findOne(uuid) {
+    async findOne(uuid, req) {
+        if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+            throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat detail Role.');
+        }
         return this.roleService.findByUuid(uuid);
     }
-    async create(body) {
+    async create(req, body) {
+        if (req.user.role?.name !== 'SUPER_ADMIN') {
+            throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat mengakses manajemen Role.');
+        }
         return this.roleService.create(body);
     }
-    async update(uuid, body) {
+    async update(uuid, req, body) {
+        if (req.user.role?.name !== 'SUPER_ADMIN') {
+            throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat mengakses manajemen Role.');
+        }
         return this.roleService.update(uuid, body);
     }
 };
@@ -48,32 +63,36 @@ exports.RoleController = RoleController;
 __decorate([
     (0, common_1.Get)(),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Role')),
+    __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], RoleController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)('permissions'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Permission')),
+    __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], RoleController.prototype, "findAllPermissions", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Role')),
     __param(0, (0, common_1.Param)('uuid')),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], RoleController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Post)(),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('create', 'Role')),
     (0, audit_log_decorator_1.AuditLogAction)('ROLE_CREATE'),
-    __param(0, (0, common_1.Body)(new zod_validation_pipe_1.ZodValidationPipe(schema_1.CreateRoleSchema))),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)(new zod_validation_pipe_1.ZodValidationPipe(schema_1.CreateRoleSchema))),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], RoleController.prototype, "create", null);
 __decorate([
@@ -81,9 +100,10 @@ __decorate([
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'Role')),
     (0, audit_log_decorator_1.AuditLogAction)('ROLE_UPDATE'),
     __param(0, (0, common_1.Param)('uuid')),
-    __param(1, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], RoleController.prototype, "update", null);
 exports.RoleController = RoleController = __decorate([

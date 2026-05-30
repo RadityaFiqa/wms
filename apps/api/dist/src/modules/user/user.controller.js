@@ -28,26 +28,26 @@ let UserController = class UserController {
     constructor(userService) {
         this.userService = userService;
     }
-    async create(body) {
-        return this.userService.create(body);
+    async create(req, body) {
+        return this.userService.create(body, req.user);
     }
-    async findAll(search, roleId, isActive, page, limit) {
-        return this.userService.findAll({ search, roleId, isActive, page, limit });
+    async findAll(req, search, roleId, isActive, page, limit) {
+        return this.userService.findAll({ search, roleId, isActive, page, limit }, req.user);
     }
-    async findOne(uuid) {
-        return this.userService.findByUuid(uuid);
+    async findOne(uuid, req) {
+        return this.userService.findByUuid(uuid, req.user);
     }
-    async update(uuid, body) {
-        return this.userService.update(uuid, body);
+    async update(uuid, body, req) {
+        return this.userService.update(uuid, body, req.user);
     }
-    async deactivate(uuid) {
-        return this.userService.toggleStatus(uuid, false);
+    async deactivate(uuid, req) {
+        return this.userService.toggleStatus(uuid, false, req.user);
     }
-    async activate(uuid) {
-        return this.userService.toggleStatus(uuid, true);
+    async activate(uuid, req) {
+        return this.userService.toggleStatus(uuid, true, req.user);
     }
-    async resetPassword(uuid) {
-        return this.userService.adminResetPassword(uuid);
+    async resetPassword(uuid, req) {
+        return this.userService.adminResetPassword(uuid, req.user);
     }
 };
 exports.UserController = UserController;
@@ -55,29 +55,32 @@ __decorate([
     (0, common_1.Post)(),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('create', 'User')),
     (0, audit_log_decorator_1.AuditLogAction)('USER_CREATE'),
-    __param(0, (0, common_1.Body)(new zod_validation_pipe_1.ZodValidationPipe(schema_1.CreateUserSchema))),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)(new zod_validation_pipe_1.ZodValidationPipe(schema_1.CreateUserSchema))),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'User')),
-    __param(0, (0, common_1.Query)('search')),
-    __param(1, (0, common_1.Query)('roleId')),
-    __param(2, (0, common_1.Query)('isActive')),
-    __param(3, (0, common_1.Query)('page')),
-    __param(4, (0, common_1.Query)('limit')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('search')),
+    __param(2, (0, common_1.Query)('roleId')),
+    __param(3, (0, common_1.Query)('isActive')),
+    __param(4, (0, common_1.Query)('page')),
+    __param(5, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Number, String, Number, Number]),
+    __metadata("design:paramtypes", [Object, String, Number, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'User')),
     __param(0, (0, common_1.Param)('uuid')),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "findOne", null);
 __decorate([
@@ -86,8 +89,9 @@ __decorate([
     (0, audit_log_decorator_1.AuditLogAction)('USER_UPDATE'),
     __param(0, (0, common_1.Param)('uuid')),
     __param(1, (0, common_1.Body)(new zod_validation_pipe_1.ZodValidationPipe(schema_1.UpdateUserSchema))),
+    __param(2, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "update", null);
 __decorate([
@@ -95,8 +99,9 @@ __decorate([
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'User')),
     (0, audit_log_decorator_1.AuditLogAction)('USER_DEACTIVATE'),
     __param(0, (0, common_1.Param)('uuid')),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "deactivate", null);
 __decorate([
@@ -104,8 +109,9 @@ __decorate([
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'User')),
     (0, audit_log_decorator_1.AuditLogAction)('USER_REACTIVATE'),
     __param(0, (0, common_1.Param)('uuid')),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "activate", null);
 __decorate([
@@ -113,8 +119,9 @@ __decorate([
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'User')),
     (0, audit_log_decorator_1.AuditLogAction)('USER_PASSWORD_RESET'),
     __param(0, (0, common_1.Param)('uuid')),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "resetPassword", null);
 exports.UserController = UserController = __decorate([

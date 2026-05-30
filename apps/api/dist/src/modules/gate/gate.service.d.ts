@@ -1,7 +1,7 @@
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 import { StorageService } from '../storage/storage.service';
-import type { CreateGateOperationInput, CreateGateVerificationInput } from '@bulog-wms/schema';
+import type { CreateGateOperationInput, CreateGateVerificationInput, AssignReferencesInput } from '@bulog-wms/schema';
 export declare class GateService {
     private readonly prisma;
     private readonly warehouseContext;
@@ -14,6 +14,8 @@ export declare class GateService {
         search?: string;
         cardType?: string;
         status?: string;
+        startDate?: string;
+        endDate?: string;
         page?: number;
         limit?: number;
     }): Promise<{
@@ -24,46 +26,31 @@ export declare class GateService {
         items: any[];
     }>;
     getGateOperationByUuid(uuid: string): Promise<any>;
-    verifyGateOperation(uuid: string, verifiedById: number, body: CreateGateVerificationInput): Promise<({
-        products: ({
-            product: {
-                uuid: string;
-                id: number;
-                name: string;
-                createdAt: Date;
-                updatedAt: Date;
-                description: string | null;
-                sku: string;
-                category: string;
-                price: number;
-                uom: string | null;
-            };
-        } & {
-            uuid: string;
-            id: number;
-            productId: number;
-            quantity: number;
-            gateVerificationId: number;
-        })[];
-        attachment: {
-            uuid: string;
-            id: number;
-            filePath: string;
-            fileName: string;
-            mimeType: string;
-            sizeBytes: number;
-            uploadedById: number;
-            uploadedAt: Date;
-        } | null;
-    } & {
-        uuid: string;
-        id: number;
-        status: import("@prisma/client").$Enums.VerificationStatus;
-        notes: string | null;
-        gateOperationId: number;
-        verifiedById: number;
-        verifiedAt: Date;
-        attachmentId: number | null;
-    }) | null>;
+    getAvailableReferences(operationUuid: string, productId: number, gateItemId?: number): Promise<any[]>;
+    assignReferences(operationUuid: string, userId: number, userName: string, body: AssignReferencesInput): Promise<any>;
+    unassignReference(referenceUuid: string, userId: number, userName: string): Promise<{
+        success: boolean;
+        message: string;
+        auditDetails: {
+            previousReference: string;
+            unassignedBy: string;
+            timestamp: string;
+        };
+    }>;
+    private updateGateStatusAndRealisasi;
+    verifyGateOperation(uuid: string, verifiedById: number, body: CreateGateVerificationInput): Promise<any>;
+    cancelGateVerification(uuid: string, verifiedById: number): Promise<any>;
     private mapOperationUrls;
+    private stripIdField;
+    addCargoItem(operationUuid: string, body: {
+        productId: number;
+        quantity: number;
+        notes?: string;
+    }): Promise<any>;
+    deleteCargoItem(gateOperationProductUuid: string): Promise<{
+        success: boolean;
+        message: string;
+        deletedItem: any;
+    }>;
+    private sanitizeVerification;
 }

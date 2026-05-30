@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { OdooClient } from '../odoo/odoo-client';
 import { OdooSessionManager } from '../odoo/odoo-session.manager';
@@ -6,6 +6,8 @@ import PDFDocument from 'pdfkit';
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly odooClient: OdooClient,
@@ -30,45 +32,7 @@ export class InventoryService {
       throw new BadRequestException('Akun Odoo untuk gudang ini tidak aktif.');
     }
 
-    // 2. Validate and automatically refresh session if expired or near expiry
-    try {
-      await this.odooSessionManager.validateAndRefreshSession(account.id);
-    } catch (err: any) {
-      await this.prisma.odooAccount.update({
-        where: { id: account.id },
-        data: {
-          lastSyncAt: new Date(),
-          lastSyncStatus: 'FAILED',
-          lastSyncError: `Gagal memvalidasi sesi: ${err.message}`,
-          lastSyncBy: triggeredBy,
-        },
-      }).catch((e) => console.error('Failed to log sync status error', e));
-      throw new BadRequestException(`Gagal memvalidasi/menyegarkan sesi Odoo: ${err.message}`);
-    }
-
-    // Fetch the account again to get the fresh sessionId
-    const refreshedAccount = await this.prisma.odooAccount.findUnique({
-      where: { id: account.id },
-    });
-
-    const sessionId = refreshedAccount?.sessionId;
-    const baseUrl = refreshedAccount?.baseUrl;
-
-    if (!sessionId || !baseUrl) {
-      const errorMsg = 'Session ID Odoo kosong setelah refresh.';
-      await this.prisma.odooAccount.update({
-        where: { id: account.id },
-        data: {
-          lastSyncAt: new Date(),
-          lastSyncStatus: 'FAILED',
-          lastSyncError: errorMsg,
-          lastSyncBy: triggeredBy,
-        },
-      }).catch((e) => console.error('Failed to log sync status error', e));
-      throw new BadRequestException(errorMsg);
-    }
-
-    // 3. Fetch quants from Odoo in batch
+    // 2. Fetch quants from Odoo in batch
     const domain = [
       ['quantity', '>=', 0.01],
       ['product_id.type', '=', 'product'],
@@ -76,6 +40,7 @@ export class InventoryService {
     ];
 
     const specification = {
+      id: {}, // Direct Odoo quant ID
       product_id: {
         fields: {
           display_name: {},
@@ -105,14 +70,10 @@ export class InventoryService {
 
     let response: any;
     try {
-      response = await this.odooClient.call(baseUrl, sessionId, {
-        model: 'stock.quant',
-        method: 'web_search_read',
-        kwargs: {
-          domain,
-          specification,
-          limit: 5000,
-        },
+      response = await this.safeOdooCall(warehouseId, 'stock.quant', 'web_search_read', [], {
+        domain,
+        specification,
+        limit: 5000,
       });
     } catch (err: any) {
       await this.prisma.odooAccount.update({
@@ -145,14 +106,16 @@ export class InventoryService {
             : `OP-${odooProdId}`;
           const uom = odooProd.uom_id?.display_name || 'Unit';
 
-          // Upsert product (unique by sku)
+          // Upsert product using direct Odoo ID
           await tx.product.upsert({
-            where: { sku },
+            where: { id: odooProdId },
             update: {
+              sku,
               name: productName,
               uom,
             },
             create: {
+              id: odooProdId,
               sku,
               name: productName,
               uom,
@@ -162,11 +125,7 @@ export class InventoryService {
           });
         }
 
-        // Re-query products to build Sku -> Local ID map
-        const allProducts = await tx.product.findMany({});
-        const productMapBySku = new Map(allProducts.map((p) => [p.sku, p.id]));
-
-        // Collect unique locations and Upsert them
+        // Collect unique locations and Upsert them using direct Odoo ID
         const uniqueOdooLocations = new Map<number, string>();
         for (const record of records) {
           const odooLoc = record.location_id;
@@ -178,27 +137,23 @@ export class InventoryService {
         for (const [odooLocId, displayName] of uniqueOdooLocations.entries()) {
           await tx.location.upsert({
             where: {
-              warehouseId_odooLocationId: {
-                warehouseId,
-                odooLocationId: odooLocId,
-              },
+              id: odooLocId,
             },
             update: {
               displayName,
             },
             create: {
-              odooLocationId: odooLocId,
+              id: odooLocId,
               displayName,
               warehouseId,
             },
           });
         }
 
-        // Re-query locations to build Odoo Location ID -> Local Location ID map
+        // Re-query locations to get correct IDs inside this warehouse
         const allLocations = await tx.location.findMany({
           where: { warehouseId },
         });
-        const locationMapByOdooId = new Map(allLocations.map((l) => [l.odooLocationId, l.id]));
 
         // Clear old quants inside this warehouse's locations
         const locationIds = allLocations.map((l) => l.id);
@@ -213,17 +168,10 @@ export class InventoryService {
         for (const record of records) {
           const odooProd = record.product_id;
           const odooLoc = record.location_id;
-          if (!odooProd || !odooLoc) continue;
+          if (!odooProd || !odooLoc || !record.id) continue;
 
-          const rawSku = odooProd.default_code;
-          const sku = rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
-            ? rawSku.trim()
-            : `OP-${odooProd.id}`;
-
-          const localProductId = productMapBySku.get(sku);
-          const localLocationId = locationMapByOdooId.get(odooLoc.id);
-
-          if (!localProductId || !localLocationId) continue;
+          const odooProdId = odooProd.id;
+          const odooLocId = odooLoc.id;
 
           const lotName = record.lot_id ? (record.lot_id.display_name || null) : null;
           const quantity = Number(record.quantity) || 0.0;
@@ -232,9 +180,9 @@ export class InventoryService {
           const secondaryUnitQty = record.sh_secondary_unit_qty !== undefined ? (Number(record.sh_secondary_unit_qty) || 0.0) : 0.0;
 
           quantsToCreate.push({
-            odooQuantId: record.id,
-            productId: localProductId,
-            locationId: localLocationId,
+            id: record.id,
+            productId: odooProdId,
+            locationId: odooLocId,
             quantity,
             reservedQuantity,
             availableQuantity,
@@ -395,7 +343,6 @@ export class InventoryService {
       }
 
       return {
-        id: product.id,
         uuid: product.uuid,
         sku: product.sku,
         name: product.name,
@@ -474,24 +421,23 @@ export class InventoryService {
       throw new NotFoundException('Produk tidak ditemukan.');
     }
 
-    const locationsMap = new Map<number, {
-      location_id: number;
-      location_display_name: string;
+    const locationsMap = new Map<string, {
+      locationUuid: string;
+      locationDisplayName: string;
       quants: any[];
     }>();
 
     for (const q of product.quants) {
       const loc = q.location;
-      if (!locationsMap.has(loc.id)) {
-        locationsMap.set(loc.id, {
-          location_id: loc.id,
-          location_display_name: loc.displayName,
+      if (!locationsMap.has(loc.uuid)) {
+        locationsMap.set(loc.uuid, {
+          locationUuid: loc.uuid,
+          locationDisplayName: loc.displayName,
           quants: [],
         });
       }
 
-      locationsMap.get(loc.id)!.quants.push({
-        id: q.id,
+      locationsMap.get(loc.uuid)!.quants.push({
         uuid: q.uuid,
         lotName: q.lotName || '-',
         quantity: q.quantity,
@@ -503,7 +449,6 @@ export class InventoryService {
 
     return {
       product: {
-        id: product.id,
         uuid: product.uuid,
         sku: product.sku,
         name: product.name,
@@ -575,8 +520,8 @@ export class InventoryService {
       const drawPageHeader = (pageDoc: any, isFirstPage = false) => {
         let y = 15;
         if (isFirstPage) {
-          pageDoc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold').text('LAPORAN STATUS PERSEDIAAN WMS', 15, y, { align: 'center', width: 565 });
-          pageDoc.fontSize(6.8).font('Helvetica').fillColor('#64748b').text(`Cetak: ${new Date().toLocaleString('id-ID')}  |  Warehouse: ${warehouseName}  |  Total Item: ${totalItems}`, 15, y + 14, { align: 'center', width: 565 });
+          pageDoc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold').text('LAPORAN INVENTORY', 15, y, { align: 'center', width: 565 });
+          pageDoc.fontSize(6.8).font('Helvetica').fillColor('#64748b').text(`Cetak: ${new Date().toLocaleString('id-ID')}  |  Warehouse: ${warehouseName}`, 15, y + 14, { align: 'center', width: 565 });
           y = 48;
         }
 
@@ -659,7 +604,7 @@ export class InventoryService {
           doc.moveTo(15, currentY).lineTo(580, currentY).lineWidth(0.4).stroke('#475569');
 
           doc.fillColor('#1e293b').fontSize(6.8).font('Helvetica-Bold');
-          doc.text(`Total Produk ${product.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
+          doc.text(`${product.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
           doc.text(productQtyTotal.toLocaleString('id-ID'), 360, currentY + 4, { width: 50, align: 'right' });
           doc.text(product.uom || 'Unit', 415, currentY + 4, { width: 75, ellipsis: true });
           const prodSecQtyText = productSecQtyTotal > 0 ? productSecQtyTotal.toLocaleString('id-ID') : '-';
@@ -695,7 +640,7 @@ export class InventoryService {
             doc.moveTo(165, currentY).lineTo(580, currentY).lineWidth(0.2).stroke('#94a3b8');
 
             doc.fillColor('#475569').fontSize(6.5).font('Helvetica-Bold');
-            doc.text(`Total Lokasi ${locData.name}`, 165, currentY + 3, { width: 190, ellipsis: true });
+            doc.text(`${locData.name}`, 165, currentY + 3, { width: 190, ellipsis: true });
             doc.text(locQtyTotal.toLocaleString('id-ID'), 360, currentY + 3, { width: 50, align: 'right' });
             doc.text(product.uom || 'Unit', 415, currentY + 3, { width: 75, ellipsis: true });
             const locSecQtyText = locSecQtyTotal > 0 ? locSecQtyTotal.toLocaleString('id-ID') : '-';
@@ -761,5 +706,94 @@ export class InventoryService {
 
       doc.end();
     });
+  }
+
+  /**
+   * Safe call to Odoo Client that automatically refreshes session on Session Expired error.
+   */
+  private async safeOdooCall(
+    warehouseId: number,
+    model: string,
+    method: string,
+    args: any[] = [],
+    kwargs: any = {},
+  ): Promise<any> {
+    const account = await this.prisma.odooAccount.findUnique({
+      where: { warehouseId },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Akun Odoo untuk gudang aktif ini belum dikonfigurasi.');
+    }
+
+    // 1. Validate session initially
+    await this.odooSessionManager.validateAndRefreshSession(account.id);
+
+    // Fetch the account again to get the fresh sessionId
+    let refreshedAccount = await this.prisma.odooAccount.findUnique({
+      where: { id: account.id },
+    });
+
+    if (!refreshedAccount?.sessionId || !refreshedAccount?.baseUrl) {
+      throw new BadRequestException('Session ID Odoo kosong setelah refresh.');
+    }
+
+    const triedSessionId = refreshedAccount.sessionId;
+
+    try {
+      return await this.odooClient.call(refreshedAccount.baseUrl, triedSessionId, {
+        model,
+        method,
+        args,
+        kwargs,
+      });
+    } catch (err: any) {
+      const isSessionExpired =
+        err.message.includes('Session expired') ||
+        err.message.includes('Session Expired') ||
+        err.message.includes('SessionExpiredException') ||
+        err.message.includes('session expired');
+
+      if (isSessionExpired) {
+        // Query database again to see if session has changed in the meantime
+        const currentAccount = await this.prisma.odooAccount.findUnique({
+          where: { id: account.id },
+        });
+
+        const latestSessionId = currentAccount?.sessionId;
+        if (latestSessionId && latestSessionId !== triedSessionId) {
+          this.logger.log(
+            `Session Odoo untuk gudang ${account.warehouseId} telah diperbarui oleh proses lain. Mencoba ulang dengan session baru...`,
+          );
+          return await this.odooClient.call(currentAccount.baseUrl, latestSessionId, {
+            model,
+            method,
+            args,
+            kwargs,
+          });
+        }
+
+        this.logger.log(`Session Odoo untuk gudang ${account.warehouseId} kedaluwarsa. Melakukan refresh session...`);
+        // Force refresh session
+        await this.odooSessionManager.invalidateSession(account.id);
+        await this.odooSessionManager.validateAndRefreshSession(account.id);
+
+        refreshedAccount = await this.prisma.odooAccount.findUnique({
+          where: { id: account.id },
+        });
+
+        if (refreshedAccount?.sessionId) {
+          // Retry call once
+          return await this.odooClient.call(refreshedAccount.baseUrl, refreshedAccount.sessionId, {
+            model,
+            method,
+            args,
+            kwargs,
+          });
+        }
+      }
+
+      throw err;
+    }
   }
 }

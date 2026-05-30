@@ -53,7 +53,18 @@ export declare class AuthService {
             }[];
         };
     }>;
-    logout(refreshToken: string): Promise<void>;
+    logout(refreshToken: string, userId: number): Promise<{
+        uuid: string;
+        id: number;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: number;
+        ipAddress: string | null;
+        userAgent: string | null;
+        token: string;
+        isRevoked: boolean;
+        expiresAt: Date;
+    } | null>;
     forgotPassword(email: string): Promise<{
         message: string;
     }>;

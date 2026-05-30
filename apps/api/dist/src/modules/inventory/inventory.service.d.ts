@@ -5,6 +5,7 @@ export declare class InventoryService {
     private readonly prisma;
     private readonly odooClient;
     private readonly odooSessionManager;
+    private readonly logger;
     constructor(prisma: PrismaService, odooClient: OdooClient, odooSessionManager: OdooSessionManager);
     syncOdooInventory(warehouseId: number, triggeredBy: string): Promise<{
         success: boolean;
@@ -16,7 +17,6 @@ export declare class InventoryService {
         limit?: number;
     }): Promise<{
         data: {
-            id: number;
             uuid: string;
             sku: string;
             name: string;
@@ -41,7 +41,6 @@ export declare class InventoryService {
     }>;
     findDetail(warehouseId: number, productUuid: string): Promise<{
         product: {
-            id: number;
             uuid: string;
             sku: string;
             name: string;
@@ -50,12 +49,13 @@ export declare class InventoryService {
             category: string;
         };
         locations: {
-            location_id: number;
-            location_display_name: string;
+            locationUuid: string;
+            locationDisplayName: string;
             quants: any[];
         }[];
     }>;
     generatePdfReport(warehouseId: number, query: {
         search?: string;
     }): Promise<Buffer>;
+    private safeOdooCall;
 }

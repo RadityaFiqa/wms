@@ -12,12 +12,14 @@ export declare class StorageService implements OnModuleInit {
     uploadFile(file: Express.Multer.File, folder: string, uploadedById: number): Promise<{
         uuid: string;
         id: number;
+        gateOperationId: number | null;
         filePath: string;
         fileName: string;
         mimeType: string;
         sizeBytes: number;
         uploadedById: number;
         uploadedAt: Date;
+        gateVerificationId: number | null;
     }>;
     deleteFile(id: number): Promise<void>;
     getFilePublicUrl(filePath: string): string;

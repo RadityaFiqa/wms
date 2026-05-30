@@ -6,11 +6,13 @@ export declare class StorageController {
         url: string;
         uuid: string;
         id: number;
+        gateOperationId: number | null;
         filePath: string;
         fileName: string;
         mimeType: string;
         sizeBytes: number;
         uploadedById: number;
         uploadedAt: Date;
+        gateVerificationId: number | null;
     }>;
 }

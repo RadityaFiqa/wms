@@ -5,12 +5,13 @@ export declare class UserService {
     private readonly emailService;
     constructor(prisma: PrismaService, emailService: EmailService);
     private generateRandomPassword;
+    private getWarehouseAdminScope;
     create(data: {
         email: string;
         name: string;
         roleId: number;
         warehouseId?: number | null;
-    }): Promise<{
+    }, currentUser: any): Promise<{
         role: {
             uuid: string;
             id: number;
@@ -22,11 +23,11 @@ export declare class UserService {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
@@ -35,7 +36,7 @@ export declare class UserService {
         name: string;
         roleId: number;
         warehouseId?: number | null;
-    }): Promise<{
+    }, currentUser: any): Promise<{
         role: {
             uuid: string;
             id: number;
@@ -47,27 +48,27 @@ export declare class UserService {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    toggleStatus(uuid: string, isActive: boolean): Promise<{
+    toggleStatus(uuid: string, isActive: boolean, currentUser: any): Promise<{
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    adminResetPassword(uuid: string): Promise<{
+    adminResetPassword(uuid: string, currentUser: any): Promise<{
         message: string;
     }>;
     findAll(query: {
@@ -76,7 +77,7 @@ export declare class UserService {
         isActive?: string;
         page?: number;
         limit?: number;
-    }): Promise<{
+    }, currentUser: any): Promise<{
         data: {
             warehouse: {
                 uuid: string;
@@ -91,11 +92,11 @@ export declare class UserService {
             uuid: string;
             id: number;
             name: string;
+            isActive: boolean;
             createdAt: Date;
             updatedAt: Date;
             roleId: number;
             email: string;
-            isActive: boolean;
             isFirstLogin: boolean;
             warehouseId: number | null;
         }[];
@@ -110,9 +111,14 @@ export declare class UserService {
         warehouse: {
             uuid: string;
             id: number;
+            code: string;
             name: string;
             location: string;
             capacity: number;
+            type: string | null;
+            address: string | null;
+            isActive: boolean;
+            odooReference: string | null;
             createdAt: Date;
             updatedAt: Date;
         } | null;
@@ -143,16 +149,16 @@ export declare class UserService {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
         password: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }) | null>;
-    findByUuid(uuid: string): Promise<{
+    findByUuid(uuid: string, currentUser: any): Promise<{
         warehouse: {
             uuid: string;
             id: number;
@@ -166,11 +172,11 @@ export declare class UserService {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;

@@ -2,35 +2,33 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateGateOperationSchema } from '@bulog-wms/schema';
 import { useGate } from '@/hooks/useGate';
-import { useProducts } from '@/hooks/useInventory';
 import { toast } from 'sonner';
 import {
   Truck,
   ArrowLeft,
-  Upload,
   Plus,
   Trash2,
   Save,
-  Image as ImageIcon,
   Loader2,
   Boxes,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+import { AttachmentUploader } from '@/components/AttachmentUploader';
+import { ProductSelector } from '@/components/ProductSelector';
 
 export default function CreateGateOperationPage() {
   const router = useRouter();
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasProducts, setHasProducts] = useState(false);
-
-  const { uploadFile, createGateOperation } = useGate();
   
-  // Load products list from database
-  const { products, isLoading: productsLoading, error: productsError } = useProducts();
+  // Products section collapsible state (default collapsed/closed)
+  const [isProductsExpanded, setIsProductsExpanded] = useState(false);
+
+  const { createGateOperation } = useGate();
 
   const {
     register,
@@ -46,7 +44,7 @@ export default function CreateGateOperationPage() {
       driverName: '',
       licensePlate: '',
       notes: '',
-      vehiclePhotoPath: '',
+      attachmentPaths: [] as string[],
       products: [] as { productId: number; quantity: number }[],
     },
   });
@@ -56,44 +54,50 @@ export default function CreateGateOperationPage() {
     name: 'products',
   });
 
-  const watchPhotoPath = watch('vehiclePhotoPath');
+  const watchCardType = watch('cardType');
+  const watchAttachmentPaths = watch('attachmentPaths');
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Local state for adding products step-by-step
+  const [tempProduct, setTempProduct] = useState<{ id: number; name: string; sku: string; uom?: string } | null>(null);
+  const [tempQuantity, setTempQuantity] = useState<number>(1);
+  const [productDetailsMap, setProductDetailsMap] = useState<Record<number, { name: string; sku: string; uom?: string }>>({});
 
-    setIsUploading(true);
-    const toastId = toast.loading('Mengunggah foto kendaraan...');
-    try {
-      const response = await uploadFile(file);
-      setValue('vehiclePhotoPath', response.filePath);
-      setUploadedUrl(response.url);
-      toast.success('Foto kendaraan berhasil diunggah.', { id: toastId });
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Gagal mengunggah foto.', { id: toastId });
-    } finally {
-      setIsUploading(false);
+  const handleAddItem = () => {
+    if (!tempProduct) {
+      toast.error('Silakan pilih produk terlebih dahulu.');
+      return;
     }
+    if (tempQuantity <= 0 || isNaN(tempQuantity)) {
+      toast.error('Jumlah kuantitas harus lebih besar dari 0.');
+      return;
+    }
+    
+    // Check if already added
+    const isAlreadyAdded = fields.some((f) => f.productId === tempProduct.id);
+    if (isAlreadyAdded) {
+      toast.error('Produk tersebut sudah ada dalam daftar. Silakan hapus produk yang sudah ada jika ingin mengganti kuantitasnya.');
+      return;
+    }
+
+    append({ productId: tempProduct.id, quantity: tempQuantity });
+    setProductDetailsMap((prev) => ({
+      ...prev,
+      [tempProduct.id]: tempProduct,
+    }));
+
+    setTempProduct(null);
+    setTempQuantity(1);
+    toast.success('Barang ditambahkan ke daftar.');
   };
 
   const onSubmit = async (data: any) => {
-    if (!data.vehiclePhotoPath) {
-      toast.error('Foto bukti kendaraan wajib diunggah.');
-      return;
-    }
-
-    if (hasProducts && (!data.products || data.products.length === 0)) {
-      toast.error('Silakan tambah minimal satu barang atau hilangkan opsi membawa barang.');
-      return;
-    }
-
     setIsSubmitting(true);
     const toastId = toast.loading('Menyimpan data gerbang...');
     try {
-      // Clean products if toggle is off
+      // Clean products if toggle/section is not expanded
       const payload = {
         ...data,
-        products: hasProducts ? data.products : [],
+        products: isProductsExpanded ? data.products.filter((p: any) => p.productId > 0) : [],
       };
       await createGateOperation(payload);
       toast.success('Data kendaraan masuk/keluar berhasil dicatat.', { id: toastId });
@@ -105,20 +109,12 @@ export default function CreateGateOperationPage() {
     }
   };
 
-  // Auto append first row when product toggle turns on and array is empty
-  useEffect(() => {
-    if (hasProducts && fields.length === 0) {
-      append({ productId: 0, quantity: 1 });
-    }
-  }, [hasProducts, fields.length, append]);
-
-  // Products list resolved directly from useProducts hook
-
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center space-x-4">
         <button
+          type="button"
           onClick={() => router.push('/dashboard/gate-operations')}
           className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition cursor-pointer"
         >
@@ -126,7 +122,7 @@ export default function CreateGateOperationPage() {
         </button>
         <div>
           <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight flex items-center">
-            <Truck className="h-6 w-6 text-blue-600 mr-2 shrink-0" />
+            <Truck className="h-6 w-6 text-blue-606 mr-2 shrink-0" />
             Catat Operasi Gerbang
           </h1>
           <p className="text-slate-500 text-xs mt-0.5">
@@ -136,30 +132,68 @@ export default function CreateGateOperationPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Multiple Attachments Card */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between md:col-span-1">
+            <Controller
+              control={control}
+              name="attachmentPaths"
+              render={({ field }) => (
+                <AttachmentUploader
+                  value={field.value || []}
+                  onChange={field.onChange}
+                  label="Foto Bukti Kendaraan (Multiple)"
+                />
+              )}
+            />
+
+            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] text-slate-500 leading-normal">
+              ⚠️ <strong>Perhatian</strong>: Pastikan Anda mengambil foto plat nomor dan kondisi muatan kendaraan dengan jelas sebagai bukti validasi audit logistik.
+            </div>
+          </div>
           {/* Main Info Card */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm md:col-span-2 space-y-6">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm md:col-span-1 space-y-6">
             <h3 className="text-lg font-bold text-slate-800 pb-3 border-b border-slate-100">
               Informasi Kendaraan & Driver
             </h3>
 
+            {/* Card Type Selector */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-3">
+                Tipe Gerbang (Card Type)
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setValue('cardType', 'IN')}
+                  className={`p-4 border-2 rounded-xl text-center flex flex-col items-center justify-center transition cursor-pointer ${
+                    watchCardType === 'IN'
+                      ? 'border-blue-500 bg-blue-50/50 text-blue-700 font-bold'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                  }`}
+                >
+                  <span className="text-2xl mb-1">📥</span>
+                  <span className="text-sm font-bold">Gate IN (Masuk)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValue('cardType', 'OUT')}
+                  className={`p-4 border-2 rounded-xl text-center flex flex-col items-center justify-center transition cursor-pointer ${
+                    watchCardType === 'OUT'
+                      ? 'border-purple-500 bg-purple-50/50 text-purple-700 font-bold'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                  }`}
+                >
+                  <span className="text-2xl mb-1">📤</span>
+                  <span className="text-sm font-bold">Gate OUT (Keluar)</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Tipe Gerbang (Card Type)
-                </label>
-                <select
-                  {...register('cardType')}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm cursor-pointer font-medium"
-                >
-                  <option value="IN">📥 Masuk (Gate IN)</option>
-                  <option value="OUT">📤 Keluar (Gate OUT)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Plat Nomor Kendaraan
+                  Plat Nomor Kendaraan (Wajib)
                 </label>
                 <input
                   type="text"
@@ -171,189 +205,166 @@ export default function CreateGateOperationPage() {
                   <p className="text-xs text-red-500 mt-1">{errors.licensePlate.message}</p>
                 )}
               </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Nama Driver (Wajib)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Masukkan nama lengkap driver"
+                  {...register('driverName')}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-semibold"
+                />
+                {errors.driverName && (
+                  <p className="text-xs text-red-500 mt-1">{errors.driverName.message}</p>
+                )}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Nama Driver
-              </label>
-              <input
-                type="text"
-                placeholder="Masukkan nama lengkap driver"
-                {...register('driverName')}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-semibold"
-              />
-              {errors.driverName && (
-                <p className="text-xs text-red-500 mt-1">{errors.driverName.message}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Keterangan / Notes
+                Keterangan / Notes (Wajib)
               </label>
               <textarea
                 rows={3}
-                placeholder="Masukkan catatan tambahan (opsional)"
+                placeholder="Masukkan keterangan logistik, alasan masuk, atau rincian muatan..."
                 {...register('notes')}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm"
+                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-medium"
               />
-            </div>
-          </div>
-
-          {/* Upload Photo Card */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="text-lg font-bold text-slate-800 pb-3 border-b border-slate-100 mb-4">
-                Foto Bukti Kendaraan
-              </h3>
-
-              <div className="relative border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-xl p-4 transition flex flex-col items-center justify-center min-h-[160px] text-center bg-slate-50/50">
-                {isUploading ? (
-                  <div className="space-y-2 py-4">
-                    <Loader2 className="h-8 w-8 text-blue-500 animate-spin mx-auto" />
-                    <p className="text-xs text-slate-500 font-semibold">Mengunggah file...</p>
-                  </div>
-                ) : uploadedUrl ? (
-                  <div className="relative group w-full h-[150px] rounded-lg overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={uploadedUrl}
-                      alt="Preview Kendaraan"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                      <label className="bg-white/95 text-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md hover:bg-white transition cursor-pointer">
-                        Ganti Foto
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePhotoUpload}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer space-y-2 py-4 w-full flex flex-col items-center">
-                    <div className="h-10 w-10 bg-blue-50 border border-blue-100 text-blue-500 rounded-lg flex items-center justify-center">
-                      <Upload className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700">Pilih Foto Kendaraan</p>
-                      <p className="text-[10px] text-slate-400 mt-1">PNG, JPG, atau JPEG maks 5MB</p>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
-              {errors.vehiclePhotoPath && (
-                <p className="text-xs text-red-500 mt-2 text-center">{errors.vehiclePhotoPath.message}</p>
+              {errors.notes && (
+                <p className="text-xs text-red-500 mt-1">{errors.notes.message}</p>
               )}
-            </div>
-
-            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] text-slate-500 leading-normal">
-              ⚠️ <strong>Perhatian</strong>: Foto kendaraan harus memperlihatkan plat nomor dengan jelas sebagai bukti verifikasi logistik.
             </div>
           </div>
         </div>
 
-        {/* Optional Products Section */}
+        {/* Collapsible Commodities Section */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+          <button
+            type="button"
+            onClick={() => setIsProductsExpanded(!isProductsExpanded)}
+            className="w-full flex items-center justify-between border-b border-slate-100 pb-4 text-left cursor-pointer"
+          >
             <div>
-              <h3 className="text-lg font-bold text-slate-800">Daftar Barang Logistik</h3>
+              <h3 className="text-lg font-bold text-slate-800 flex items-center">
+                <Boxes className="h-5 w-5 mr-2 text-blue-600" />
+                Daftar Barang
+              </h3>
               <p className="text-slate-400 text-xs mt-0.5">
-                Catat komoditas/produk yang dibawa oleh kendaraan jika ada.
+                Catat barang/komoditas yang dibawa oleh kendaraan.
               </p>
             </div>
             
-            <label className="inline-flex items-center space-x-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={hasProducts}
-                onChange={(e) => setHasProducts(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 cursor-pointer"
-              />
-              <span className="text-sm font-bold text-slate-700">Membawa Barang Logistik?</span>
-            </label>
-          </div>
-
-          {hasProducts && (
-            <div className="space-y-4">
-               {productsLoading ? (
-                <div className="text-center py-6 text-xs text-slate-400">Memuat data produk...</div>
-              ) : productsError ? (
-                <div className="text-center py-6 text-xs text-red-600 font-semibold">
-                  ⚠️ Gagal memuat data produk: {productsError.response?.data?.message || productsError.message || 'Koneksi bermasalah'}
-                </div>
-              ) : products.length === 0 ? (
-                <div className="text-center py-6 text-xs text-amber-600 font-semibold">
-                  ⚠️ Tidak ada produk terdaftar di sistem.
-                </div>
+            <div className="flex items-center space-x-2 text-slate-500 hover:text-slate-800 transition">
+              <span className="text-xs font-semibold">
+                {isProductsExpanded ? 'Sembunyikan' : 'Tampilkan & Input Barang'}
+              </span>
+              {isProductsExpanded ? (
+                <ChevronUp className="h-5 w-5 shrink-0" />
               ) : (
-                <>
-                  <div className="space-y-3">
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex gap-4 items-start bg-slate-50/50 p-3 rounded-lg border border-slate-100">
-                        <div className="flex-1">
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                            Pilih Produk
-                          </label>
-                          <select
-                            {...register(`products.${index}.productId`, { valueAsNumber: true })}
-                            className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 cursor-pointer"
-                          >
-                            <option value="0">-- Pilih Produk --</option>
-                            {products.map((p: any) => (
-                              <option key={p.id} value={p.id}>
-                                [{p.sku}] {p.name} ({p.uom || 'Unit'})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                <ChevronDown className="h-5 w-5 shrink-0" />
+              )}
+            </div>
+          </button>
 
-                        <div className="w-32">
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                            Jumlah (Qty)
-                          </label>
-                          <input
-                            type="number"
-                            step="any"
-                            placeholder="Qty"
-                            {...register(`products.${index}.quantity`, { valueAsNumber: true })}
-                            className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-right"
-                          />
-                        </div>
-
-                        {fields.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => remove(index)}
-                            className="mt-6 p-2 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer"
-                          >
-                            <Trash2 className="h-4.5 w-4.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+          {isProductsExpanded && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Product Add Selector Input Area */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tambah Barang Baru</h4>
+                <div className="flex flex-col sm:flex-row gap-4 items-end">
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Pilih Produk
+                    </label>
+                    <ProductSelector
+                      value={tempProduct?.id || 0}
+                      onChange={(id, productData) => {
+                        if (productData) {
+                          setTempProduct({
+                            id: productData.id,
+                            name: productData.name,
+                            sku: productData.sku,
+                            uom: productData.uom,
+                          });
+                        } else {
+                          setTempProduct(null);
+                        }
+                      }}
+                    />
                   </div>
-
+                  <div className="w-full sm:w-36">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Jumlah (Qty)
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      value={tempQuantity}
+                      onChange={(e) => setTempQuantity(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-right font-bold"
+                      placeholder="Kuantitas"
+                    />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => append({ productId: 0, quantity: 1 })}
-                    className="flex items-center text-xs font-bold text-blue-600 hover:text-blue-500 hover:bg-blue-50 px-3 py-2 rounded-lg border border-blue-200/50 transition cursor-pointer"
+                    onClick={handleAddItem}
+                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-550 text-white font-bold px-4 py-2 rounded-lg text-sm transition flex items-center justify-center shrink-0 h-[38px] cursor-pointer"
                   >
                     <Plus className="h-4 w-4 mr-1.5" />
-                    Tambah Barang
+                    Tambah
                   </button>
-                </>
-              )}
+                </div>
+              </div>
+
+              {/* Already Added Items Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="px-4 py-3">Nama Produk</th>
+                      <th className="px-4 py-3 text-right">Kuantitas</th>
+                      <th className="px-4 py-3 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                    {fields.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">
+                          Belum ada barang yang ditambahkan. Silakan pilih dan tambah barang di atas.
+                        </td>
+                      </tr>
+                    ) : (
+                      fields.map((field, index) => {
+                        const productInfo = productDetailsMap[field.productId] || { name: 'Memuat...', sku: '...' };
+                        return (
+                          <tr key={field.id} className="hover:bg-slate-50/30 transition">
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-slate-800">{productInfo.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">SKU: {productInfo.sku}</div>
+                            </td>
+                            <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
+                              {field.quantity} {productInfo.uom || 'Unit'}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => remove(index)}
+                                className="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer"
+                                title="Hapus Barang"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -371,7 +382,7 @@ export default function CreateGateOperationPage() {
           
           <button
             type="submit"
-            disabled={isSubmitting || isUploading}
+            disabled={isSubmitting}
             className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-bold px-6 py-2.5 rounded-lg shadow-lg hover:shadow-blue-500/10 active:scale-[0.98] transition text-sm cursor-pointer"
           >
             {isSubmitting ? (

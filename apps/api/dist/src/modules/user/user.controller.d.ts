@@ -3,7 +3,7 @@ import type { CreateUserInput, UpdateUserInput } from '@bulog-wms/schema';
 export declare class UserController {
     private readonly userService;
     constructor(userService: UserService);
-    create(body: CreateUserInput): Promise<{
+    create(req: any, body: CreateUserInput): Promise<{
         role: {
             uuid: string;
             id: number;
@@ -15,15 +15,15 @@ export declare class UserController {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    findAll(search?: string, roleId?: number, isActive?: string, page?: number, limit?: number): Promise<{
+    findAll(req: any, search?: string, roleId?: number, isActive?: string, page?: number, limit?: number): Promise<{
         data: {
             warehouse: {
                 uuid: string;
@@ -38,11 +38,11 @@ export declare class UserController {
             uuid: string;
             id: number;
             name: string;
+            isActive: boolean;
             createdAt: Date;
             updatedAt: Date;
             roleId: number;
             email: string;
-            isActive: boolean;
             isFirstLogin: boolean;
             warehouseId: number | null;
         }[];
@@ -53,7 +53,7 @@ export declare class UserController {
             totalPages: number;
         };
     }>;
-    findOne(uuid: string): Promise<{
+    findOne(uuid: string, req: any): Promise<{
         warehouse: {
             uuid: string;
             id: number;
@@ -67,15 +67,15 @@ export declare class UserController {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    update(uuid: string, body: UpdateUserInput): Promise<{
+    update(uuid: string, body: UpdateUserInput, req: any): Promise<{
         role: {
             uuid: string;
             id: number;
@@ -87,39 +87,39 @@ export declare class UserController {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    deactivate(uuid: string): Promise<{
+    deactivate(uuid: string, req: any): Promise<{
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    activate(uuid: string): Promise<{
+    activate(uuid: string, req: any): Promise<{
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;
-    resetPassword(uuid: string): Promise<{
+    resetPassword(uuid: string, req: any): Promise<{
         message: string;
     }>;
 }

@@ -13,9 +13,14 @@ export declare class JwtStrategy extends JwtStrategy_base {
         warehouse: {
             uuid: string;
             id: number;
+            code: string;
             name: string;
             location: string;
             capacity: number;
+            type: string | null;
+            address: string | null;
+            isActive: boolean;
+            odooReference: string | null;
             createdAt: Date;
             updatedAt: Date;
         } | null;
@@ -46,12 +51,12 @@ export declare class JwtStrategy extends JwtStrategy_base {
         uuid: string;
         id: number;
         name: string;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
         roleId: number;
         email: string;
         password: string;
-        isActive: boolean;
         isFirstLogin: boolean;
         warehouseId: number | null;
     }>;

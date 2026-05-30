@@ -32,6 +32,9 @@ let WarehouseGuard = class WarehouseGuard {
             throw new common_1.BadRequestException('Warehouse tidak valid');
         }
         const roleName = user.role?.name || user.role;
+        if (!warehouse.isActive && roleName !== 'SUPER_ADMIN') {
+            throw new common_1.ForbiddenException('Gudang (Warehouse) ini sedang tidak aktif.');
+        }
         const hasAccess = await this.warehouseResolver.validateUserAccess(user.id, warehouse.id, roleName);
         if (!hasAccess) {
             throw new common_1.ForbiddenException('Anda tidak memiliki akses ke warehouse ini');

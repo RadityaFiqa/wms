@@ -3,7 +3,7 @@ import type { CreateRoleInput } from '@bulog-wms/schema';
 export declare class RoleController {
     private readonly roleService;
     constructor(roleService: RoleService);
-    findAll(): Promise<({
+    findAll(req: any): Promise<({
         permissions: ({
             permission: {
                 uuid: string;
@@ -26,7 +26,7 @@ export declare class RoleController {
         updatedAt: Date;
         description: string | null;
     })[]>;
-    findAllPermissions(): Promise<{
+    findAllPermissions(req: any): Promise<{
         uuid: string;
         id: number;
         createdAt: Date;
@@ -35,7 +35,7 @@ export declare class RoleController {
         subject: string;
         conditions: string | null;
     }[]>;
-    findOne(uuid: string): Promise<{
+    findOne(uuid: string, req: any): Promise<{
         permissions: ({
             permission: {
                 uuid: string;
@@ -58,7 +58,7 @@ export declare class RoleController {
         updatedAt: Date;
         description: string | null;
     }>;
-    create(body: CreateRoleInput): Promise<{
+    create(req: any, body: CreateRoleInput): Promise<{
         permissions: ({
             permission: {
                 uuid: string;
@@ -81,7 +81,7 @@ export declare class RoleController {
         updatedAt: Date;
         description: string | null;
     }>;
-    update(uuid: string, body: {
+    update(uuid: string, req: any, body: {
         description?: string | null;
         permissionIds?: number[];
     }): Promise<{

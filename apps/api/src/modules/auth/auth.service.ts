@@ -32,14 +32,17 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload);
     
     // Generate refresh token
-    const refreshToken = crypto.randomBytes(40).toString('hex');
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const sessionUuid = crypto.randomUUID();
+    const tokenSecret = crypto.randomBytes(32).toString('hex');
+    const refreshToken = `${sessionUuid}:${tokenSecret}`;
+    const refreshTokenHash = await bcrypt.hash(tokenSecret, 10);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
     // Save session in DB
     await this.prisma.session.create({
       data: {
+        uuid: sessionUuid,
         userId: user.id,
         token: refreshTokenHash,
         ipAddress,
@@ -75,7 +78,7 @@ export class AuthService {
       });
     }
 
-    const accesses = await this.prisma.userWarehouseAccess.findMany({
+    const accesses = await this.prisma.warehouseAccess.findMany({
       where: { userId },
       include: { warehouse: { select: { uuid: true, name: true } } },
       orderBy: { warehouse: { name: 'asc' } } as any,
@@ -88,32 +91,64 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string, ipAddress?: string, userAgent?: string) {
-    const activeSessions = await this.prisma.session.findMany({
-      where: { isRevoked: false, expiresAt: { gt: new Date() } },
-      include: {
-        user: {
-          include: {
-            role: {
-              include: {
-                permissions: {
-                  include: {
-                    permission: true,
+    let matchedSession: any = null;
+
+    if (refreshToken.includes(':')) {
+      const [sessionUuid, tokenSecret] = refreshToken.split(':');
+      const session = await this.prisma.session.findUnique({
+        where: { uuid: sessionUuid, isRevoked: false, expiresAt: { gt: new Date() } },
+        include: {
+          user: {
+            include: {
+              role: {
+                include: {
+                  permissions: {
+                    include: {
+                      permission: true,
+                    },
                   },
                 },
               },
+              warehouse: true,
             },
-            warehouse: true,
           },
         },
-      },
-    });
+      });
 
-    let matchedSession: any = null;
-    for (const session of activeSessions) {
-      const isMatch = await bcrypt.compare(refreshToken, session.token);
-      if (isMatch) {
-        matchedSession = session;
-        break;
+      if (session) {
+        const isMatch = await bcrypt.compare(tokenSecret, session.token);
+        if (isMatch) {
+          matchedSession = session;
+        }
+      }
+    } else {
+      // Fallback for old style tokens
+      const activeSessions = await this.prisma.session.findMany({
+        where: { isRevoked: false, expiresAt: { gt: new Date() } },
+        include: {
+          user: {
+            include: {
+              role: {
+                include: {
+                  permissions: {
+                    include: {
+                      permission: true,
+                    },
+                  },
+                },
+              },
+              warehouse: true,
+            },
+          },
+        },
+      });
+
+      for (const session of activeSessions) {
+        const isMatch = await bcrypt.compare(refreshToken, session.token);
+        if (isMatch) {
+          matchedSession = session;
+          break;
+        }
       }
     }
 
@@ -132,14 +167,17 @@ export class AuthService {
     const payload = { email: user.email, sub: user.id };
     const newAccessToken = this.jwtService.sign(payload);
     
-    const newRefreshToken = crypto.randomBytes(40).toString('hex');
-    const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
+    const newSessionUuid = crypto.randomUUID();
+    const newTokenSecret = crypto.randomBytes(32).toString('hex');
+    const newRefreshToken = `${newSessionUuid}:${newTokenSecret}`;
+    const newRefreshTokenHash = await bcrypt.hash(newTokenSecret, 10);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     // Save new session in DB
     await this.prisma.session.create({
       data: {
+        uuid: newSessionUuid,
         userId: user.id,
         token: newRefreshTokenHash,
         ipAddress,
@@ -167,21 +205,38 @@ export class AuthService {
     };
   }
 
-  async logout(refreshToken: string) {
-    const activeSessions = await this.prisma.session.findMany({
-      where: { isRevoked: false },
-    });
+  async logout(refreshToken: string, userId: number) {
+    if (refreshToken.includes(':')) {
+      const [sessionUuid, tokenSecret] = refreshToken.split(':');
+      const session = await this.prisma.session.findUnique({
+        where: { uuid: sessionUuid, userId, isRevoked: false },
+      });
+      if (session) {
+        const isMatch = await bcrypt.compare(tokenSecret, session.token);
+        if (isMatch) {
+          return await this.prisma.session.update({
+            where: { id: session.id },
+            data: { isRevoked: true },
+          });
+        }
+      }
+    } else {
+      // Fallback for old style tokens
+      const activeSessions = await this.prisma.session.findMany({
+        where: { userId, isRevoked: false },
+      });
 
-    for (const session of activeSessions) {
-      const isMatch = await bcrypt.compare(refreshToken, session.token);
-      if (isMatch) {
-        await this.prisma.session.update({
-          where: { id: session.id },
-          data: { isRevoked: true },
-        });
-        break;
+      for (const session of activeSessions) {
+        const isMatch = await bcrypt.compare(refreshToken, session.token);
+        if (isMatch) {
+          return await this.prisma.session.update({
+            where: { id: session.id },
+            data: { isRevoked: true },
+          });
+        }
       }
     }
+    return null;
   }
 
   async forgotPassword(email: string) {

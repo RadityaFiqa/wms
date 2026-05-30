@@ -18,6 +18,8 @@ type ExtendedSubjects = Subjects<{
   GateOperation: any;
   GateVerification: any;
   FileAttachment: any;
+  DocumentReference: any;
+  DocumentReferenceItem: any;
 }> | 'all';
 
 export type AppAbility = Ability<[string, ExtendedSubjects], PrismaQuery>;

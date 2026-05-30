@@ -44,7 +44,7 @@ export declare class AuthController {
             }[];
         };
     }>;
-    logout(req: Request, res: Response): Promise<{
+    logout(req: any, res: Response): Promise<{
         message: string;
     }>;
     forgotPassword(body: ForgotPasswordInput): Promise<{

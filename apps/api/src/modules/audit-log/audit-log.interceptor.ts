@@ -58,6 +58,7 @@ export class AuditLogInterceptor implements NestInterceptor {
               body: sanitizedBody,
               params: request.params,
               query: request.query,
+              ...request.auditDetails,
             },
           }).catch((err) => console.error('Failed to save audit log in interceptor:', err));
         },

@@ -1,13 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR, { mutate } from 'swr';
 import { useRole } from '@/hooks/useRole';
+import { useAuthStore } from '@/store/auth';
 import { toast } from 'sonner';
 import { ShieldCheck, Edit3, Settings, Lock, Check } from 'lucide-react';
 
 export default function RoleManagementPage() {
+  const router = useRouter();
+  const { user } = useAuthStore();
   const [selectedRole, setSelectedRole] = useState<any>(null);
+
+  useEffect(() => {
+    if (user && user.role !== 'SUPER_ADMIN') {
+      router.push('/dashboard');
+      toast.error('Anda tidak memiliki akses ke halaman Hak Akses & Role.');
+    }
+  }, [user, router]);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(false);

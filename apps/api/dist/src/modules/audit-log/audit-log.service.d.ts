@@ -25,7 +25,7 @@ export declare class AuditLogService {
         action?: string;
         page?: number;
         limit?: number;
-    }): Promise<{
+    }, currentUser: any): Promise<{
         data: ({
             actor: {
                 uuid: string;

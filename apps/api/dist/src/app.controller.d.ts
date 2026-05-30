@@ -1,17 +1,6 @@
 import { AppService } from './app.service';
-import { PrismaService } from './core/prisma/prisma.service';
 export declare class AppController {
     private readonly appService;
-    private readonly prisma;
-    constructor(appService: AppService, prisma: PrismaService);
+    constructor(appService: AppService);
     getHello(): string;
-    getWarehouses(req: any): Promise<{
-        uuid: string;
-        id: number;
-        name: string;
-        location: string;
-        capacity: number;
-        createdAt: Date;
-        updatedAt: Date;
-    }[]>;
 }

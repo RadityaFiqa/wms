@@ -45,7 +45,7 @@ let WarehouseResolver = class WarehouseResolver {
         if (roleName === 'SUPER_ADMIN') {
             return true;
         }
-        const access = await this.prisma.userWarehouseAccess.findUnique({
+        const access = await this.prisma.warehouseAccess.findUnique({
             where: {
                 userId_warehouseId: {
                     userId,

@@ -9,9 +9,9 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Filter,
   Calendar,
-  Eye,
   Info,
   Clock,
 } from 'lucide-react';
@@ -19,14 +19,19 @@ import {
 export default function GateVerificationListPage() {
   const [search, setSearch] = useState('');
   const [cardType, setCardType] = useState('');
+  const [status, setStatus] = useState('PENDING,PARTIAL');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
 
   const { activeWarehouse } = useAuthStore();
-  // Fetch gate operations with status PENDING for verification queue
+  // Fetch gate operations with status and date filter for verification queue
   const { data, isLoading, error } = useGateOperations({
     search,
     cardType: cardType || undefined,
-    status: 'PENDING',
+    status: status || undefined,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
     page,
     limit: 10,
   });
@@ -41,6 +46,41 @@ export default function GateVerificationListPage() {
         📤 GATE OUT
       </span>
     );
+  };
+
+  const getStatusBadge = (statusValue: string) => {
+    switch (statusValue) {
+      case 'PENDING':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            Pending
+          </span>
+        );
+      case 'PARTIAL':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            Partial
+          </span>
+        );
+      case 'COMPLETED':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Completed
+          </span>
+        );
+      case 'CANCELED':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            Canceled
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+            {statusValue}
+          </span>
+        );
+    }
   };
 
   if (!activeWarehouse) {
@@ -60,7 +100,7 @@ export default function GateVerificationListPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-center">
-          <ShieldCheck className="h-8 w-8 text-blue-605 mr-3 shrink-0" />
+          <ShieldCheck className="h-8 w-8 text-blue-606 mr-3 shrink-0" />
           Verifikasi Gate (Audit Queue)
         </h1>
         <p className="text-slate-500 mt-1">
@@ -81,24 +121,73 @@ export default function GateVerificationListPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition duration-200 text-sm"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-905 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition duration-200 text-sm"
             />
           </div>
 
-          <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <select
-              value={cardType}
-              onChange={(e) => {
-                setCardType(e.target.value);
-                setPage(1);
-              }}
-              className="bg-transparent border-none text-sm text-slate-600 focus:outline-none py-1.5 cursor-pointer font-medium"
-            >
-              <option value="">Semua Tipe Kartu</option>
-              <option value="IN">Gate In</option>
-              <option value="OUT">Gate Out</option>
-            </select>
+          <div className="flex flex-wrap gap-3">
+            <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
+              <Filter className="h-4 w-4 text-slate-400" />
+              <select
+                value={cardType}
+                onChange={(e) => {
+                  setCardType(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-transparent border-none text-sm text-slate-600 focus:outline-none py-1.5 cursor-pointer font-medium"
+              >
+                <option value="">Semua Tipe Kartu</option>
+                <option value="IN">Gate In</option>
+                <option value="OUT">Gate Out</option>
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
+              <Filter className="h-4 w-4 text-slate-400" />
+              <select
+                value={status}
+                onChange={(e) => {
+                  setStatus(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-transparent border-none text-sm text-slate-600 focus:outline-none py-1.5 cursor-pointer font-medium"
+              >
+                <option value="PENDING,PARTIAL">Antrean (Pending/Partial)</option>
+                <option value="PENDING">Pending</option>
+                <option value="PARTIAL">Partial</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELED">Canceled</option>
+                <option value="">Semua Status</option>
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
+              <Calendar className="h-4 w-4 text-slate-400" />
+              <span className="text-xs text-slate-400 font-bold uppercase">Mulai:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-transparent border-none text-sm text-slate-650 focus:outline-none py-1 cursor-pointer font-medium"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
+              <Calendar className="h-4 w-4 text-slate-400" />
+              <span className="text-xs text-slate-400 font-bold uppercase">Selesai:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-transparent border-none text-sm text-slate-650 focus:outline-none py-1 cursor-pointer font-medium"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -134,59 +223,18 @@ export default function GateVerificationListPage() {
                     <th className="px-6 py-4">Tipe Kartu</th>
                     <th className="px-6 py-4">Driver</th>
                     <th className="px-6 py-4">Plat Nomor</th>
-                    <th className="px-6 py-4">Membawa Barang</th>
-                    <th className="px-6 py-4">Pencatat</th>
-                    <th className="px-6 py-4 text-center">Aksi Audit</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                   {data.items.map((item: any) => (
-                    <tr key={item.uuid} className="hover:bg-slate-50/50 transition">
-                      <td className="px-6 py-4 font-bold text-slate-900 tracking-tight">
-                        {item.opNumber}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-1.5 text-slate-500 text-xs">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>
-                            {new Date(item.createdAt).toLocaleString('id-ID', {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {getCardTypeBadge(item.cardType)}
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-slate-800">
-                        {item.driverName}
-                      </td>
-                      <td className="px-6 py-4 font-mono font-bold text-xs text-slate-900">
-                        {item.licensePlate}
-                      </td>
-                      <td className="px-6 py-4">
-                        {item.products && item.products.length > 0 ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-150">
-                            📦 {item.products.length} Item
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-xs font-semibold">Tidak</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-xs font-semibold text-slate-500">
-                        {item.createdByUser?.name}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <Link
-                          href={`/dashboard/gate-verification/${item.uuid}`}
-                          className="inline-flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition cursor-pointer"
-                        >
-                          <ShieldCheck className="h-4 w-4 mr-1.5" />
-                          Verifikasi
-                        </Link>
-                      </td>
-                    </tr>
+                    <GateVerificationRow
+                      key={item.uuid}
+                      item={item}
+                      getCardTypeBadge={getCardTypeBadge}
+                      getStatusBadge={getStatusBadge}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -220,5 +268,143 @@ export default function GateVerificationListPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function GateVerificationRow({
+  item,
+  getCardTypeBadge,
+  getStatusBadge,
+}: {
+  item: any;
+  getCardTypeBadge: any;
+  getStatusBadge: any;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Map products to verify table rows
+  const productRows = item.products?.map((gp: any) => {
+    const verifiedProduct = item.verification?.products?.find((vp: any) => vp.productId === gp.productId);
+    return {
+      productId: gp.productId,
+      sku: gp.product?.sku,
+      name: gp.product?.name,
+      uom: gp.product?.uom || 'Unit',
+      qtyGate: gp.quantity,
+      qtyVerify: verifiedProduct ? verifiedProduct.quantity : null,
+    };
+  }) || [];
+
+  const addedProducts = item.verification?.products?.filter(
+    (vp: any) => !item.products?.some((gp: any) => gp.productId === vp.productId)
+  ) || [];
+
+  const extraRows = addedProducts.map((vp: any) => ({
+    productId: vp.productId,
+    sku: vp.product?.sku,
+    name: vp.product?.name,
+    uom: vp.product?.uom || 'Unit',
+    qtyGate: 0,
+    qtyVerify: vp.quantity,
+  }));
+
+  const allRows = [...productRows, ...extraRows];
+
+  return (
+    <>
+      <tr
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`hover:bg-slate-50/70 border-b border-slate-100 transition cursor-pointer select-none ${
+          isExpanded ? 'bg-slate-50/40' : ''
+        }`}
+      >
+        <td className="px-6 py-4 font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+          <div className="p-0.5 rounded-md hover:bg-slate-200 transition">
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 text-slate-550 shrink-0" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-slate-550 shrink-0" />
+            )}
+          </div>
+          <span>{item.opNumber}</span>
+        </td>
+        <td className="px-6 py-4">
+          <div className="flex items-center space-x-1.5 text-slate-550 text-xs">
+            <Calendar className="h-3.5 w-3.5" />
+            <span>
+              {new Date(item.createdAt).toLocaleString('id-ID', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            </span>
+          </div>
+        </td>
+        <td className="px-6 py-4">
+          {getCardTypeBadge(item.cardType)}
+        </td>
+        <td className="px-6 py-4 font-semibold text-slate-800">
+          {item.driverName}
+        </td>
+        <td className="px-6 py-4 font-mono font-bold text-xs text-slate-900">
+          {item.licensePlate}
+        </td>
+        <td className="px-6 py-4">
+          {getStatusBadge(item.status)}
+        </td>
+        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+          <Link
+            href={`/dashboard/gate-verification/${item.uuid}`}
+            className="inline-flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition cursor-pointer"
+          >
+            <ShieldCheck className="h-4 w-4 mr-1.5" />
+            {item.status === 'COMPLETED' || item.status === 'CANCELED' ? 'Detail' : 'Verifikasi'}
+          </Link>
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <td colSpan={7} className="bg-slate-50/50 px-12 py-4 border-b border-slate-200">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden max-w-3xl">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="px-4 py-2">Nama Produk</th>
+                    <th className="px-4 py-2 text-right">Qty Gate</th>
+                    <th className="px-4 py-2 text-right">Qty Realisasi ERP</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-105 text-xs text-slate-700">
+                  {allRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-4 text-center text-slate-400 italic">
+                        Tidak ada barang logistik yang dicatat
+                      </td>
+                    </tr>
+                  ) : (
+                    allRows.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/30 transition">
+                        <td className="px-4 py-2.5 font-bold">
+                          {r.name} <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">SKU: {r.sku}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-black text-slate-500">
+                          {r.qtyGate.toLocaleString('id-ID')} {r.uom}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-black text-blue-700 bg-blue-50/5">
+                          {r.qtyVerify !== null ? (
+                            <span>{r.qtyVerify.toLocaleString('id-ID')} {r.uom}</span>
+                          ) : (
+                            <span className="text-slate-350 italic font-normal">0 {r.uom}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

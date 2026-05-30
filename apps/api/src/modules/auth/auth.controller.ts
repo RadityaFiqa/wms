@@ -97,9 +97,10 @@ export class AuthController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(
-    @Req() req: Request,
+    @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
     const refreshToken = req.cookies?.['refresh_token'];
@@ -109,8 +110,20 @@ export class AuthController {
     const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
 
     if (refreshToken) {
-      // Find actorId to log logout
-      const session = await this.authService.logout(refreshToken);
+      // Perform logout session revocation and audit logging in the background asynchronously
+      this.authService.logout(refreshToken, req.user.id).then(async (session) => {
+        if (session) {
+          await this.auditLogService.log({
+            actorId: req.user.id,
+            action: 'LOGOUT_SUCCESS',
+            ipAddress: ipStr,
+            userAgent,
+          }).catch((e) => console.error('Failed to log LOGOUT_SUCCESS audit log:', e));
+        }
+      }).catch((e) => {
+        console.error('Error during async logout processing:', e);
+      });
+
       res.clearCookie('refresh_token');
     }
 

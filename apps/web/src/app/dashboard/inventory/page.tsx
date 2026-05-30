@@ -234,7 +234,7 @@ export default function InventoryPage() {
 
         {/* Total Reserved */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center space-x-3.5">
-          <div className="p-2.5 bg-amber-50 rounded-lg text-amber-650 border border-amber-100/40">
+          <div className="p-2.5 bg-amber-50 rounded-lg text-amber-600 border border-amber-100/40">
             <Tag className="h-5.5 w-5.5" />
           </div>
           <div>
@@ -559,7 +559,7 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
                       <td className="px-5 py-3 text-right font-semibold text-amber-600">
                         {q.reservedQuantity.toLocaleString('id-ID')} <span className="text-slate-400 font-normal text-[10px] ml-0.5">{detailData.product.uom}</span>
                       </td>
-                      <td className="px-5 py-3 text-right font-bold text-emerald-650 bg-emerald-50/5">
+                      <td className="px-5 py-3 text-right font-bold text-emerald-600 bg-emerald-50/5">
                         {q.availableQuantity.toLocaleString('id-ID')} <span className="text-slate-400 font-normal text-[10px] ml-0.5">{detailData.product.uom}</span>
                       </td>
                       <td className="px-5 py-3 text-right font-semibold text-slate-600">

@@ -88,7 +88,18 @@ let AuthController = class AuthController {
         const userAgent = req.headers['user-agent'];
         const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
         if (refreshToken) {
-            const session = await this.authService.logout(refreshToken);
+            this.authService.logout(refreshToken, req.user.id).then(async (session) => {
+                if (session) {
+                    await this.auditLogService.log({
+                        actorId: req.user.id,
+                        action: 'LOGOUT_SUCCESS',
+                        ipAddress: ipStr,
+                        userAgent,
+                    }).catch((e) => console.error('Failed to log LOGOUT_SUCCESS audit log:', e));
+                }
+            }).catch((e) => {
+                console.error('Error during async logout processing:', e);
+            });
             res.clearCookie('refresh_token');
         }
         return { message: 'Logout berhasil' };
@@ -142,6 +153,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "refresh", null);
 __decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Post)('logout'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Res)({ passthrough: true })),

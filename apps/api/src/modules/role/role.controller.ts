@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, UseInterceptors, Req, ForbiddenException } from '@nestjs/common';
 import { RoleService } from './role.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
@@ -18,26 +18,41 @@ export class RoleController {
 
   @Get()
   @CheckPolicies((ability) => ability.can('read', 'Role'))
-  async findAll() {
+  async findAll(@Req() req: any) {
+    if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+      throw new ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat Role.');
+    }
     return this.roleService.findAll();
   }
 
   @Get('permissions')
   @CheckPolicies((ability) => ability.can('read', 'Permission'))
-  async findAllPermissions() {
+  async findAllPermissions(@Req() req: any) {
+    if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+      throw new ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat Permission.');
+    }
     return this.roleService.findAllPermissions();
   }
 
   @Get(':uuid')
   @CheckPolicies((ability) => ability.can('read', 'Role'))
-  async findOne(@Param('uuid') uuid: string) {
+  async findOne(@Param('uuid') uuid: string, @Req() req: any) {
+    if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+      throw new ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat detail Role.');
+    }
     return this.roleService.findByUuid(uuid);
   }
 
   @Post()
   @CheckPolicies((ability) => ability.can('create', 'Role'))
   @AuditLogAction('ROLE_CREATE')
-  async create(@Body(new ZodValidationPipe(CreateRoleSchema)) body: CreateRoleInput) {
+  async create(
+    @Req() req: any,
+    @Body(new ZodValidationPipe(CreateRoleSchema)) body: CreateRoleInput,
+  ) {
+    if (req.user.role?.name !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat mengakses manajemen Role.');
+    }
     return this.roleService.create(body);
   }
 
@@ -46,8 +61,12 @@ export class RoleController {
   @AuditLogAction('ROLE_UPDATE')
   async update(
     @Param('uuid') uuid: string,
+    @Req() req: any,
     @Body() body: { description?: string | null; permissionIds?: number[] },
   ) {
+    if (req.user.role?.name !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat mengakses manajemen Role.');
+    }
     return this.roleService.update(uuid, body);
   }
 }

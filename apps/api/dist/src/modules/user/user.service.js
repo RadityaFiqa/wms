@@ -64,7 +64,28 @@ let UserService = class UserService {
         }
         return password;
     }
-    async create(data) {
+    async getWarehouseAdminScope(currentUser) {
+        const isSuperAdmin = currentUser.role?.name === 'SUPER_ADMIN';
+        if (isSuperAdmin) {
+            return { isSuperAdmin: true, allowedWarehouseIds: [] };
+        }
+        const accesses = await this.prisma.warehouseAccess.findMany({
+            where: { userId: currentUser.id },
+            select: { warehouseId: true },
+        });
+        const allowedWarehouseIds = accesses.map((a) => a.warehouseId);
+        return { isSuperAdmin: false, allowedWarehouseIds };
+    }
+    async create(data, currentUser) {
+        const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
+        if (!isSuperAdmin) {
+            if (data.roleId === 1) {
+                throw new common_1.ForbiddenException('Anda tidak dapat membuat akun Super Admin');
+            }
+            if (!data.warehouseId || !allowedWarehouseIds.includes(data.warehouseId)) {
+                throw new common_1.ForbiddenException('Anda hanya dapat membuat user untuk warehouse yang ditugaskan kepada Anda');
+            }
+        }
         const existing = await this.prisma.user.findUnique({
             where: { email: data.email },
         });
@@ -87,16 +108,46 @@ let UserService = class UserService {
                 role: true,
             },
         });
+        if (user.warehouseId) {
+            await this.prisma.warehouseAccess.upsert({
+                where: {
+                    userId_warehouseId: {
+                        userId: user.id,
+                        warehouseId: user.warehouseId,
+                    },
+                },
+                update: {},
+                create: {
+                    userId: user.id,
+                    warehouseId: user.warehouseId,
+                },
+            });
+        }
         await this.emailService.sendWelcomeEmail(user.email, user.name, tempPassword);
         const { password: _, ...result } = user;
         return result;
     }
-    async update(uuid, data) {
+    async update(uuid, data, currentUser) {
         const user = await this.prisma.user.findUnique({
             where: { uuid },
         });
         if (!user) {
             throw new common_1.NotFoundException('User tidak ditemukan');
+        }
+        const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
+        if (!isSuperAdmin) {
+            if (user.roleId === 1) {
+                throw new common_1.ForbiddenException('Anda tidak dapat mengubah akun Super Admin');
+            }
+            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+                throw new common_1.ForbiddenException('Anda tidak dapat mengubah user di luar warehouse Anda');
+            }
+            if (data.roleId === 1) {
+                throw new common_1.ForbiddenException('Anda tidak dapat mengubah role menjadi Super Admin');
+            }
+            if (!data.warehouseId || !allowedWarehouseIds.includes(data.warehouseId)) {
+                throw new common_1.ForbiddenException('Anda hanya dapat menugaskan user ke warehouse yang ditugaskan kepada Anda');
+            }
         }
         if (data.email && data.email !== user.email) {
             const emailConflict = await this.prisma.user.findUnique({
@@ -118,15 +169,52 @@ let UserService = class UserService {
                 role: true,
             },
         });
+        if (data.warehouseId !== undefined) {
+            if (data.warehouseId === null) {
+                await this.prisma.warehouseAccess.deleteMany({
+                    where: { userId: user.id },
+                });
+            }
+            else {
+                await this.prisma.warehouseAccess.deleteMany({
+                    where: {
+                        userId: user.id,
+                        warehouseId: { not: data.warehouseId },
+                    },
+                });
+                await this.prisma.warehouseAccess.upsert({
+                    where: {
+                        userId_warehouseId: {
+                            userId: user.id,
+                            warehouseId: data.warehouseId,
+                        },
+                    },
+                    update: {},
+                    create: {
+                        userId: user.id,
+                        warehouseId: data.warehouseId,
+                    },
+                });
+            }
+        }
         const { password: _, ...result } = updated;
         return result;
     }
-    async toggleStatus(uuid, isActive) {
+    async toggleStatus(uuid, isActive, currentUser) {
         const user = await this.prisma.user.findUnique({
             where: { uuid },
         });
         if (!user) {
             throw new common_1.NotFoundException('User tidak ditemukan');
+        }
+        const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
+        if (!isSuperAdmin) {
+            if (user.roleId === 1) {
+                throw new common_1.ForbiddenException('Anda tidak dapat mengubah status akun Super Admin');
+            }
+            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+                throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk mengubah status user di luar warehouse Anda');
+            }
         }
         const updated = await this.prisma.user.update({
             where: { uuid },
@@ -142,12 +230,21 @@ let UserService = class UserService {
         const { password: _, ...result } = updated;
         return result;
     }
-    async adminResetPassword(uuid) {
+    async adminResetPassword(uuid, currentUser) {
         const user = await this.prisma.user.findUnique({
             where: { uuid },
         });
         if (!user) {
             throw new common_1.NotFoundException('User tidak ditemukan');
+        }
+        const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
+        if (!isSuperAdmin) {
+            if (user.roleId === 1) {
+                throw new common_1.ForbiddenException('Anda tidak dapat mereset password akun Super Admin');
+            }
+            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+                throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk mereset password user di luar warehouse Anda');
+            }
         }
         const newTempPassword = this.generateRandomPassword();
         const hashedPassword = await bcrypt.hash(newTempPassword, 10);
@@ -165,7 +262,7 @@ let UserService = class UserService {
         await this.emailService.sendWelcomeEmail(user.email, user.name, newTempPassword);
         return { message: 'Password berhasil direset. Password baru telah dikirimkan ke email user.' };
     }
-    async findAll(query) {
+    async findAll(query, currentUser) {
         const page = Number(query.page) || 1;
         const limit = Number(query.limit) || 10;
         const skip = (page - 1) * limit;
@@ -182,6 +279,11 @@ let UserService = class UserService {
                 { name: { contains: query.search, mode: 'insensitive' } },
                 { email: { contains: query.search, mode: 'insensitive' } },
             ];
+        }
+        const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
+        if (!isSuperAdmin) {
+            where.warehouseId = { in: allowedWarehouseIds };
+            where.roleId = where.roleId ? { equals: where.roleId, not: 1 } : { not: 1 };
         }
         const [total, data] = await Promise.all([
             this.prisma.user.count({ where }),
@@ -224,7 +326,7 @@ let UserService = class UserService {
             },
         });
     }
-    async findByUuid(uuid) {
+    async findByUuid(uuid, currentUser) {
         const user = await this.prisma.user.findUnique({
             where: { uuid },
             include: {
@@ -238,6 +340,15 @@ let UserService = class UserService {
         });
         if (!user) {
             throw new common_1.NotFoundException('User tidak ditemukan');
+        }
+        const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
+        if (!isSuperAdmin) {
+            if (user.roleId === 1) {
+                throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk melihat akun Super Admin');
+            }
+            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+                throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk melihat user di luar warehouse Anda');
+            }
         }
         const { password, ...result } = user;
         return result;

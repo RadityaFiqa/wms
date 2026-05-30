@@ -25,6 +25,10 @@ export class WarehouseGuard implements CanActivate {
     }
 
     const roleName = user.role?.name || user.role;
+    if (!warehouse.isActive && roleName !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Gudang (Warehouse) ini sedang tidak aktif.');
+    }
+
     const hasAccess = await this.warehouseResolver.validateUserAccess(user.id, warehouse.id, roleName);
     
     if (!hasAccess) {

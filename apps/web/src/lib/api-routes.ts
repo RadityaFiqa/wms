@@ -23,6 +23,10 @@ export const API_ROUTES = {
   },
   warehouse: {
     list: '/warehouses',
+    create: '/warehouses',
+    detail: (uuid: string) => `/warehouses/${uuid}`,
+    update: (uuid: string) => `/warehouses/${uuid}`,
+    delete: (uuid: string) => `/warehouses/${uuid}`,
   },
   storage: {
     upload: '/storage/upload',
@@ -34,6 +38,16 @@ export const API_ROUTES = {
   },
   gateVerifications: {
     verify: (operationUuid: string) => `/gate-verifications/${operationUuid}`,
+    cancel: (operationUuid: string) => `/gate-verifications/${operationUuid}/cancel`,
+    availableReferences: (operationUuid: string) => `/gate-verifications/${operationUuid}/available-references`,
+    assignReferences: (operationUuid: string) => `/gate-verifications/${operationUuid}/assign-references`,
+  },
+  erpDocumentReferences: {
+    list: '/erp-document-references',
+    detail: (uuid: string) => `/erp-document-references/${uuid}`,
+    sync: '/erp-document-references/sync',
+    syncStatus: '/erp-document-references/sync/status',
+    forceSync: (uuid: string) => `/erp-document-references/${uuid}/force-sync`,
   },
   odoo: {
     list: '/odoo-accounts',

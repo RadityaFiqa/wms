@@ -24,20 +24,21 @@ let AuditLogController = class AuditLogController {
     constructor(auditLogService) {
         this.auditLogService = auditLogService;
     }
-    async findAll(search, action, page, limit) {
-        return this.auditLogService.findAll({ search, action, page, limit });
+    async findAll(req, search, action, page, limit) {
+        return this.auditLogService.findAll({ search, action, page, limit }, req.user);
     }
 };
 exports.AuditLogController = AuditLogController;
 __decorate([
     (0, common_1.Get)(),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'AuditLog')),
-    __param(0, (0, common_1.Query)('search')),
-    __param(1, (0, common_1.Query)('action')),
-    __param(2, (0, common_1.Query)('page')),
-    __param(3, (0, common_1.Query)('limit')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('search')),
+    __param(2, (0, common_1.Query)('action')),
+    __param(3, (0, common_1.Query)('page')),
+    __param(4, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, Number, Number]),
+    __metadata("design:paramtypes", [Object, String, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], AuditLogController.prototype, "findAll", null);
 exports.AuditLogController = AuditLogController = __decorate([

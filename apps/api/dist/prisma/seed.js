@@ -46,12 +46,23 @@ async function main() {
     console.log('Seeding database...');
     const warehouse = await prisma.warehouse.upsert({
         where: { id: 1 },
-        update: {},
+        update: {
+            code: 'JKT-01',
+            type: 'CENTRAL',
+            address: 'Kawasan Industri Pulogadung, Jakarta Timur',
+            isActive: true,
+            odooReference: 'WH-JKT',
+        },
         create: {
             id: 1,
             name: 'Jakarta Central Warehouse',
             location: 'Kawasan Industri Pulogadung, Jakarta Timur',
+            code: 'JKT-01',
+            type: 'CENTRAL',
+            address: 'Kawasan Industri Pulogadung, Jakarta Timur',
+            isActive: true,
             capacity: 10000.0,
+            odooReference: 'WH-JKT',
         },
     });
     console.log('Seeded warehouse:', warehouse.name);
@@ -86,6 +97,15 @@ async function main() {
         { action: 'read', subject: 'GateVerification' },
         { action: 'create', subject: 'FileAttachment' },
         { action: 'read', subject: 'FileAttachment' },
+        { action: 'create', subject: 'DocumentReference' },
+        { action: 'read', subject: 'DocumentReference' },
+        { action: 'update', subject: 'DocumentReference' },
+        { action: 'delete', subject: 'DocumentReference' },
+        { action: 'create', subject: 'Role' },
+        { action: 'read', subject: 'Role' },
+        { action: 'update', subject: 'Role' },
+        { action: 'delete', subject: 'Role' },
+        { action: 'read', subject: 'Permission' },
     ];
     const permissions = {};
     for (const perm of permissionsData) {
@@ -110,20 +130,22 @@ async function main() {
             description: 'Warehouse Manager overseeing warehouse operations, inventory, and staff list',
             permissionKeys: [
                 'read:User',
-                'manage:Warehouse',
+                'read:Warehouse',
                 'manage:Inventory',
                 'read:Order',
                 'read:AuditLog',
-                'create:OdooAccount',
-                'read:OdooAccount',
-                'update:OdooAccount',
-                'delete:OdooAccount',
                 'read:GateOperation',
                 'update:GateOperation',
                 'create:GateVerification',
                 'read:GateVerification',
                 'create:FileAttachment',
                 'read:FileAttachment',
+                'create:DocumentReference',
+                'read:DocumentReference',
+                'update:DocumentReference',
+                'delete:DocumentReference',
+                'read:Role',
+                'read:Permission',
             ],
         },
         {
@@ -246,7 +268,7 @@ async function main() {
         },
     });
     console.log('Seeded Satpam user:', satpamUser.email);
-    await prisma.userWarehouseAccess.upsert({
+    await prisma.warehouseAccess.upsert({
         where: {
             userId_warehouseId: {
                 userId: satpamUser.id,
@@ -259,8 +281,8 @@ async function main() {
             warehouseId: 1,
         },
     });
-    console.log('Seeded UserWarehouseAccess for Satpam');
-    await prisma.userWarehouseAccess.upsert({
+    console.log('Seeded WarehouseAccess for Satpam');
+    await prisma.warehouseAccess.upsert({
         where: {
             userId_warehouseId: {
                 userId: adminUser.id,
@@ -273,14 +295,14 @@ async function main() {
             warehouseId: 1,
         },
     });
-    console.log('Seeded UserWarehouseAccess for Super Admin');
+    console.log('Seeded WarehouseAccess for Super Admin');
     const productsCount = await prisma.product.count();
     if (productsCount === 0) {
         const mockProducts = [
-            { sku: 'BRS-PREM-10K', name: 'Beras Premium Bulog 10kg', category: 'Beras', price: 145000, uom: 'Kg' },
-            { sku: 'BRS-MED-5K', name: 'Beras Medium Bulog 5kg', category: 'Beras', price: 65000, uom: 'Kg' },
-            { sku: 'MYK-GORENG-1L', name: 'Minyak Goreng Kita 1L', category: 'Minyak', price: 14000, uom: 'Liter' },
-            { sku: 'GULA-PASIR-1K', name: 'Gula Pasir Maniskita 1kg', category: 'Gula', price: 16000, uom: 'Kg' },
+            { id: 9001, sku: 'BRS-PREM-10K', name: 'Beras Premium Bulog 10kg', category: 'Beras', price: 145000, uom: 'Kg' },
+            { id: 9002, sku: 'BRS-MED-5K', name: 'Beras Medium Bulog 5kg', category: 'Beras', price: 65000, uom: 'Kg' },
+            { id: 9003, sku: 'MYK-GORENG-1L', name: 'Minyak Goreng Kita 1L', category: 'Minyak', price: 14000, uom: 'Liter' },
+            { id: 9004, sku: 'GULA-PASIR-1K', name: 'Gula Pasir Maniskita 1kg', category: 'Gula', price: 16000, uom: 'Kg' },
         ];
         for (const prod of mockProducts) {
             await prisma.product.create({

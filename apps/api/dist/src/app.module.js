@@ -27,6 +27,8 @@ const inventory_module_1 = require("./modules/inventory/inventory.module");
 const warehouse_context_module_1 = require("./core/warehouse-context/warehouse-context.module");
 const storage_module_1 = require("./modules/storage/storage.module");
 const gate_module_1 = require("./modules/gate/gate.module");
+const erp_document_reference_module_1 = require("./modules/erp-document-reference/erp-document-reference.module");
+const warehouse_module_1 = require("./modules/warehouse/warehouse.module");
 const core_1 = require("@nestjs/core");
 const warehouse_interceptor_1 = require("./core/warehouse-context/warehouse.interceptor");
 let AppModule = class AppModule {
@@ -60,6 +62,8 @@ exports.AppModule = AppModule = __decorate([
             inventory_module_1.InventoryModule,
             storage_module_1.StorageModule,
             gate_module_1.GateModule,
+            erp_document_reference_module_1.ErpDocumentReferenceModule,
+            warehouse_module_1.WarehouseModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [

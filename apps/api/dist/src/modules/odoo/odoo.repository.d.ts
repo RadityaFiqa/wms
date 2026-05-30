@@ -11,9 +11,9 @@ export declare class OdooRepository {
     } & {
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -24,10 +24,10 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     })[]>;
     findActiveAccounts(): Promise<({
         warehouse: {
@@ -36,9 +36,9 @@ export declare class OdooRepository {
     } & {
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -49,10 +49,10 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     })[]>;
     findByUuid(uuid: string): Promise<({
         warehouse: {
@@ -62,9 +62,9 @@ export declare class OdooRepository {
     } & {
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -75,17 +75,17 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     }) | null>;
     findByWarehouseId(warehouseId: number): Promise<{
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -96,10 +96,10 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     } | null>;
     findById(id: number): Promise<({
         warehouse: {
@@ -108,9 +108,9 @@ export declare class OdooRepository {
     } & {
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -121,10 +121,10 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     }) | null>;
     create(data: Prisma.OdooAccountUncheckedCreateInput): Promise<{
         warehouse: {
@@ -133,9 +133,9 @@ export declare class OdooRepository {
     } & {
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -146,10 +146,10 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     }>;
     update(uuid: string, data: Prisma.OdooAccountUpdateInput): Promise<{
         warehouse: {
@@ -158,9 +158,9 @@ export declare class OdooRepository {
     } & {
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -171,10 +171,10 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     }>;
     updateSessionData(id: number, sessionDetails: {
         sessionId: string | null;
@@ -185,9 +185,9 @@ export declare class OdooRepository {
     }): Promise<{
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -198,17 +198,17 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     }>;
     delete(uuid: string): Promise<{
         uuid: string;
         id: number;
+        isActive: boolean;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         warehouseId: number;
         baseUrl: string;
         username: string;
@@ -219,9 +219,9 @@ export declare class OdooRepository {
         lastLoginAt: Date | null;
         lastRefreshAt: Date | null;
         lastSyncAt: Date | null;
-        lastSyncStatus: string | null;
-        lastSyncError: string | null;
         lastSyncBy: string | null;
         lastSyncCount: number | null;
+        lastSyncError: string | null;
+        lastSyncStatus: string | null;
     }>;
 }
