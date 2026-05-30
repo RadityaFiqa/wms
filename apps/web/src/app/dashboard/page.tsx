@@ -7,32 +7,7 @@ import { Warehouse, Users, ShieldAlert, BarChart3 } from 'lucide-react';
 export default function DashboardOverviewPage() {
   const { user } = useAuthStore();
 
-  const stats = [
-    {
-      name: 'Gudang Ditugaskan',
-      value: user?.warehouse?.name || 'Semua Gudang',
-      icon: Warehouse,
-      color: 'text-blue-600 bg-blue-50 border-blue-100',
-    },
-    {
-      name: 'Role Level',
-      value: user?.role || 'Staff',
-      icon: ShieldAlert,
-      color: 'text-indigo-600 bg-indigo-50 border-indigo-100',
-    },
-    {
-      name: 'Status Akun',
-      value: 'Aktif',
-      icon: Users,
-      color: 'text-emerald-600 bg-emerald-50 border-emerald-100',
-    },
-    {
-      name: 'Sistem Integrasi',
-      value: 'Online',
-      icon: BarChart3,
-      color: 'text-amber-600 bg-amber-50 border-amber-100',
-    },
-  ];
+  const stats: any[] = [];
 
   return (
     <div className="space-y-6">

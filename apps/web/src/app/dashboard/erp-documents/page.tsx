@@ -464,7 +464,7 @@ export default function ErpDocumentsPage() {
               ) : (
                 documentsData.data.map((doc: any) => (
                   <ErpDocumentRow
-                    key={doc.id}
+                    key={doc.uuid}
                     doc={doc}
                     getStatusColor={getStatusColor}
                     getStatusText={getStatusText}

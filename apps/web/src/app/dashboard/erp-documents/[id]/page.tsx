@@ -289,8 +289,8 @@ export default function ErpDocumentDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
-                  {documentDetail.items.map((item: any) => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/35 transition">
+                  {documentDetail.items.map((item: any, index: number) => (
+                    <tr key={`${index}-${item?.uuid}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/35 transition">
                       <td className="px-5 py-3 font-bold text-slate-800 dark:text-slate-150">
                         {item.productName}
                       </td>

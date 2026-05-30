@@ -345,7 +345,7 @@ export default function InventoryPage() {
                 </tr>
               ) : (
                 inventoryData?.data?.map((inv: any) => (
-                  <ProductRow key={inv.id} product={inv} />
+                  <ProductRow key={inv.uuid} product={inv} />
                 ))
               )}
             </tbody>
@@ -502,7 +502,7 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
         }
 
         return (
-          <div key={loc.location_id} className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+          <div key={loc.locationUuid} className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
             {/* Location Level Header */}
             <div className="bg-slate-100/70 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 gap-2">
               <div className="flex items-center space-x-2">
