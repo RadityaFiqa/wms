@@ -89,6 +89,15 @@ async function main() {
     { action: 'update', subject: 'Role' },
     { action: 'delete', subject: 'Role' },
     { action: 'read', subject: 'Permission' },
+    // Stock Opname
+    { action: 'create', subject: 'StockOpname' },
+    { action: 'read', subject: 'StockOpname' },
+    { action: 'update', subject: 'StockOpname' },
+    { action: 'delete', subject: 'StockOpname' },
+    // Reconciliation
+    { action: 'read', subject: 'Reconciliation' },
+    // Reporting
+    { action: 'read', subject: 'Report' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -132,6 +141,12 @@ async function main() {
         'delete:DocumentReference',
         'read:Role',
         'read:Permission',
+        'create:StockOpname',
+        'read:StockOpname',
+        'update:StockOpname',
+        'delete:StockOpname',
+        'read:Reconciliation',
+        'read:Report',
       ],
     },
     {
@@ -145,6 +160,8 @@ async function main() {
         'update:Inventory',
         'read:Order',
         'update:Order',
+        'read:StockOpname',
+        'update:StockOpname',
       ],
     },
     {

@@ -20,6 +20,9 @@ type ExtendedSubjects = Subjects<{
   FileAttachment: any;
   DocumentReference: any;
   DocumentReferenceItem: any;
+  StockOpname: any;
+  Reconciliation: any;
+  Report: any;
 }> | 'all';
 
 export type AppAbility = Ability<[string, ExtendedSubjects], PrismaQuery>;

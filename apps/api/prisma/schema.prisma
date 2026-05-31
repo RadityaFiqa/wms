@@ -30,6 +30,7 @@ model User {
   role                      Role                  @relation(fields: [roleId], references: [id])
   warehouse                 Warehouse?            @relation(fields: [warehouseId], references: [id])
   warehouseAccesses         WarehouseAccess[]
+  stockOpnames              StockOpname[]
 
   @@index([email])
   @@index([uuid])
@@ -144,6 +145,8 @@ model Warehouse {
   warehouseAccesses  WarehouseAccess[]
   documentReferences DocumentReference[]
   odooSyncLogs       OdooSyncLog[]
+  stockOpnames       StockOpname[]
+  dailyStockSnapshots DailyStockSnapshot[]
 
   @@index([uuid])
   @@index([code])
@@ -191,6 +194,8 @@ model Product {
   inventories              Inventory[]
   orderItems               OrderItem[]
   quants                   Quant[]
+  stockOpnameItems         StockOpnameItem[]
+  dailyStockSnapshots      DailyStockSnapshot[]
 
   @@index([uuid])
   @@index([sku])
@@ -205,6 +210,7 @@ model Location {
   updatedAt      DateTime  @updatedAt
   warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   quants         Quant[]
+  stockOpnameStacks StockOpnameStack[]
 
   @@index([warehouseId])
 }
@@ -290,8 +296,10 @@ model FileAttachment {
   uploadedBy         User              @relation(fields: [uploadedById], references: [id])
   gateOperationId    Int?
   gateVerificationId Int?
+  stockOpnameId      Int?
   gateOperation      GateOperation?    @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
   gateVerification   GateVerification? @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
+  stockOpname        StockOpname?      @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
 }
 
 model GateOperation {
@@ -488,5 +496,88 @@ model GateDocumentReference {
   @@index([gateItemId])
   @@index([erpDocumentId])
   @@index([erpDocumentItemId])
+  @@index([productId])
+}
+
+enum StockOpnameStatus {
+  DRAFT
+  COMPLETED
+}
+
+model StockOpname {
+  id               Int                   @id @default(autoincrement())
+  uuid             String                @unique @default(uuid())
+  opnameNumber     String                @unique
+  warehouseId      Int
+  status           StockOpnameStatus     @default(DRAFT)
+  notes            String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  completionDate   DateTime?
+  createdById      Int
+
+  warehouse        Warehouse             @relation(fields: [warehouseId], references: [id])
+  createdBy        User                  @relation(fields: [createdById], references: [id])
+  items            StockOpnameItem[]
+  attachments      FileAttachment[]
+
+  @@index([warehouseId])
+  @@index([uuid])
+  @@index([opnameNumber])
+  @@index([status])
+}
+
+model StockOpnameItem {
+  id              Int                  @id @default(autoincrement())
+  uuid            String               @unique @default(uuid())
+  stockOpnameId   Int
+  productId       Int
+  productSku      String
+  productName     String
+  productCategory String?
+  productUom      String?
+  erpStock        Float
+  realtimeStock   Float
+  difference      Float?
+
+  stockOpname     StockOpname          @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
+  product         Product              @relation(fields: [productId], references: [id])
+  stacks          StockOpnameStack[]
+
+  @@index([stockOpnameId])
+  @@index([productId])
+}
+
+model StockOpnameStack {
+  id                Int              @id @default(autoincrement())
+  uuid              String           @unique @default(uuid())
+  stockOpnameItemId Int
+  locationId        Int
+  locationName      String
+  erpQty            Float
+  actualQty         Float?
+  variance          Float?
+
+  item              StockOpnameItem  @relation(fields: [stockOpnameItemId], references: [id], onDelete: Cascade)
+  location          Location         @relation(fields: [locationId], references: [id])
+
+  @@index([stockOpnameItemId])
+  @@index([locationId])
+}
+
+model DailyStockSnapshot {
+  id             Int       @id @default(autoincrement())
+  uuid           String    @unique @default(uuid())
+  date           DateTime
+  warehouseId    Int
+  productId      Int
+  closingStock   Float
+
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
+  product        Product   @relation(fields: [productId], references: [id])
+
+  @@unique([date, warehouseId, productId])
+  @@index([date])
+  @@index([warehouseId])
   @@index([productId])
 }

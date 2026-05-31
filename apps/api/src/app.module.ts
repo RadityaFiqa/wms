@@ -20,6 +20,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { GateModule } from './modules/gate/gate.module';
 import { ErpDocumentReferenceModule } from './modules/erp-document-reference/erp-document-reference.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interceptor';
 
@@ -54,6 +55,7 @@ import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interce
     GateModule,
     ErpDocumentReferenceModule,
     WarehouseModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -18,9 +18,9 @@ export default function LoginPage() {
   useEffect(() => {
     if (user && token) {
       if (user.isFirstLogin) {
-        router.push('/dashboard/profile?force_reset=true');
+        router.push('/profile?force_reset=true');
       } else {
-        router.push('/dashboard');
+        router.push('/');
       }
     }
   }, [user, token, router]);
@@ -41,9 +41,9 @@ export default function LoginPage() {
       toast.success(`Selamat datang kembali, ${userPayload.name}!`);
 
       if (userPayload.isFirstLogin) {
-        router.push('/dashboard/profile?force_reset=true');
+        router.push('/profile?force_reset=true');
       } else {
-        router.push('/dashboard');
+        router.push('/');
       }
     } catch (error: any) {
       const errMsg = error.response?.data?.message || 'Login gagal. Periksa koneksi Anda.';

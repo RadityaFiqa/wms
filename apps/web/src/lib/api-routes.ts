@@ -68,5 +68,24 @@ export const API_ROUTES = {
     detail: (uuid: string) => `/inventory/${uuid}`,
     sync: '/inventory/sync',
   },
+  reconciliation: {
+    list: '/inventory/reconciliation',
+    detail: (uuid: string) => `/inventory/reconciliation/${uuid}`,
+  },
+  stockOpname: {
+    list: '/stock-opname',
+    detail: (uuid: string) => `/stock-opname/${uuid}`,
+    create: '/stock-opname',
+    update: (uuid: string) => `/stock-opname/${uuid}`,
+    submit: (uuid: string) => `/stock-opname/${uuid}/submit`,
+    countingSheet: (uuid: string) => `/stock-opname/${uuid}/counting-sheet/pdf`,
+    exportPdf: (uuid: string) => `/stock-opname/${uuid}/export/pdf`,
+  },
+  reports: {
+    stockMovement: '/reports/stock-movement',
+    detail: '/reports/stock-movement/detail',
+    exportPdf: '/reports/stock-movement/export/pdf',
+    exportCsv: '/reports/stock-movement/export/csv',
+  },
 };
 export type ApiRoutes = typeof API_ROUTES;
