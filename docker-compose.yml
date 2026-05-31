@@ -40,7 +40,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
       - MINIO_BUCKET=${MINIO_BUCKET:-wms-bucket}
-      - MINIO_USE_SSL=false
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
       - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-"http://localhost:9000"}
       - JWT_SECRET=${JWT_SECRET:-super-secret-bulog-wms-key}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
