@@ -18,6 +18,7 @@ WORKDIR /app
 COPY --from=deps /app ./
 COPY . .
 # Generate Prisma client if needed inside build step
+RUN pnpm --filter @bulog-wms/api exec prisma generate
 RUN pnpm --filter @bulog-wms/api run build
 
 # Runner
