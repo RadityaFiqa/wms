@@ -32,7 +32,7 @@ COPY --from=builder /app/apps/api/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 # Adjust based on monorepo structure and execution needs
 
-EXPOSE 3000
-ENV PORT=3000
+EXPOSE 3002
+ENV PORT=3002
 
 CMD ["node", "dist/main.js"]

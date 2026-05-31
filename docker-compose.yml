@@ -35,7 +35,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-wms}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - PORT=3000
+      - PORT=3002
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
@@ -44,7 +44,7 @@ services:
       - MINIO_USE_SSL=false
       - MINIO_PUBLIC_URL=http://localhost:9000
     ports:
-      - "3000:3000"
+      - "3002:3002"
     restart: unless-stopped
 
   minio:
@@ -69,7 +69,7 @@ services:
     depends_on:
       - api
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:3000
+      - NEXT_PUBLIC_API_URL=http://localhost:3002
       - PORT=3001
     ports:
       - "3001:3001"
