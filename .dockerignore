@@ -1,5 +1,6 @@
-node_modules
-.git
-.next
-dist
-.turbo
+**/node_modules
+**/.git
+**/.next
+**/dist
+**/.turbo
+**/.env*
