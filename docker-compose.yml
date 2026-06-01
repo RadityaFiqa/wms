@@ -53,6 +53,8 @@ services:
       - PORT=${PORT:-3002}
     ports:
       - "${PORT:-3002}:${PORT:-3002}"
+    dns:
+      - 10.254.250.27
     restart: unless-stopped
 
   minio:
@@ -77,7 +79,7 @@ services:
     depends_on:
       - api
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-"http://localhost:3002"}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-"http://localhost:3002/api"}
       - PORT=${PORT:-3001}
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
