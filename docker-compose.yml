@@ -55,6 +55,8 @@ services:
       - "${PORT:-3002}:${PORT:-3002}"
     dns:
       - 10.254.250.27
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
 
   minio:
