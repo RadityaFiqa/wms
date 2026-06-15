@@ -16,6 +16,24 @@ import {
   Clock,
 } from 'lucide-react';
 
+const getProductDetails = (item: any) => {
+  if (!item) return { sku: '-', name: '-', uom: '-' };
+
+  const sku = item.sku || item.inventory?.sku || item.product?.sku;
+  const name = item.name || item.inventory?.name || item.product?.name;
+  const uom = item.uom || item.inventory?.uom || item.product?.uom;
+
+  if (!sku || !name || !uom) {
+    console.warn('Warning: Product details mapping failed or incomplete for item:', item);
+  }
+
+  return {
+    sku: sku || '-',
+    name: name || '-',
+    uom: uom || '-',
+  };
+};
+
 export default function GateVerificationListPage() {
   const [search, setSearch] = useState('');
   const [cardType, setCardType] = useState('');
@@ -42,7 +60,7 @@ export default function GateVerificationListPage() {
         📥 GATE IN
       </span>
     ) : (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-150">
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-55 text-purple-700 border border-purple-150">
         📤 GATE OUT
       </span>
     );
@@ -88,7 +106,7 @@ export default function GateVerificationListPage() {
       <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <ShieldCheck className="h-12 w-12 text-slate-350 mx-auto animate-pulse" />
         <h3 className="text-lg font-bold text-slate-800">Gudang Aktif Belum Dipilih</h3>
-        <p className="text-sm text-slate-500 max-w-md mx-auto">
+        <p className="text-sm text-slate-505 max-w-md mx-auto">
           Silakan pilih gudang aktif terlebih dahulu di panel navigasi atas untuk melihat antrean verifikasi gerbang.
         </p>
       </div>
@@ -101,7 +119,7 @@ export default function GateVerificationListPage() {
       <div>
         <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-center">
           <ShieldCheck className="h-8 w-8 text-blue-606 mr-3 shrink-0" />
-          Verifikasi Gate (Audit Queue)
+          Verifikasi Gate
         </h1>
         <p className="text-slate-500 mt-1">
           Lakukan audit dan verifikasi logistik untuk kendaraan masuk/keluar di {activeWarehouse.name}.
@@ -171,7 +189,7 @@ export default function GateVerificationListPage() {
                   setStartDate(e.target.value);
                   setPage(1);
                 }}
-                className="bg-transparent border-none text-sm text-slate-650 focus:outline-none py-1 cursor-pointer font-medium"
+                className="bg-transparent border-none text-sm text-slate-655 focus:outline-none py-1 cursor-pointer font-medium"
               />
             </div>
 
@@ -185,7 +203,7 @@ export default function GateVerificationListPage() {
                   setEndDate(e.target.value);
                   setPage(1);
                 }}
-                className="bg-transparent border-none text-sm text-slate-650 focus:outline-none py-1 cursor-pointer font-medium"
+                className="bg-transparent border-none text-sm text-slate-655 focus:outline-none py-1 cursor-pointer font-medium"
               />
             </div>
           </div>
@@ -208,9 +226,9 @@ export default function GateVerificationListPage() {
           </div>
         ) : !data || data.items.length === 0 ? (
           <div className="p-16 text-center text-slate-400">
-            <Clock className="h-12 w-12 mx-auto text-slate-350 mb-4 animate-bounce" />
+            <Clock className="h-12 w-12 mx-auto text-slate-355 mb-4 animate-bounce" />
             <p className="text-base font-semibold text-slate-700">Antrean Verifikasi Kosong</p>
-            <p className="text-sm text-slate-400 mt-1">Seluruh data operasi gerbang telah diverifikasi dan diaudit.</p>
+            <p className="text-sm text-slate-450 mt-1">Seluruh data operasi gerbang telah diverifikasi dan diaudit.</p>
           </div>
         ) : (
           <>
@@ -285,11 +303,12 @@ function GateVerificationRow({
   // Map products to verify table rows
   const productRows = item.products?.map((gp: any) => {
     const verifiedProduct = item.verification?.products?.find((vp: any) => vp.productId === gp.productId);
+    const prodDetails = getProductDetails(gp);
     return {
       productId: gp.productId,
-      sku: gp.product?.sku,
-      name: gp.product?.name,
-      uom: gp.product?.uom || 'Unit',
+      sku: prodDetails.sku,
+      name: prodDetails.name,
+      uom: prodDetails.uom,
       qtyGate: gp.quantity,
       qtyVerify: verifiedProduct ? verifiedProduct.quantity : null,
     };
@@ -299,14 +318,17 @@ function GateVerificationRow({
     (vp: any) => !item.products?.some((gp: any) => gp.productId === vp.productId)
   ) || [];
 
-  const extraRows = addedProducts.map((vp: any) => ({
-    productId: vp.productId,
-    sku: vp.product?.sku,
-    name: vp.product?.name,
-    uom: vp.product?.uom || 'Unit',
-    qtyGate: 0,
-    qtyVerify: vp.quantity,
-  }));
+  const extraRows = addedProducts.map((vp: any) => {
+    const prodDetails = getProductDetails(vp);
+    return {
+      productId: vp.productId,
+      sku: prodDetails.sku,
+      name: prodDetails.name,
+      uom: prodDetails.uom,
+      qtyGate: 0,
+      qtyVerify: vp.quantity,
+    };
+  });
 
   const allRows = [...productRows, ...extraRows];
 

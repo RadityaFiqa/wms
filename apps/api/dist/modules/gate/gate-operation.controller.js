@@ -43,6 +43,13 @@ let GateOperationController = class GateOperationController {
             limit: limit ? parseInt(limit) : undefined,
         });
     }
+    async getClientHistory(clientPartner, req) {
+        const warehouseId = this.service['warehouseContext'].getWarehouseId();
+        if (!warehouseId) {
+            throw new common_1.BadRequestException('Konteks warehouse (header x-warehouse-id) diperlukan.');
+        }
+        return this.service.getClientHistory(warehouseId, clientPartner);
+    }
     async addCargoItem(uuid, req, body) {
         const user = req.user;
         if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
@@ -50,32 +57,69 @@ let GateOperationController = class GateOperationController {
         }
         const result = await this.service.addCargoItem(uuid, body);
         req.auditDetails = {
-            product: {
-                sku: result.product?.sku,
-                name: result.product?.name,
-                uom: result.product?.uom,
+            inventory: {
+                sku: result.inventory?.sku,
+                name: result.inventory?.name,
+                uom: result.inventory?.uom,
             },
             quantity: result.quantity,
             notes: result.notes,
+            quantId: result.quantId,
+            locationId: result.locationId,
         };
         return result;
     }
-    async deleteCargoItem(productUuid, req) {
+    async updateCargoItem(cargoUuid, req, body) {
+        const user = req.user;
+        if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
+            throw new common_1.ForbiddenException('Hanya Admin yang dapat mengubah barang muatan.');
+        }
+        const result = await this.service.updateCargoItem(cargoUuid, body);
+        req.auditDetails = {
+            inventory: {
+                sku: result.inventory?.sku,
+                name: result.inventory?.name,
+                uom: result.inventory?.uom,
+            },
+            quantity: result.quantity,
+            notes: result.notes,
+            quantId: result.quantId,
+            locationId: result.locationId,
+        };
+        return result;
+    }
+    async deleteCargoItem(cargoUuid, req) {
         const user = req.user;
         if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Hanya Admin yang dapat menghapus barang muatan.');
         }
-        const result = await this.service.deleteCargoItem(productUuid);
+        const result = await this.service.deleteCargoItem(cargoUuid);
         req.auditDetails = {
             deletedItem: {
-                sku: result.deletedItem?.product?.sku,
-                name: result.deletedItem?.product?.name,
-                uom: result.deletedItem?.product?.uom,
+                sku: result.deletedItem?.inventory?.sku,
+                name: result.deletedItem?.inventory?.name,
+                uom: result.deletedItem?.inventory?.uom,
                 quantity: result.deletedItem?.quantity,
                 notes: result.deletedItem?.notes,
             },
         };
         return result;
+    }
+    async getDeliveryOrderPdf(id, res) {
+        const pdfBuffer = await this.service.generateDeliveryOrderPdf(id);
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="surat-jalan-${id}.pdf"`,
+            'Content-Length': pdfBuffer.length,
+        });
+        res.end(pdfBuffer);
+    }
+    async getDeliveryOrderPreview(id, res) {
+        const html = await this.service.generateDeliveryOrderHtml(id);
+        res.set({
+            'Content-Type': 'text/html',
+        });
+        res.end(html);
     }
     async findOne(uuid) {
         return this.service.getGateOperationByUuid(uuid);
@@ -107,7 +151,16 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], GateOperationController.prototype, "findAll", null);
 __decorate([
-    (0, common_1.Post)(':uuid/products'),
+    (0, common_1.Get)('client-history'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'GateOperation')),
+    __param(0, (0, common_1.Query)('clientPartner')),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], GateOperationController.prototype, "getClientHistory", null);
+__decorate([
+    (0, common_1.Post)(':uuid/cargo'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'GateOperation')),
     (0, audit_log_decorator_1.AuditLogAction)('GATE_OPERATION_CARGO_ADD'),
     __param(0, (0, common_1.Param)('uuid')),
@@ -118,15 +171,44 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], GateOperationController.prototype, "addCargoItem", null);
 __decorate([
-    (0, common_1.Delete)('products/:productUuid'),
+    (0, common_1.Put)('cargo/:cargoUuid'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'GateOperation')),
+    (0, audit_log_decorator_1.AuditLogAction)('GATE_OPERATION_CARGO_UPDATE'),
+    __param(0, (0, common_1.Param)('cargoUuid')),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], GateOperationController.prototype, "updateCargoItem", null);
+__decorate([
+    (0, common_1.Delete)('cargo/:cargoUuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('update', 'GateOperation')),
     (0, audit_log_decorator_1.AuditLogAction)('GATE_OPERATION_CARGO_DELETE'),
-    __param(0, (0, common_1.Param)('productUuid')),
+    __param(0, (0, common_1.Param)('cargoUuid')),
     __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], GateOperationController.prototype, "deleteCargoItem", null);
+__decorate([
+    (0, common_1.Get)(':id/delivery-order'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'GateOperation')),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], GateOperationController.prototype, "getDeliveryOrderPdf", null);
+__decorate([
+    (0, common_1.Get)(':id/delivery-order-preview'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'GateOperation')),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], GateOperationController.prototype, "getDeliveryOrderPreview", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'GateOperation')),

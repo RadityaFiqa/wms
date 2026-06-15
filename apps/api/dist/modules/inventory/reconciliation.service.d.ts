@@ -7,7 +7,6 @@ export declare class ReconciliationService {
             uuid: string;
             sku: string;
             name: string;
-            category: string;
             uom: string;
         };
         erpStock: number;
@@ -16,12 +15,11 @@ export declare class ReconciliationService {
         pendingOutgoing: number;
         expectedStock: number;
     }[]>;
-    getReconciliationDetail(warehouseId: number, productUuid: string): Promise<{
+    getReconciliationDetail(warehouseId: number, inventoryUuid: string): Promise<{
         product: {
             uuid: string;
             sku: string;
             name: string;
-            category: string;
             uom: string;
         };
         erpStock: number;

@@ -36,14 +36,13 @@ let ReportsService = class ReportsService {
         if (query.productId) {
             productWhere.uuid = query.productId;
         }
-        if (query.category) {
-            productWhere.category = { contains: query.category, mode: 'insensitive' };
-        }
-        const products = await this.prisma.product.findMany({
+        const products = await this.prisma.inventory.findMany({
             where: productWhere,
             include: {
-                inventories: {
-                    where: { warehouseId },
+                quants: {
+                    where: {
+                        location: { warehouseId },
+                    },
                 },
             },
         });
@@ -107,10 +106,10 @@ let ReportsService = class ReportsService {
         const datesList = this.generateDatesList(start, end);
         const backwardDates = this.generateDatesList(start, today).reverse();
         for (const prod of products) {
-            const erpStock = prod.inventories[0]?.quantity || 0;
+            const erpStock = prod.quants.reduce((sum, q) => sum + q.quantity, 0);
             let currentStockTracker = erpStock;
             const transactionsByDate = new Map();
-            for (const item of erpItems.filter((i) => i.productId === prod.id)) {
+            for (const item of erpItems.filter((i) => i.inventoryId === prod.id)) {
                 const dateStr = this.formatDateString(item.documentReference.dateDone);
                 const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
                 if (item.documentReference.pickingTypeCode === 'incoming') {
@@ -123,7 +122,7 @@ let ReportsService = class ReportsService {
             }
             for (const op of unreconciledGateOps) {
                 const dateStr = this.formatDateString(op.verification.verifiedAt);
-                const opProd = op.products.find((p) => p.productId === prod.id);
+                const opProd = op.products.find((p) => p.inventoryId === prod.id);
                 if (opProd) {
                     const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
                     if (op.cardType === 'IN') {
@@ -141,7 +140,7 @@ let ReportsService = class ReportsService {
                 const dStr = this.formatDateString(dDate);
                 const txs = transactionsByDate.get(dStr) || { incoming: 0, outgoing: 0 };
                 let closing = 0;
-                const snap = snapshots.find((s) => s.productId === prod.id && this.formatDateString(s.date) === dStr);
+                const snap = snapshots.find((s) => s.inventoryId === prod.id && this.formatDateString(s.date) === dStr);
                 if (dStr === todayStr) {
                     closing = currentStockTracker;
                 }
@@ -154,7 +153,7 @@ let ReportsService = class ReportsService {
                         data: {
                             date: dDate,
                             warehouseId,
-                            productId: prod.id,
+                            inventoryId: prod.id,
                             closingStock: closing,
                         },
                     }).catch((err) => {
@@ -183,7 +182,6 @@ let ReportsService = class ReportsService {
                         uuid: prod.uuid,
                         sku: prod.sku,
                         name: prod.name,
-                        category: prod.category,
                         uom: prod.uom || 'Unit',
                     },
                     openingStock: metrics.opening,
@@ -201,10 +199,10 @@ let ReportsService = class ReportsService {
         });
     }
     async getDailyStockMovementDetail(warehouseId, query) {
-        const product = await this.prisma.product.findUnique({
+        const inventory = await this.prisma.inventory.findUnique({
             where: { uuid: query.productUuid },
         });
-        if (!product) {
+        if (!inventory) {
             throw new common_1.NotFoundException('Produk tidak ditemukan.');
         }
         const targetDate = new Date(query.date);
@@ -214,7 +212,7 @@ let ReportsService = class ReportsService {
         end.setHours(23, 59, 59, 999);
         const erpItems = await this.prisma.documentReferenceItem.findMany({
             where: {
-                productId: product.id,
+                inventoryId: inventory.id,
                 documentReference: {
                     warehouseId,
                     state: 'done',
@@ -248,14 +246,14 @@ let ReportsService = class ReportsService {
                 },
                 products: {
                     some: {
-                        productId: product.id,
+                        inventoryId: inventory.id,
                     },
                 },
             },
             include: {
                 products: {
                     where: {
-                        productId: product.id,
+                        inventoryId: inventory.id,
                     },
                 },
                 verification: {
@@ -297,9 +295,9 @@ let ReportsService = class ReportsService {
         ];
         return {
             product: {
-                sku: product.sku,
-                name: product.name,
-                uom: product.uom || 'Unit',
+                sku: inventory.sku,
+                name: inventory.name,
+                uom: inventory.uom || 'Unit',
             },
             date: query.date,
             incoming: incomingTransactions,
@@ -375,10 +373,10 @@ let ReportsService = class ReportsService {
     async generateCsvReport(warehouseId, query) {
         const rows = await this.getDailyStockMovementReport(warehouseId, query);
         let csv = '\ufeff';
-        csv += 'Tanggal,SKU,Nama Produk,Kategori,UOM,Stok Awal,Masuk (Incoming),Keluar (Outgoing),Stok Akhir\n';
+        csv += 'Tanggal,SKU,Nama Produk,UOM,Stok Awal,Masuk (Incoming),Keluar (Outgoing),Stok Akhir\n';
         for (const r of rows) {
             const sanitizedName = r.product.name.replace(/"/g, '""');
-            csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.category},${r.product.uom},${r.openingStock},${r.incoming},${r.outgoing},${r.closingStock}\n`;
+            csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.uom},${r.openingStock},${r.incoming},${r.outgoing},${r.closingStock}\n`;
         }
         return csv;
     }

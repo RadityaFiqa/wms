@@ -55,7 +55,6 @@ export declare class StockOpnameController {
             productId: number;
             productSku: string;
             productName: string;
-            productCategory: string | null;
             productUom: string | null;
             erpStock: number;
             realtimeStock: number;

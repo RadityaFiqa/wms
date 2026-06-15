@@ -507,7 +507,7 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
             <div className="bg-slate-100/70 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 gap-2">
               <div className="flex items-center space-x-2">
                 <MapPin className="h-4.5 w-4.5 text-blue-500 shrink-0" />
-                <span className="font-bold text-slate-700 text-xs">{loc.location_display_name}</span>
+                <span className="font-bold text-slate-700 text-xs">{loc.locationDisplayName}</span>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-[11px] font-semibold text-slate-500">
                 <span>

@@ -138,7 +138,6 @@ model Warehouse {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   gateOperations     GateOperation[]
-  inventories        Inventory[]
   locations          Location[]
   odooAccount        OdooAccount?
   users              User[]
@@ -147,6 +146,7 @@ model Warehouse {
   odooSyncLogs       OdooSyncLog[]
   stockOpnames       StockOpname[]
   dailyStockSnapshots DailyStockSnapshot[]
+  inventories        Inventory[]
 
   @@index([uuid])
   @@index([code])
@@ -172,33 +172,11 @@ model OdooAccount {
   lastSyncCount     Int?
   lastSyncError     String?
   lastSyncStatus    String?
+  lastOffset        Int       @default(0)
   warehouse         Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@index([warehouseId])
   @@index([uuid])
-}
-
-model Product {
-  id                       Int                       @id
-  uuid                     String                    @unique @default(uuid())
-  sku                      String                    @unique
-  name                     String
-  description              String?
-  category                 String
-  price                    Float
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  uom                      String?
-  gateOperationProducts    GateOperationProduct[]
-  gateVerificationProducts GateVerificationProduct[]
-  inventories              Inventory[]
-  orderItems               OrderItem[]
-  quants                   Quant[]
-  stockOpnameItems         StockOpnameItem[]
-  dailyStockSnapshots      DailyStockSnapshot[]
-
-  @@index([uuid])
-  @@index([sku])
 }
 
 model Location {
@@ -211,42 +189,53 @@ model Location {
   warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   quants         Quant[]
   stockOpnameStacks StockOpnameStack[]
+  gateOperationProducts    GateOperationProduct[]
+  gateVerificationProducts GateVerificationProduct[]
 
   @@index([warehouseId])
 }
 
 model Quant {
-  id                Int      @id
-  uuid              String   @unique @default(uuid())
-  productId         Int
+  id                Int       @id
+  uuid              String    @unique @default(uuid())
+  inventoryId       Int
   locationId        Int
-  quantity          Float    @default(0)
-  reservedQuantity  Float    @default(0)
-  availableQuantity Float    @default(0)
-  secondaryUnitQty  Float?   @default(0)
+  quantity          Float     @default(0)
+  reservedQuantity  Float     @default(0)
+  availableQuantity Float     @default(0)
+  secondaryUnitQty  Float?    @default(0)
   lotName           String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  location          Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  location          Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  inventory         Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  gateOperationProducts    GateOperationProduct[]
+  gateVerificationProducts GateVerificationProduct[]
 
-  @@index([productId])
+  @@index([inventoryId])
   @@index([locationId])
 }
 
 model Inventory {
-  id          Int       @id @default(autoincrement())
-  uuid        String    @unique @default(uuid())
-  warehouseId Int
-  productId   Int
-  quantity    Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  id                       Int                       @id
+  uuid                     String                    @unique @default(uuid())
+  sku                      String                    @unique
+  name                     String
+  uom                      String?
+  warehouseId              Int                       @default(1)
+  warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  gateOperationProducts    GateOperationProduct[]
+  gateVerificationProducts GateVerificationProduct[]
+  orderItems               OrderItem[]
+  quants                   Quant[]
+  stockOpnameItems         StockOpnameItem[]
+  dailyStockSnapshots      DailyStockSnapshot[]
 
-  @@unique([warehouseId, productId])
   @@index([uuid])
+  @@index([sku])
+  @@index([warehouseId])
 }
 
 model Order {
@@ -264,13 +253,13 @@ model Order {
 }
 
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  uuid      String  @unique @default(uuid())
-  orderId   Int
-  productId Int
-  quantity  Int
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  orderId     Int
+  inventoryId Int
+  quantity    Int
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
 
   @@index([uuid])
 }
@@ -309,6 +298,8 @@ model GateOperation {
   cardType        CardType
   driverName      String
   licensePlate    String
+  clientPartner   String?
+  driverPhone     String?
   notes           String?
   status          VerificationStatus     @default(PENDING)
   warehouseId     Int
@@ -321,6 +312,8 @@ model GateOperation {
   verification    GateVerification?
   poReferences    String[]               @default([])
   soReferences    String[]               @default([])
+  documentReferenceId Int?
+  documentReference   DocumentReference?     @relation(fields: [documentReferenceId], references: [id], onDelete: SetNull)
   attachments     FileAttachment[]
 
   @@index([uuid])
@@ -333,15 +326,21 @@ model GateOperationProduct {
   id              Int                      @id @default(autoincrement())
   uuid            String                   @unique @default(uuid())
   gateOperationId Int
-  productId       Int
+  inventoryId     Int
   quantity        Float
   notes           String?
+  quantId         Int?
+  locationId      Int?
   gateOperation   GateOperation            @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
-  product         Product                  @relation(fields: [productId], references: [id])
+  inventory       Inventory                @relation(fields: [inventoryId], references: [id])
+  quant           Quant?                   @relation(fields: [quantId], references: [id], onDelete: SetNull)
+  location        Location?                @relation(fields: [locationId], references: [id], onDelete: SetNull)
   references      GateDocumentReference[]
 
   @@index([gateOperationId])
-  @@index([productId])
+  @@index([inventoryId])
+  @@index([quantId])
+  @@index([locationId])
 }
 
 model GateVerification {
@@ -366,13 +365,19 @@ model GateVerificationProduct {
   id                 Int              @id @default(autoincrement())
   uuid               String           @unique @default(uuid())
   gateVerificationId Int
-  productId          Int
+  inventoryId        Int
   quantity           Float
+  quantId            Int?
+  locationId         Int?
   gateVerification   GateVerification @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
-  product            Product          @relation(fields: [productId], references: [id])
+  inventory          Inventory        @relation(fields: [inventoryId], references: [id])
+  quant              Quant?           @relation(fields: [quantId], references: [id], onDelete: SetNull)
+  location           Location?        @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@index([gateVerificationId])
-  @@index([productId])
+  @@index([inventoryId])
+  @@index([quantId])
+  @@index([locationId])
 }
 
 enum OrderStatus {
@@ -407,6 +412,7 @@ model DocumentReference {
   partnerName               String?
   purchaseName              String?
   origin                    String?
+  ref_fax                   String?                  @db.VarChar(255)
   sourceLocationName        String?
   destinationLocationName   String?
   scheduledDate             DateTime?
@@ -422,6 +428,7 @@ model DocumentReference {
   warehouse                 Warehouse                @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   items                     DocumentReferenceItem[]
   references                GateDocumentReference[]
+  gateOperations            GateOperation[]
 
   @@index([warehouseId])
   @@index([uuid])
@@ -432,7 +439,7 @@ model DocumentReferenceItem {
   id                  Int                      @id
   uuid                String                   @unique @default(uuid())
   documentReferenceId Int
-  productId           Int
+  inventoryId         Int
   productName         String
   uom                 String
   analyticAccountName String?
@@ -482,7 +489,7 @@ model GateDocumentReference {
   gateItemId         Int
   erpDocumentId      Int
   erpDocumentItemId  Int
-  productId          Int
+  inventoryId        Int
   assignedQuantity   Float
   createdAt          DateTime              @default(now())
   createdBy          String
@@ -496,7 +503,7 @@ model GateDocumentReference {
   @@index([gateItemId])
   @@index([erpDocumentId])
   @@index([erpDocumentItemId])
-  @@index([productId])
+  @@index([inventoryId])
 }
 
 enum StockOpnameStatus {
@@ -531,21 +538,20 @@ model StockOpnameItem {
   id              Int                  @id @default(autoincrement())
   uuid            String               @unique @default(uuid())
   stockOpnameId   Int
-  productId       Int
+  inventoryId     Int
   productSku      String
   productName     String
-  productCategory String?
   productUom      String?
   erpStock        Float
   realtimeStock   Float
   difference      Float?
 
   stockOpname     StockOpname          @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
-  product         Product              @relation(fields: [productId], references: [id])
+  inventory       Inventory            @relation(fields: [inventoryId], references: [id])
   stacks          StockOpnameStack[]
 
   @@index([stockOpnameId])
-  @@index([productId])
+  @@index([inventoryId])
 }
 
 model StockOpnameStack {
@@ -570,14 +576,14 @@ model DailyStockSnapshot {
   uuid           String    @unique @default(uuid())
   date           DateTime
   warehouseId    Int
-  productId      Int
+  inventoryId    Int
   closingStock   Float
 
   warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
-  product        Product   @relation(fields: [productId], references: [id])
+  inventory      Inventory @relation(fields: [inventoryId], references: [id])
 
-  @@unique([date, warehouseId, productId])
+  @@unique([date, warehouseId, inventoryId])
   @@index([date])
   @@index([warehouseId])
-  @@index([productId])
+  @@index([inventoryId])
 }

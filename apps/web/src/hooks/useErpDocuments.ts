@@ -12,6 +12,7 @@ export function useErpDocuments(query?: {
   state?: string;
   startDate?: string;
   endDate?: string;
+  refFax?: string;
 }) {
   const { activeWarehouse } = useAuthStore();
   const searchParams = new URLSearchParams();
@@ -23,6 +24,7 @@ export function useErpDocuments(query?: {
   if (query?.state) searchParams.append('state', query.state);
   if (query?.startDate) searchParams.append('startDate', query.startDate);
   if (query?.endDate) searchParams.append('endDate', query.endDate);
+  if (query?.refFax) searchParams.append('refFax', query.refFax);
 
   const queryString = searchParams.toString();
   const swrKey = activeWarehouse
@@ -118,5 +120,25 @@ export function useErpSyncStatus() {
     isLoading,
     error,
     refreshStatus: mutate,
+  };
+}
+
+export function useErpPartners() {
+  const { activeWarehouse } = useAuthStore();
+
+  const swrKey = activeWarehouse
+    ? `${API_ROUTES.erpDocumentReferences.partners}?warehouseUuid=${activeWarehouse.uuid}`
+    : null;
+
+  const { data, error, isLoading, mutate: refresh } = useSWR<string[]>(
+    swrKey,
+    () => api.get(API_ROUTES.erpDocumentReferences.partners).then((res) => res.data)
+  );
+
+  return {
+    partners: data || [],
+    error,
+    isLoading,
+    refresh,
   };
 }

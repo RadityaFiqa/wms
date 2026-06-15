@@ -9,7 +9,6 @@ export declare class ReconciliationController {
             uuid: string;
             sku: string;
             name: string;
-            category: string;
             uom: string;
         };
         erpStock: number;
@@ -23,7 +22,6 @@ export declare class ReconciliationController {
             uuid: string;
             sku: string;
             name: string;
-            category: string;
             uom: string;
         };
         erpStock: number;

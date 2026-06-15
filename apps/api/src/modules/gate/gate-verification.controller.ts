@@ -34,6 +34,7 @@ export class GateVerificationController {
     @Param('operationUuid') operationUuid: string,
     @Query('productId') productId?: string,
     @Query('gateItemId') gateItemId?: string,
+    @Query('search') search?: string,
   ) {
     if (!productId) {
       throw new BadRequestException('Parameter productId diperlukan.');
@@ -42,6 +43,7 @@ export class GateVerificationController {
       operationUuid,
       Number(productId),
       gateItemId ? Number(gateItemId) : undefined,
+      search,
     );
   }
 
@@ -79,6 +81,17 @@ export class GateVerificationController {
   ) {
     const userId = req.user?.id;
     return this.service.cancelGateVerification(operationUuid, userId);
+  }
+
+  @Post(':operationUuid/confirm')
+  @CheckPolicies((ability) => ability.can('create', 'GateVerification'))
+  @AuditLogAction('GATE_OPERATION_CONFIRM')
+  async confirm(
+    @Param('operationUuid') operationUuid: string,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id;
+    return this.service.confirmGateVerification(operationUuid, userId);
   }
 
   @Delete('references/:referenceUuid')

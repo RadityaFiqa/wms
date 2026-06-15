@@ -15,7 +15,6 @@ export class ReportsService {
       startDate: string;
       endDate: string;
       productId?: string;
-      category?: string;
     },
   ) {
     if (!query.startDate || !query.endDate) {
@@ -31,20 +30,19 @@ export class ReportsService {
       throw new BadRequestException('Start date tidak boleh setelah End date.');
     }
 
-    // 1. Get products matching filters
+    // 1. Get products (Inventory) matching filters
     const productWhere: any = {};
     if (query.productId) {
       productWhere.uuid = query.productId;
     }
-    if (query.category) {
-      productWhere.category = { contains: query.category, mode: 'insensitive' };
-    }
 
-    const products = await this.prisma.product.findMany({
+    const products = await this.prisma.inventory.findMany({
       where: productWhere,
       include: {
-        inventories: {
-          where: { warehouseId },
+        quants: {
+          where: {
+            location: { warehouseId },
+          },
         },
       },
     });
@@ -124,7 +122,8 @@ export class ReportsService {
     const backwardDates = this.generateDatesList(start, today).reverse();
 
     for (const prod of products) {
-      const erpStock = prod.inventories[0]?.quantity || 0;
+      // erpStock is sum of quants
+      const erpStock = prod.quants.reduce((sum, q) => sum + q.quantity, 0);
       
       // We will trace the stock level backward from today's current stock
       let currentStockTracker = erpStock;
@@ -133,7 +132,7 @@ export class ReportsService {
       const transactionsByDate = new Map<string, { incoming: number; outgoing: number }>();
       
       // Populate ERP transactions
-      for (const item of erpItems.filter((i) => i.productId === prod.id)) {
+      for (const item of erpItems.filter((i) => i.inventoryId === prod.id)) {
         const dateStr = this.formatDateString(item.documentReference.dateDone!);
         const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
         if (item.documentReference.pickingTypeCode === 'incoming') {
@@ -147,7 +146,7 @@ export class ReportsService {
       // Populate unreconciled gate operations
       for (const op of unreconciledGateOps) {
         const dateStr = this.formatDateString(op.verification!.verifiedAt!);
-        const opProd = op.products.find((p) => p.productId === prod.id);
+        const opProd = op.products.find((p) => p.inventoryId === prod.id);
         if (opProd) {
           const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
           if (op.cardType === 'IN') {
@@ -169,7 +168,7 @@ export class ReportsService {
         const txs = transactionsByDate.get(dStr) || { incoming: 0, outgoing: 0 };
 
         let closing = 0;
-        const snap = snapshots.find((s) => s.productId === prod.id && this.formatDateString(s.date) === dStr);
+        const snap = snapshots.find((s) => s.inventoryId === prod.id && this.formatDateString(s.date) === dStr);
 
         if (dStr === todayStr) {
           closing = currentStockTracker;
@@ -183,7 +182,7 @@ export class ReportsService {
             data: {
               date: dDate,
               warehouseId,
-              productId: prod.id,
+              inventoryId: prod.id,
               closingStock: closing,
             },
           }).catch((err) => {
@@ -219,7 +218,6 @@ export class ReportsService {
             uuid: prod.uuid,
             sku: prod.sku,
             name: prod.name,
-            category: prod.category,
             uom: prod.uom || 'Unit',
           },
           openingStock: metrics.opening,
@@ -248,11 +246,11 @@ export class ReportsService {
       productUuid: string;
     },
   ) {
-    const product = await this.prisma.product.findUnique({
+    const inventory = await this.prisma.inventory.findUnique({
       where: { uuid: query.productUuid },
     });
 
-    if (!product) {
+    if (!inventory) {
       throw new NotFoundException('Produk tidak ditemukan.');
     }
 
@@ -265,7 +263,7 @@ export class ReportsService {
     // 1. Fetch ERP receipts and deliveries for this product on this day
     const erpItems = await this.prisma.documentReferenceItem.findMany({
       where: {
-        productId: product.id,
+        inventoryId: inventory.id,
         documentReference: {
           warehouseId,
           state: 'done',
@@ -302,14 +300,14 @@ export class ReportsService {
         },
         products: {
           some: {
-            productId: product.id,
+            inventoryId: inventory.id,
           },
         },
       },
       include: {
         products: {
           where: {
-            productId: product.id,
+            inventoryId: inventory.id,
           },
         },
         verification: {
@@ -355,9 +353,9 @@ export class ReportsService {
 
     return {
       product: {
-        sku: product.sku,
-        name: product.name,
-        uom: product.uom || 'Unit',
+        sku: inventory.sku,
+        name: inventory.name,
+        uom: inventory.uom || 'Unit',
       },
       date: query.date,
       incoming: incomingTransactions,
@@ -397,7 +395,6 @@ export class ReportsService {
       startDate: string;
       endDate: string;
       productId?: string;
-      category?: string;
     },
   ): Promise<Buffer> {
     const warehouse = await this.prisma.warehouse.findUnique({
@@ -477,18 +474,17 @@ export class ReportsService {
       startDate: string;
       endDate: string;
       productId?: string;
-      category?: string;
     },
   ): Promise<string> {
     const rows = await this.getDailyStockMovementReport(warehouseId, query);
 
     // CSV Header
     let csv = '\ufeff'; // Add UTF-8 BOM so Excel opens it with correct encoding
-    csv += 'Tanggal,SKU,Nama Produk,Kategori,UOM,Stok Awal,Masuk (Incoming),Keluar (Outgoing),Stok Akhir\n';
+    csv += 'Tanggal,SKU,Nama Produk,UOM,Stok Awal,Masuk (Incoming),Keluar (Outgoing),Stok Akhir\n';
 
     for (const r of rows) {
       const sanitizedName = r.product.name.replace(/"/g, '""');
-      csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.category},${r.product.uom},${r.openingStock},${r.incoming},${r.outgoing},${r.closingStock}\n`;
+      csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.uom},${r.openingStock},${r.incoming},${r.outgoing},${r.closingStock}\n`;
     }
 
     return csv;

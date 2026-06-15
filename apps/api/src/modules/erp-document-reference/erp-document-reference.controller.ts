@@ -38,6 +38,7 @@ export class ErpDocumentReferenceController {
     @Query('state') state?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('refFax') refFax?: string,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
@@ -51,7 +52,18 @@ export class ErpDocumentReferenceController {
       state,
       startDate,
       endDate,
+      refFax,
     });
+  }
+
+  @Get('partners')
+  @CheckPolicies((ability) => ability.can('read', 'Inventory'))
+  async findUniquePartners() {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+    }
+    return this.service.findUniquePartners(warehouseId);
   }
 
   @Get(':uuid')

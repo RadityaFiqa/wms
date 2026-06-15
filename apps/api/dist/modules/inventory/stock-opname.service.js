@@ -180,10 +180,9 @@ let StockOpnameService = class StockOpnameService {
             })),
             items: op.items.map((item) => ({
                 uuid: item.uuid,
-                productId: item.productId,
+                productId: item.inventoryId,
                 productSku: item.productSku,
                 productName: item.productName,
-                productCategory: item.productCategory,
                 productUom: item.productUom,
                 erpStock: item.erpStock,
                 realtimeStock: item.realtimeStock,
@@ -201,7 +200,7 @@ let StockOpnameService = class StockOpnameService {
     }
     async createStockOpname(warehouseId, createdById, notes) {
         const reconList = await this.reconciliationService.getReconciliationList(warehouseId);
-        const products = await this.prisma.product.findMany({
+        const products = await this.prisma.inventory.findMany({
             include: {
                 quants: {
                     where: {
@@ -233,10 +232,9 @@ let StockOpnameService = class StockOpnameService {
                 const item = await tx.stockOpnameItem.create({
                     data: {
                         stockOpnameId: stockOpname.id,
-                        productId: prod.id,
+                        inventoryId: prod.id,
                         productSku: prod.sku,
                         productName: prod.name,
-                        productCategory: prod.category,
                         productUom: prod.uom || 'Unit',
                         erpStock: recon.erpStock,
                         realtimeStock: recon.expectedStock,

@@ -15,20 +15,48 @@ import {
   Save,
   Loader2,
   Boxes,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
+import CreatableSelect from 'react-select/creatable';
+import { globalSelectStyles } from '@/lib/react-select';
+import { useErpPartners } from '@/hooks/useErpDocuments';
 import { AttachmentUploader } from '@/components/AttachmentUploader';
-import { ProductSelector } from '@/components/ProductSelector';
+import { AddCargoItemDrawer } from '@/components/AddCargoItemDrawer';
+import { DocumentReferenceSelector } from '@/components/DocumentReferenceSelector';
 
 export default function CreateGateOperationPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Products section collapsible state (default collapsed/closed)
-  const [isProductsExpanded, setIsProductsExpanded] = useState(false);
+  // Drawer open state and edit state
+  const [isAddCargoOpen, setIsAddCargoOpen] = useState(false);
+  const [editIndex, setEditIndex] = useState<number | null>(null);
 
   const { createGateOperation } = useGate();
+  const { partners: erpPartners, isLoading: isLoadingPartners } = useErpPartners();
+
+  const [historySuggestions, setHistorySuggestions] = useState<{ licensePlate: string; driverName: string; driverPhone: string }[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const handlePartnerChange = async (partnerName: string | null) => {
+    setValue('clientPartner', partnerName);
+    if (!partnerName) {
+      setHistorySuggestions([]);
+      return;
+    }
+    
+    setIsLoadingHistory(true);
+    try {
+      const { api } = await import('@/lib/axios');
+      const res = await api.get(`/gate-operations/client-history`, {
+        params: { clientPartner: partnerName }
+      });
+      setHistorySuggestions(res.data || []);
+    } catch (err) {
+      console.error('Failed to load client history:', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   const {
     register,
@@ -41,15 +69,18 @@ export default function CreateGateOperationPage() {
     resolver: zodResolver(CreateGateOperationSchema),
     defaultValues: {
       cardType: 'IN',
+      documentReferenceId: null as number | null,
       driverName: '',
       licensePlate: '',
+      clientPartner: null as string | null,
+      driverPhone: '',
       notes: '',
       attachmentPaths: [] as string[],
-      products: [] as { productId: number; quantity: number }[],
+      products: [] as { productId: number; quantity: number; quantId?: number | null; locationId?: number | null }[],
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, update } = useFieldArray({
     control,
     name: 'products',
   });
@@ -57,36 +88,132 @@ export default function CreateGateOperationPage() {
   const watchCardType = watch('cardType');
   const watchAttachmentPaths = watch('attachmentPaths');
 
-  // Local state for adding products step-by-step
-  const [tempProduct, setTempProduct] = useState<{ id: number; name: string; sku: string; uom?: string } | null>(null);
-  const [tempQuantity, setTempQuantity] = useState<number>(1);
-  const [productDetailsMap, setProductDetailsMap] = useState<Record<number, { name: string; sku: string; uom?: string }>>({});
+  const [productDetailsMap, setProductDetailsMap] = useState<Record<string, { name: string; sku: string; uom?: string; uuid?: string; quantLabel?: string | null; locLabel?: string | null }>>({});
 
-  const handleAddItem = () => {
-    if (!tempProduct) {
-      toast.error('Silakan pilih produk terlebih dahulu.');
+  const handleDocRefChange = async (docRef: any) => {
+    if (!docRef) {
+      setValue('documentReferenceId', null);
+      setValue('products', []);
+      setProductDetailsMap({});
       return;
     }
-    if (tempQuantity <= 0 || isNaN(tempQuantity)) {
-      toast.error('Jumlah kuantitas harus lebih besar dari 0.');
+
+    setValue('documentReferenceId', docRef.id);
+
+    if (docRef.driver) {
+      setValue('driverName', docRef.driver);
+    }
+    if (docRef.plateNumber) {
+      setValue('licensePlate', docRef.plateNumber);
+    }
+    if (docRef.partnerName) {
+      setValue('clientPartner', docRef.partnerName);
+      handlePartnerChange(docRef.partnerName);
+    }
+
+    const toastId = toast.loading('Memuat item barang dari dokumen referensi ERP...');
+    try {
+      const { api } = await import('@/lib/axios');
+      const res = await api.get(`/erp-document-references/${docRef.uuid}`);
+      const fullDoc = res.data;
+      if (fullDoc && fullDoc.items && fullDoc.items.length > 0) {
+        const newProducts = fullDoc.items.map((item: any) => ({
+          productId: item.inventoryId,
+          quantity: item.quantity,
+          quantId: null,
+          locationId: null,
+        }));
+
+        setValue('products', newProducts);
+
+        const newMap: Record<string, any> = {};
+        fullDoc.items.forEach((item: any) => {
+          const itemKey = `${item.inventoryId}-null-null`;
+          newMap[itemKey] = {
+            name: item.inventoryName || item.productName || '-',
+            sku: item.inventorySku || '-',
+            uom: item.inventoryUom || item.uom || '-',
+            uuid: item.inventoryUuid,
+            quantLabel: null,
+            locLabel: null,
+          };
+        });
+
+        setProductDetailsMap(newMap);
+        toast.success(`Berhasil memuat ${fullDoc.items.length} item barang dari dokumen ERP.`, { id: toastId });
+      } else {
+        toast.error('Dokumen ERP tidak memiliki item barang.', { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error('Gagal mengambil item barang dari dokumen ERP.', { id: toastId });
+    }
+  };
+
+  const handleAddCargo = (data: {
+    productId: number;
+    quantity: number;
+    quantId?: number | null;
+    locationId?: number | null;
+    productData: any;
+  }) => {
+    if (editIndex !== null) {
+      update(editIndex, {
+        productId: data.productId,
+        quantity: data.quantity,
+        quantId: data.quantId || null,
+        locationId: data.locationId || null,
+      });
+
+      const itemKey = `${data.productId}-${data.quantId || 'null'}-${data.locationId || 'null'}`;
+      setProductDetailsMap((prev) => ({
+        ...prev,
+        [itemKey]: {
+          name: data.productData.name,
+          sku: data.productData.sku,
+          uom: data.productData.uom,
+          uuid: data.productData.uuid,
+          quantLabel: data.productData.quantLabel,
+          locLabel: data.productData.locLabel,
+        },
+      }));
+
+      toast.success('Pilihan lokasi dan tumpukan berhasil disimpan.');
+      setEditIndex(null);
       return;
     }
-    
-    // Check if already added
-    const isAlreadyAdded = fields.some((f) => f.productId === tempProduct.id);
+
+    const isAlreadyAdded = fields.some(
+      (f) =>
+        f.productId === data.productId &&
+        (f as any).quantId === (data.quantId || null) &&
+        (f as any).locationId === (data.locationId || null)
+    );
     if (isAlreadyAdded) {
-      toast.error('Produk tersebut sudah ada dalam daftar. Silakan hapus produk yang sudah ada jika ingin mengganti kuantitasnya.');
+      toast.error('Barang dengan tumpukan dan lokasi yang sama sudah ada dalam daftar.');
       return;
     }
 
-    append({ productId: tempProduct.id, quantity: tempQuantity });
+    const itemKey = `${data.productId}-${data.quantId || 'null'}-${data.locationId || 'null'}`;
+
+    append({
+      productId: data.productId,
+      quantity: data.quantity,
+      quantId: data.quantId || null,
+      locationId: data.locationId || null,
+    });
+
     setProductDetailsMap((prev) => ({
       ...prev,
-      [tempProduct.id]: tempProduct,
+      [itemKey]: {
+        name: data.productData.name,
+        sku: data.productData.sku,
+        uom: data.productData.uom,
+        uuid: data.productData.uuid,
+        quantLabel: data.productData.quantLabel,
+        locLabel: data.productData.locLabel,
+      },
     }));
 
-    setTempProduct(null);
-    setTempQuantity(1);
     toast.success('Barang ditambahkan ke daftar.');
   };
 
@@ -94,20 +221,36 @@ export default function CreateGateOperationPage() {
     setIsSubmitting(true);
     const toastId = toast.loading('Menyimpan data gerbang...');
     try {
-      // Clean products if toggle/section is not expanded
       const payload = {
         ...data,
-        products: isProductsExpanded ? data.products.filter((p: any) => p.productId > 0) : [],
+        products: data.products.filter((p: any) => p.productId > 0),
       };
-      await createGateOperation(payload);
+      const result = await createGateOperation(payload);
       toast.success('Data kendaraan masuk/keluar berhasil dicatat.', { id: toastId });
-      router.push('/gate-operations');
+      router.push(`/gate-operations/${result.uuid}`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Gagal menyimpan data.', { id: toastId });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const editData = editIndex !== null ? {
+    productId: fields[editIndex].productId,
+    quantity: fields[editIndex].quantity,
+    locationId: (fields[editIndex] as any).locationId,
+    quantId: (fields[editIndex] as any).quantId,
+    ...(() => {
+      const itemKey = `${fields[editIndex].productId}-${(fields[editIndex] as any).quantId || 'null'}-${(fields[editIndex] as any).locationId || 'null'}`;
+      const details = productDetailsMap[itemKey];
+      return {
+        name: details?.name || '',
+        sku: details?.sku || '',
+        uom: details?.uom || 'Unit',
+        uuid: details?.uuid,
+      };
+    })()
+  } : null;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -190,10 +333,71 @@ export default function CreateGateOperationPage() {
               </div>
             </div>
 
+            {/* Dokumen Referensi Autocomplete Selector */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Dokumen Referensi ERP (Opsional)
+              </label>
+              <Controller
+                control={control}
+                name="documentReferenceId"
+                render={({ field }) => (
+                  <DocumentReferenceSelector
+                    value={field.value ?? null}
+                    cardType={watchCardType as 'IN' | 'OUT'}
+                    onChange={handleDocRefChange}
+                    error={errors.documentReferenceId?.message}
+                  />
+                )}
+              />
+            </div>
+
+            {/* Client Partner Searchable/Creatable Select */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Client Partner / Vendor / Customer (Opsional)
+              </label>
+              <Controller
+                control={control}
+                name="clientPartner"
+                render={({ field }) => {
+                  const partnerOptions = (erpPartners || []).map((p) => ({ value: p, label: p }));
+                  const currentValue = field.value ? { value: field.value, label: field.value } : null;
+
+                  return (
+                    <CreatableSelect
+                      isClearable
+                      placeholder="Pilih atau ketik nama partner..."
+                      value={currentValue}
+                      onChange={(opt: any) => {
+                        const val = opt ? opt.value : null;
+                        field.onChange(val);
+                        handlePartnerChange(val);
+                      }}
+                      onCreateOption={(inputValue) => {
+                        field.onChange(inputValue);
+                        handlePartnerChange(inputValue);
+                      }}
+                      options={partnerOptions}
+                      isLoading={isLoadingPartners}
+                      formatCreateLabel={(inputValue) => `Tambah partner "${inputValue}"`}
+                      noOptionsMessage={() => "Ketik nama partner baru atau pilih dari daftar"}
+                      styles={globalSelectStyles}
+                      className="text-sm"
+                      classNamePrefix="react-select"
+                    />
+                  );
+                }}
+              />
+              {errors.clientPartner && (
+                <p className="text-xs text-red-500 mt-1">{(errors.clientPartner as any).message}</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Plat Nomor Kendaraan (Wajib)
+                  Nomor Kendaraan (Wajib)
                 </label>
                 <input
                   type="text"
@@ -220,6 +424,47 @@ export default function CreateGateOperationPage() {
                   <p className="text-xs text-red-500 mt-1">{errors.driverName.message}</p>
                 )}
               </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  No. Telp Driver (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Masukkan nomor telepon driver"
+                  {...register('driverPhone')}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-semibold"
+                />
+                {errors.driverPhone && (
+                  <p className="text-xs text-red-500 mt-1">{(errors.driverPhone as any).message}</p>
+                )}
+              </div>
+
+              {historySuggestions.length > 0 && (
+                <div className="col-span-1 sm:col-span-2">
+                  <label className="block text-xs font-bold text-blue-600 mb-2">
+                    💡 Pilih Saran Driver & Kendaraan Terakhir untuk Partner Ini:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {historySuggestions.map((sug, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setValue('driverName', sug.driverName);
+                          setValue('licensePlate', sug.licensePlate);
+                          setValue('driverPhone', sug.driverPhone || '');
+                          toast.success(`Mengisi driver: ${sug.driverName}`);
+                        }}
+                        className="text-xs bg-slate-50 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 text-slate-700 border border-slate-200 p-2.5 rounded-xl font-medium transition cursor-pointer flex flex-col items-start gap-1 shrink-0"
+                      >
+                        <span className="font-bold">{sug.driverName}</span>
+                        <span className="text-[10px] text-slate-500 font-mono font-bold">Plat: {sug.licensePlate} {sug.driverPhone ? `• Tlp: ${sug.driverPhone}` : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -238,14 +483,9 @@ export default function CreateGateOperationPage() {
             </div>
           </div>
         </div>
-
-        {/* Collapsible Commodities Section */}
+        {/* Commodities Section */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-          <button
-            type="button"
-            onClick={() => setIsProductsExpanded(!isProductsExpanded)}
-            className="w-full flex items-center justify-between border-b border-slate-100 pb-4 text-left cursor-pointer"
-          >
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
             <div>
               <h3 className="text-lg font-bold text-slate-800 flex items-center">
                 <Boxes className="h-5 w-5 mr-2 text-blue-600" />
@@ -256,117 +496,102 @@ export default function CreateGateOperationPage() {
               </p>
             </div>
             
-            <div className="flex items-center space-x-2 text-slate-500 hover:text-slate-800 transition">
-              <span className="text-xs font-semibold">
-                {isProductsExpanded ? 'Sembunyikan' : 'Tampilkan & Input Barang'}
-              </span>
-              {isProductsExpanded ? (
-                <ChevronUp className="h-5 w-5 shrink-0" />
-              ) : (
-                <ChevronDown className="h-5 w-5 shrink-0" />
-              )}
-            </div>
-          </button>
+            <button
+              type="button"
+              onClick={() => setIsAddCargoOpen(true)}
+              className="inline-flex items-center bg-blue-600 hover:bg-blue-550 text-white font-bold px-4 py-2 rounded-lg text-xs shadow-sm active:scale-[0.98] transition cursor-pointer"
+            >
+              <Plus className="h-4 w-4 mr-1.5 shrink-0" />
+              Tambah Barang Muatan
+            </button>
+          </div>
 
-          {isProductsExpanded && (
-            <div className="space-y-6 animate-fade-in">
-              {/* Product Add Selector Input Area */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tambah Barang Baru</h4>
-                <div className="flex flex-col sm:flex-row gap-4 items-end">
-                  <div className="flex-1 w-full">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                      Pilih Produk
-                    </label>
-                    <ProductSelector
-                      value={tempProduct?.id || 0}
-                      onChange={(id, productData) => {
-                        if (productData) {
-                          setTempProduct({
-                            id: productData.id,
-                            name: productData.name,
-                            sku: productData.sku,
-                            uom: productData.uom,
-                          });
-                        } else {
-                          setTempProduct(null);
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="w-full sm:w-36">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                      Jumlah (Qty)
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0.01"
-                      value={tempQuantity}
-                      onChange={(e) => setTempQuantity(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-right font-bold"
-                      placeholder="Kuantitas"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddItem}
-                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-550 text-white font-bold px-4 py-2 rounded-lg text-sm transition flex items-center justify-center shrink-0 h-[38px] cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4 mr-1.5" />
-                    Tambah
-                  </button>
-                </div>
-              </div>
-
-              {/* Already Added Items Table */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      <th className="px-4 py-3">Nama Produk</th>
-                      <th className="px-4 py-3 text-right">Kuantitas</th>
-                      <th className="px-4 py-3 text-center">Aksi</th>
+          <div className="space-y-6">
+            {/* Already Added Items Table */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="px-4 py-3">Nama Produk</th>
+                    <th className="px-4 py-3 text-right">Kuantitas</th>
+                    <th className="px-4 py-3 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-105 text-xs text-slate-755">
+                  {fields.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">
+                        Belum ada barang yang ditambahkan. Silakan klik "Tambah Barang Muatan" di atas.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {fields.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">
-                          Belum ada barang yang ditambahkan. Silakan pilih dan tambah barang di atas.
-                        </td>
-                      </tr>
-                    ) : (
-                      fields.map((field, index) => {
-                        const productInfo = productDetailsMap[field.productId] || { name: 'Memuat...', sku: '...' };
-                        return (
-                          <tr key={field.id} className="hover:bg-slate-50/30 transition">
-                            <td className="px-4 py-3">
-                              <div className="font-bold text-slate-800">{productInfo.name}</div>
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">SKU: {productInfo.sku}</div>
-                            </td>
-                            <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
-                              {field.quantity} {productInfo.uom || 'Unit'}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => remove(index)}
-                                className="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer"
-                                title="Hapus Barang"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  ) : (
+                    fields.map((field, index) => {
+                      const itemKey = `${field.productId}-${(field as any).quantId || 'null'}-${(field as any).locationId || 'null'}`;
+                      const productInfo = productDetailsMap[itemKey] || { name: '-', sku: '-', uom: '-' };
+                      return (
+                        <tr key={field.id} className="hover:bg-slate-50/30 transition">
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-slate-800">{productInfo.name}</div>
+                            <div className="flex flex-wrap gap-2 items-center mt-1">
+                              <span className="text-[10px] text-slate-400 font-mono">SKU: {productInfo.sku}</span>
+                              {(!productInfo.locLabel || !productInfo.quantLabel) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditIndex(index);
+                                    setIsAddCargoOpen(true);
+                                  }}
+                                  className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer text-[10px] font-bold"
+                                >
+                                  ⚠️ Pilih Lokasi & Tumpukan
+                                </button>
+                              ) : (
+                                <>
+                                  {productInfo.locLabel && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                                      📍 {productInfo.locLabel}
+                                    </span>
+                                  )}
+                                  {productInfo.quantLabel && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                      📦 Tumpukan: {productInfo.quantLabel}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditIndex(index);
+                                      setIsAddCargoOpen(true);
+                                    }}
+                                    className="text-[10px] text-blue-600 hover:underline font-bold ml-1 cursor-pointer"
+                                  >
+                                    Ubah
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
+                            {field.quantity} {productInfo.uom || 'Unit'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => remove(index)}
+                              className="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer"
+                              title="Hapus Barang"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Action Footer */}
@@ -399,6 +624,17 @@ export default function CreateGateOperationPage() {
           </button>
         </div>
       </form>
+
+      <AddCargoItemDrawer
+        isOpen={isAddCargoOpen}
+        onClose={() => {
+          setIsAddCargoOpen(false);
+          setEditIndex(null);
+        }}
+        cardType={watchCardType as 'IN' | 'OUT'}
+        onAdd={handleAddCargo}
+        editData={editData}
+      />
     </div>
   );
 }

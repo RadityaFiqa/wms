@@ -32,7 +32,7 @@ services:
       - postgres
       - redis
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-wms}?schema=public
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgresdb}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-wms}?schema=public
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio}

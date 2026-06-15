@@ -34,12 +34,10 @@ export declare class InventoryController {
         uuid: string;
         id: number;
         name: string;
+        warehouseId: number;
         createdAt: Date;
         updatedAt: Date;
-        description: string | null;
         sku: string;
-        category: string;
-        price: number;
         uom: string | null;
     }[]>;
     getSyncStatus(): Promise<{
@@ -50,16 +48,23 @@ export declare class InventoryController {
         lastSyncCount: number | null;
     }>;
     exportPdf(res: any, search?: string): Promise<void>;
+    findAllLocations(): Promise<{
+        uuid: string;
+        id: number;
+        warehouseId: number;
+        createdAt: Date;
+        updatedAt: Date;
+        displayName: string;
+    }[]>;
     findDetail(uuid: string): Promise<{
         product: {
             uuid: string;
             sku: string;
             name: string;
             uom: string;
-            description: string | null;
-            category: string;
         };
         locations: {
+            locationId: number;
             locationUuid: string;
             locationDisplayName: string;
             quants: any[];

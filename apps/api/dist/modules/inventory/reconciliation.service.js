@@ -19,9 +19,12 @@ let ReconciliationService = class ReconciliationService {
     }
     async getReconciliationList(warehouseId) {
         const inventories = await this.prisma.inventory.findMany({
-            where: { warehouseId },
             include: {
-                product: true,
+                quants: {
+                    where: {
+                        location: { warehouseId },
+                    },
+                },
             },
         });
         const activeGateOperations = await this.prisma.gateOperation.findMany({
@@ -54,67 +57,43 @@ let ReconciliationService = class ReconciliationService {
         for (const op of pendingOps) {
             const isOut = op.cardType === 'OUT';
             for (const opProd of op.products) {
-                const prodId = opProd.productId;
-                const current = pendingQuantitiesMap.get(prodId) || { incoming: 0, outgoing: 0 };
+                const invId = opProd.inventoryId;
+                const current = pendingQuantitiesMap.get(invId) || { incoming: 0, outgoing: 0 };
                 if (isOut) {
                     current.outgoing += opProd.quantity;
                 }
                 else {
                     current.incoming += opProd.quantity;
                 }
-                pendingQuantitiesMap.set(prodId, current);
+                pendingQuantitiesMap.set(invId, current);
             }
         }
         const reconciliationRows = inventories.map((inv) => {
-            const prod = inv.product;
-            const pending = pendingQuantitiesMap.get(prod.id) || { incoming: 0, outgoing: 0 };
+            const pending = pendingQuantitiesMap.get(inv.id) || { incoming: 0, outgoing: 0 };
+            const erpStock = inv.quants.reduce((sum, q) => sum + q.quantity, 0);
             const pendingGateQty = pending.outgoing - pending.incoming;
-            const expectedStock = inv.quantity - pendingGateQty;
+            const expectedStock = erpStock - pendingGateQty;
             return {
                 product: {
-                    uuid: prod.uuid,
-                    sku: prod.sku,
-                    name: prod.name,
-                    category: prod.category,
-                    uom: prod.uom || 'Unit',
+                    uuid: inv.uuid,
+                    sku: inv.sku,
+                    name: inv.name,
+                    uom: inv.uom || 'Unit',
                 },
-                erpStock: inv.quantity,
+                erpStock,
                 pendingGateQty,
                 pendingIncoming: pending.incoming,
                 pendingOutgoing: pending.outgoing,
                 expectedStock,
             };
         });
-        const inventoryProductIds = new Set(inventories.map((i) => i.productId));
-        const allProducts = await this.prisma.product.findMany();
-        for (const [prodId, pending] of pendingQuantitiesMap.entries()) {
-            if (!inventoryProductIds.has(prodId)) {
-                const prod = allProducts.find((p) => p.id === prodId);
-                if (prod) {
-                    const pendingGateQty = pending.outgoing - pending.incoming;
-                    const expectedStock = 0 - pendingGateQty;
-                    reconciliationRows.push({
-                        product: {
-                            uuid: prod.uuid,
-                            sku: prod.sku,
-                            name: prod.name,
-                            category: prod.category,
-                            uom: prod.uom || 'Unit',
-                        },
-                        erpStock: 0,
-                        pendingGateQty,
-                        pendingIncoming: pending.incoming,
-                        pendingOutgoing: pending.outgoing,
-                        expectedStock,
-                    });
-                }
-            }
-        }
-        return reconciliationRows.sort((a, b) => a.product.name.localeCompare(b.product.name));
+        return reconciliationRows
+            .filter((row) => row.erpStock > 0 || row.pendingIncoming > 0 || row.pendingOutgoing > 0)
+            .sort((a, b) => a.product.name.localeCompare(b.product.name));
     }
-    async getReconciliationDetail(warehouseId, productUuid) {
-        const product = await this.prisma.product.findUnique({
-            where: { uuid: productUuid },
+    async getReconciliationDetail(warehouseId, inventoryUuid) {
+        const inventory = await this.prisma.inventory.findUnique({
+            where: { uuid: inventoryUuid },
             include: {
                 quants: {
                     where: {
@@ -126,18 +105,13 @@ let ReconciliationService = class ReconciliationService {
                         location: true,
                     },
                 },
-                inventories: {
-                    where: {
-                        warehouseId,
-                    },
-                },
             },
         });
-        if (!product) {
+        if (!inventory) {
             throw new common_1.NotFoundException('Produk tidak ditemukan.');
         }
-        const erpStock = product.inventories[0]?.quantity || 0;
-        const erpStockSource = product.quants.map((q) => ({
+        const erpStock = inventory.quants.reduce((sum, q) => sum + q.quantity, 0);
+        const erpStockSource = inventory.quants.map((q) => ({
             locationName: q.location.displayName,
             lotName: q.lotName || '-',
             quantity: q.quantity,
@@ -152,14 +126,14 @@ let ReconciliationService = class ReconciliationService {
                 },
                 products: {
                     some: {
-                        productId: product.id,
+                        inventoryId: inventory.id,
                     },
                 },
             },
             include: {
                 products: {
                     where: {
-                        productId: product.id,
+                        inventoryId: inventory.id,
                     },
                 },
                 verification: {
@@ -202,11 +176,10 @@ let ReconciliationService = class ReconciliationService {
         const expectedStock = erpStock - pendingGateQty;
         return {
             product: {
-                uuid: product.uuid,
-                sku: product.sku,
-                name: product.name,
-                category: product.category,
-                uom: product.uom || 'Unit',
+                uuid: inventory.uuid,
+                sku: inventory.sku,
+                name: inventory.name,
+                uom: inventory.uom || 'Unit',
             },
             erpStock,
             erpStockSource,

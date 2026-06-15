@@ -20,7 +20,40 @@ import {
   CheckCircle2,
   Lock,
   Image as ImageIcon,
+  Printer,
+  Download,
 } from 'lucide-react';
+import { api } from '@/lib/axios';
+import { toast } from 'sonner';
+
+const getProductDetails = (item: any) => {
+  if (!item) return { sku: '-', name: '-', uom: '-' };
+
+  const sku = item.sku || item.inventory?.sku || item.product?.sku;
+  const name = item.name || item.inventory?.name || item.product?.name;
+  const uom = item.uom || item.inventory?.uom || item.product?.uom;
+
+  if (!sku || !name || !uom) {
+    console.warn('Warning: Product details mapping failed or incomplete for item:', item);
+  }
+
+  return {
+    sku: sku || '-',
+    name: name || '-',
+    uom: uom || '-',
+  };
+};
+
+const parseLocationName = (displayName: string) => {
+  if (!displayName || displayName === '-') return { location: '-', stack: '-' };
+  const parts = displayName.split('/').map((p) => p.trim());
+  if (parts.length > 1) {
+    const stack = parts[parts.length - 1];
+    const location = parts.slice(0, parts.length - 1).join(' / ');
+    return { location, stack };
+  }
+  return { location: displayName, stack: '-' };
+};
 
 export default function GateOperationDetailPage() {
   const router = useRouter();
@@ -31,6 +64,55 @@ export default function GateOperationDetailPage() {
 
   const { gateOperation, isLoading, error } = useGateOperationDetail(uuid);
   const { hasPermission } = useAuthStore();
+
+  const [isPrintingPdf, setIsPrintingPdf] = useState(false);
+  const [isOpeningPreview, setIsOpeningPreview] = useState(false);
+
+  const handlePrintSuratJalan = async () => {
+    if (!gateOperation) return;
+    setIsPrintingPdf(true);
+    const toastId = toast.loading('Membuat PDF Surat Jalan...');
+    try {
+      const response = await api.get(`/gate-operations/${uuid}/delivery-order`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Surat-Jalan-${gateOperation.opNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('PDF Surat Jalan berhasil diunduh.', { id: toastId });
+    } catch (err) {
+      toast.error('Gagal mengunduh PDF Surat Jalan.', { id: toastId });
+    } finally {
+      setIsPrintingPdf(false);
+    }
+  };
+
+  const handlePrintPreview = async () => {
+    if (!gateOperation) return;
+    setIsOpeningPreview(true);
+    const toastId = toast.loading('Membuka Print Preview...');
+    try {
+      const response = await api.get(`/gate-operations/${uuid}/delivery-order-preview`);
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(response.data);
+        printWindow.document.close();
+        toast.success('Print Preview dibuka.', { id: toastId });
+      } else {
+        toast.error('Pop-up terblokir oleh browser.', { id: toastId });
+      }
+    } catch (err) {
+      toast.error('Gagal memuat Print Preview.', { id: toastId });
+    } finally {
+      setIsOpeningPreview(false);
+    }
+  };
 
   const getStatusDisplay = (status: string) => {
     switch (status) {
@@ -124,6 +206,24 @@ export default function GateOperationDetailPage() {
         <div className="flex items-center gap-2">
           {getStatusDisplay(gateOperation.status)}
           
+          <button
+            onClick={handlePrintPreview}
+            disabled={isOpeningPreview}
+            className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 border border-slate-200 rounded-lg text-sm transition cursor-pointer disabled:opacity-50"
+          >
+            <Printer className="h-4 w-4 mr-1.5" />
+            Print Surat Jalan
+          </button>
+
+          <button
+            onClick={handlePrintSuratJalan}
+            disabled={isPrintingPdf}
+            className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 border border-slate-200 rounded-lg text-sm transition cursor-pointer disabled:opacity-50"
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Unduh PDF
+          </button>
+          
           {(gateOperation.status === 'PENDING' || gateOperation.status === 'PARTIAL') && hasPermission('create', 'GateVerification') && (
             <Link
               href={`/gate-verification/${gateOperation.uuid}`}
@@ -148,7 +248,7 @@ export default function GateOperationDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               {gateOperation.attachments.map((attach: any, idx: number) => (
                 <div key={idx} className="space-y-2 group cursor-pointer" onClick={() => setSelectedZoomImage(attach.url)}>
-                  <div className="w-full h-[150px] bg-slate-100 border border-slate-200 rounded-lg overflow-hidden relative group-hover:opacity-90 transition">
+                  <div className="w-full h-[150px] bg-slate-105 border border-slate-200 rounded-lg overflow-hidden relative group-hover:opacity-90 transition">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={attach.url}
@@ -180,7 +280,7 @@ export default function GateOperationDetailPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-xs">
             <div>
-              <p className="font-bold text-slate-400 uppercase tracking-wider">No Gate</p>
+              <p className="font-bold text-slate-400 uppercase tracking-wider">No Gate Operation</p>
               <p className="text-sm font-semibold text-slate-800 mt-1 font-mono">{gateOperation.opNumber}</p>
             </div>
 
@@ -207,7 +307,14 @@ export default function GateOperationDetailPage() {
             </div>
 
             <div>
-              <p className="font-bold text-slate-400 uppercase tracking-wider">Waktu Pencatatan (Created At)</p>
+              <p className="font-bold text-slate-400 uppercase tracking-wider">No. Telp Driver</p>
+              <p className="text-sm font-semibold text-slate-705 mt-1">
+                {gateOperation.driverPhone || '-'}
+              </p>
+            </div>
+
+            <div>
+              <p className="font-bold text-slate-400 uppercase tracking-wider">Date</p>
               <p className="text-sm font-semibold text-slate-700 mt-1 flex items-center">
                 <Calendar className="h-4 w-4 text-slate-400 mr-1.5" />
                 {new Date(gateOperation.createdAt).toLocaleString('id-ID', {
@@ -221,6 +328,26 @@ export default function GateOperationDetailPage() {
               <p className="font-bold text-slate-400 uppercase tracking-wider">Reporter</p>
               <p className="text-sm font-semibold text-slate-700 mt-1">
                 {gateOperation.createdByUser?.name} ({gateOperation.createdByUser?.email})
+              </p>
+            </div>
+
+            <div>
+              <p className="font-bold text-slate-400 uppercase tracking-wider">Dokumen Referensi ERP</p>
+              <div className="mt-1">
+                {gateOperation.documentReference ? (
+                  <span className="text-blue-700 font-bold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded text-[11px] font-mono">
+                    {gateOperation.documentReference.documentNumber}
+                  </span>
+                ) : (
+                  <span className="text-sm text-slate-500 font-medium">-</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="font-bold text-slate-400 uppercase tracking-wider">Partner / Tujuan</p>
+              <p className="text-sm font-bold text-slate-800 mt-1">
+                {gateOperation.clientPartner || gateOperation.documentReference?.partnerName || '-'}
               </p>
             </div>
           </div>
@@ -278,23 +405,63 @@ export default function GateOperationDetailPage() {
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                  <th className="px-4 py-3">Produk</th>
-                  <th className="px-4 py-3 text-right">Quantity</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                  <th className="px-4 py-3">Nama Produk</th>
+                  <th className="px-4 py-3">SKU</th>
+                  <th className="px-4 py-3 text-center">UOM</th>
+                  <th className="px-4 py-3 text-right">Requested Qty</th>
+                  <th className="px-4 py-3 text-right">Assigned Qty</th>
+                  <th className="px-4 py-3">Location</th>
+                  <th className="px-4 py-3">Stack</th>
+                  <th className="px-4 py-3">Lot Number</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-                {gateOperation.products.map((p: any) => (
-                  <tr key={p.uuid} className="hover:bg-slate-50/20 transition">
-                    <td className="px-4 py-3 font-semibold text-slate-800">
-                      <div>{p.product.name}</div>
-                      <div className="text-xs text-slate-400 font-mono mt-0.5">SKU: {p.product.sku}</div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-900">
-                      {p.quantity} {p.product.uom || 'Unit'}
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                {gateOperation?.products?.map((p: any) => {
+                  const productDetails = getProductDetails(p);
+                  const locationName = p?.location?.displayName || p?.locationDisplayName || '-';
+                  const { location: parentLocation, stack } = parseLocationName(locationName);
+                  const lotName = p?.quant?.lotName || p?.lotName || '-';
+
+                  // Calculate requested quantity from document reference
+                  const docItem = gateOperation.documentReference?.items?.find((item: any) => item.inventoryId === p.inventoryId);
+                  const requestedQty = docItem ? docItem.quantity.toLocaleString('id-ID') : '-';
+
+                  return (
+                    <tr key={p.uuid} className="hover:bg-slate-50/20 transition-all duration-200">
+                      <td className="px-4 py-4 font-bold text-slate-800">
+                        {productDetails.name}
+                      </td>
+                      <td className="px-4 py-4 font-mono text-[11px] text-slate-500">
+                        {productDetails.sku}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-slate-600">
+                        {productDetails.uom || '-'}
+                      </td>
+                      <td className="px-4 py-4 text-right font-semibold text-slate-500">
+                        {requestedQty}
+                      </td>
+                      <td className="px-4 py-4 text-right font-black text-slate-900">
+                        {p?.quantity?.toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-blue-700 font-bold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded text-[10px]">
+                          {parentLocation}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded text-[10px]">
+                          {stack}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-amber-700 font-mono font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[10px]">
+                          {lotName}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -394,6 +561,98 @@ export default function GateOperationDetailPage() {
           </div>
         );
       })()}
+
+      {/* Riwayat Realisasi Dokumen ERP Card */}
+      {gateOperation.documentHistory && (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center">
+              <FileText className="h-5 w-5 mr-2 text-indigo-500 shrink-0" />
+              Riwayat Realisasi Dokumen ERP
+            </h3>
+            <p className="text-slate-400 text-xs mt-0.5">
+              Daftar tiket gerbang yang menggunakan dokumen referensi ERP ({gateOperation.documentReference?.documentNumber}) yang sama.
+            </p>
+          </div>
+
+          {/* Other Operations List */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiket Terkait</h4>
+            {gateOperation.documentHistory.otherOperations && gateOperation.documentHistory.otherOperations.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {gateOperation.documentHistory.otherOperations.map((op: any, index: number) => (
+                  <Link
+                    key={index}
+                    href={`/gate-operations/${op.uuid}`}
+                    className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 rounded-xl transition group"
+                  >
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-slate-800 font-mono group-hover:text-blue-700 transition">
+                        {op.opNumber}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        Driver: {op.driverName} • {op.licensePlate}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getStatusDisplay(op.status)}
+                      <ExternalLink className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition shrink-0" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic">Tidak ada tiket terkait lainnya.</p>
+            )}
+          </div>
+
+          {/* Realization Summary Per Product */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ringkasan Kuantitas Dokumen ERP</h4>
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-505 text-[10px] font-bold uppercase tracking-wider">
+                    <th className="px-4 py-3">Nama Produk</th>
+                    <th className="px-4 py-3">SKU</th>
+                    <th className="px-4 py-3 text-center">UOM</th>
+                    <th className="px-4 py-3 text-right">Kuantitas ERP</th>
+                    <th className="px-4 py-3 text-right">Total Realisasi</th>
+                    <th className="px-4 py-3 text-right">Kuantitas Sisa</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                  {gateOperation.documentHistory.summary?.map((item: any, idx: number) => {
+                    const getBadgeClass = (status: string) => {
+                      switch (status) {
+                        case 'COMPLETED': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        case 'PARTIAL': return 'bg-blue-50 text-blue-700 border-blue-200';
+                        default: return 'bg-amber-50 text-amber-700 border-amber-200';
+                      }
+                    };
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/20 transition-all duration-150">
+                        <td className="px-4 py-3.5 font-bold text-slate-800">{item.productName}</td>
+                        <td className="px-4 py-3.5 font-mono text-[11px] text-slate-500">{item.sku}</td>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-650">{item.uom}</td>
+                        <td className="px-4 py-3.5 text-right font-semibold text-slate-500">{item.erpQty.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 text-right font-bold text-slate-800">{item.realizedQty.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 text-right font-black text-slate-900">{item.remainingQty.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getBadgeClass(item.status)}`}>
+                            {item.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedZoomImage && (
         <div 

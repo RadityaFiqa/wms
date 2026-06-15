@@ -1,3 +1,4 @@
+import type { Response } from 'express';
 import type { CreateGateOperationInput } from '@bulog-wms/schema';
 import { GateService } from './gate.service';
 export declare class GateOperationController {
@@ -11,15 +12,29 @@ export declare class GateOperationController {
         totalPages: number;
         items: any[];
     }>;
+    getClientHistory(clientPartner: string, req: any): Promise<{
+        licensePlate: string;
+        driverName: string;
+        driverPhone: string;
+    }[]>;
     addCargoItem(uuid: string, req: any, body: {
         productId: number;
         quantity: number;
         notes?: string;
+        quantId?: number;
+        locationId?: number;
     }): Promise<any>;
-    deleteCargoItem(productUuid: string, req: any): Promise<{
+    updateCargoItem(cargoUuid: string, req: any, body: {
+        quantId?: number | null;
+        locationId?: number | null;
+        quantity?: number;
+    }): Promise<any>;
+    deleteCargoItem(cargoUuid: string, req: any): Promise<{
         success: boolean;
         message: string;
         deletedItem: any;
     }>;
+    getDeliveryOrderPdf(id: string, res: Response): Promise<void>;
+    getDeliveryOrderPreview(id: string, res: Response): Promise<void>;
     findOne(uuid: string): Promise<any>;
 }

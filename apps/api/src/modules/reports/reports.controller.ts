@@ -22,7 +22,6 @@ export class ReportsController {
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
     @Query('productId') productId?: string,
-    @Query('category') category?: string,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
@@ -32,7 +31,6 @@ export class ReportsController {
       startDate,
       endDate,
       productId,
-      category,
     });
   }
 
@@ -58,7 +56,6 @@ export class ReportsController {
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
     @Query('productId') productId: string,
-    @Query('category') category: string,
     @Res() res: any,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
@@ -70,7 +67,6 @@ export class ReportsController {
       startDate,
       endDate,
       productId,
-      category,
     });
 
     res.set({
@@ -88,7 +84,6 @@ export class ReportsController {
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
     @Query('productId') productId: string,
-    @Query('category') category: string,
     @Res() res: any,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
@@ -100,7 +95,6 @@ export class ReportsController {
       startDate,
       endDate,
       productId,
-      category,
     });
 
     res.set({

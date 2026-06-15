@@ -205,10 +205,9 @@ export class StockOpnameService {
       })),
       items: op.items.map((item) => ({
         uuid: item.uuid,
-        productId: item.productId,
+        productId: item.inventoryId,
         productSku: item.productSku,
         productName: item.productName,
-        productCategory: item.productCategory,
         productUom: item.productUom,
         erpStock: item.erpStock,
         realtimeStock: item.realtimeStock,
@@ -233,7 +232,7 @@ export class StockOpnameService {
     const reconList = await this.reconciliationService.getReconciliationList(warehouseId);
 
     // 2. Fetch all products current quants per location in this warehouse
-    const products = await this.prisma.product.findMany({
+    const products = await this.prisma.inventory.findMany({
       include: {
         quants: {
           where: {
@@ -272,10 +271,9 @@ export class StockOpnameService {
         const item = await tx.stockOpnameItem.create({
           data: {
             stockOpnameId: stockOpname.id,
-            productId: prod.id,
+            inventoryId: prod.id,
             productSku: prod.sku,
             productName: prod.name,
-            productCategory: prod.category,
             productUom: prod.uom || 'Unit',
             erpStock: recon.erpStock,
             realtimeStock: recon.expectedStock,

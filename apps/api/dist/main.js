@@ -23,6 +23,7 @@ async function bootstrap() {
         whitelist: true,
         transform: true,
     }));
+    app.setGlobalPrefix('api');
     const config = new swagger_1.DocumentBuilder()
         .setTitle('WMS API')
         .setDescription('Warehouse Management System API')
@@ -30,7 +31,7 @@ async function bootstrap() {
         .addBearerAuth()
         .build();
     const document = swagger_1.SwaggerModule.createDocument(app, config);
-    swagger_1.SwaggerModule.setup('api/docs', app, document);
+    swagger_1.SwaggerModule.setup('docs', app, document);
     const port = process.env.PORT || 3000;
     await app.listen(port);
     console.log(`Application is running on: http://localhost:${port}`);

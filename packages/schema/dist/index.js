@@ -66,6 +66,8 @@ exports.VerificationStatusEnum = zod_1.z.enum(['PENDING', 'PARTIAL', 'COMPLETED'
 exports.GateOperationProductSchema = zod_1.z.object({
     productId: zod_1.z.number().int('ID Produk harus berupa angka'),
     quantity: zod_1.z.number().positive('Quantity harus lebih besar dari 0'),
+    quantId: zod_1.z.number().int().optional().nullable(),
+    locationId: zod_1.z.number().int().optional().nullable(),
 });
 exports.CreateGateOperationSchema = zod_1.z.object({
     cardType: exports.CardTypeEnum,
@@ -74,6 +76,9 @@ exports.CreateGateOperationSchema = zod_1.z.object({
     notes: zod_1.z.string().min(1, 'Keterangan/catatan wajib diisi'),
     attachmentPaths: zod_1.z.array(zod_1.z.string()).optional().default([]),
     products: zod_1.z.array(exports.GateOperationProductSchema).optional().default([]),
+    documentReferenceId: zod_1.z.number().int().optional().nullable(),
+    clientPartner: zod_1.z.string().optional().nullable(),
+    driverPhone: zod_1.z.string().optional().nullable(),
 });
 exports.CreateGateVerificationSchema = zod_1.z.object({
     status: exports.VerificationStatusEnum,
@@ -82,9 +87,12 @@ exports.CreateGateVerificationSchema = zod_1.z.object({
     products: zod_1.z.array(zod_1.z.object({
         productId: zod_1.z.number().int(),
         quantity: zod_1.z.number().nonnegative('Quantity tidak boleh negatif'),
+        quantId: zod_1.z.number().int().optional().nullable(),
+        locationId: zod_1.z.number().int().optional().nullable(),
     })).optional().default([]),
     poReferences: zod_1.z.array(zod_1.z.string()).optional().default([]),
     soReferences: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    documentReferenceId: zod_1.z.number().int().optional().nullable(),
 });
 exports.AssignReferencesSchema = zod_1.z.object({
     gateItemId: zod_1.z.number().int(),
@@ -99,6 +107,7 @@ exports.ErpDocumentReferenceQuerySchema = zod_1.z.object({
     limit: zod_1.z.number().int().positive().optional(),
     type: zod_1.z.enum(['IN', 'OUT']).optional(),
     state: zod_1.z.string().optional(),
+    refFax: zod_1.z.string().optional(),
 });
 // Warehouse CRUD Schemas
 exports.CreateWarehouseSchema = zod_1.z.object({

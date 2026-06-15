@@ -28,6 +28,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     })[]>;
     findActiveAccounts(): Promise<({
         warehouse: {
@@ -53,6 +54,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     })[]>;
     findByUuid(uuid: string): Promise<({
         warehouse: {
@@ -79,6 +81,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     }) | null>;
     findByWarehouseId(warehouseId: number): Promise<{
         uuid: string;
@@ -100,6 +103,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     } | null>;
     findById(id: number): Promise<({
         warehouse: {
@@ -125,6 +129,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     }) | null>;
     create(data: Prisma.OdooAccountUncheckedCreateInput): Promise<{
         warehouse: {
@@ -150,6 +155,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     }>;
     update(uuid: string, data: Prisma.OdooAccountUpdateInput): Promise<{
         warehouse: {
@@ -175,6 +181,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     }>;
     updateSessionData(id: number, sessionDetails: {
         sessionId: string | null;
@@ -202,6 +209,7 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     }>;
     delete(uuid: string): Promise<{
         uuid: string;
@@ -223,5 +231,6 @@ export declare class OdooRepository {
         lastSyncCount: number | null;
         lastSyncError: string | null;
         lastSyncStatus: string | null;
+        lastOffset: number;
     }>;
 }

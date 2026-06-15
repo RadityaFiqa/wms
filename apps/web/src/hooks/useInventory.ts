@@ -86,6 +86,19 @@ export function useInventorySyncStatus() {
   };
 }
 
+export function useWarehouseLocations() {
+  const { data, error, isLoading } = useSWR(
+    `${API_ROUTES.inventory.list}/locations`,
+    (url) => api.get(url).then((res) => res.data)
+  );
+
+  return {
+    locations: (data || []) as { id: number; uuid: string; displayName: string }[],
+    error,
+    isLoading,
+  };
+}
+
 export function useProducts(query?: { search?: string }) {
   const queryString = query?.search ? `?search=${encodeURIComponent(query.search)}` : '';
   const { data, error, isLoading, mutate } = useSWR(

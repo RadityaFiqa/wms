@@ -28,7 +28,7 @@ let ReportsController = class ReportsController {
         this.service = service;
         this.warehouseContext = warehouseContext;
     }
-    async getReport(startDate, endDate, productId, category) {
+    async getReport(startDate, endDate, productId) {
         const warehouseId = this.warehouseContext.getWarehouseId();
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
@@ -37,7 +37,6 @@ let ReportsController = class ReportsController {
             startDate,
             endDate,
             productId,
-            category,
         });
     }
     async getDetail(date, productUuid) {
@@ -50,7 +49,7 @@ let ReportsController = class ReportsController {
             productUuid,
         });
     }
-    async exportPdf(startDate, endDate, productId, category, res) {
+    async exportPdf(startDate, endDate, productId, res) {
         const warehouseId = this.warehouseContext.getWarehouseId();
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
@@ -59,7 +58,6 @@ let ReportsController = class ReportsController {
             startDate,
             endDate,
             productId,
-            category,
         });
         res.set({
             'Content-Type': 'application/pdf',
@@ -68,7 +66,7 @@ let ReportsController = class ReportsController {
         });
         res.end(pdfBuffer);
     }
-    async exportCsv(startDate, endDate, productId, category, res) {
+    async exportCsv(startDate, endDate, productId, res) {
         const warehouseId = this.warehouseContext.getWarehouseId();
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
@@ -77,7 +75,6 @@ let ReportsController = class ReportsController {
             startDate,
             endDate,
             productId,
-            category,
         });
         res.set({
             'Content-Type': 'text/csv; charset=utf-8',
@@ -93,9 +90,8 @@ __decorate([
     __param(0, (0, common_1.Query)('startDate')),
     __param(1, (0, common_1.Query)('endDate')),
     __param(2, (0, common_1.Query)('productId')),
-    __param(3, (0, common_1.Query)('category')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], ReportsController.prototype, "getReport", null);
 __decorate([
@@ -113,10 +109,9 @@ __decorate([
     __param(0, (0, common_1.Query)('startDate')),
     __param(1, (0, common_1.Query)('endDate')),
     __param(2, (0, common_1.Query)('productId')),
-    __param(3, (0, common_1.Query)('category')),
-    __param(4, (0, common_1.Res)()),
+    __param(3, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Object]),
+    __metadata("design:paramtypes", [String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], ReportsController.prototype, "exportPdf", null);
 __decorate([
@@ -125,10 +120,9 @@ __decorate([
     __param(0, (0, common_1.Query)('startDate')),
     __param(1, (0, common_1.Query)('endDate')),
     __param(2, (0, common_1.Query)('productId')),
-    __param(3, (0, common_1.Query)('category')),
-    __param(4, (0, common_1.Res)()),
+    __param(3, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Object]),
+    __metadata("design:paramtypes", [String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], ReportsController.prototype, "exportCsv", null);
 exports.ReportsController = ReportsController = __decorate([

@@ -64,7 +64,6 @@ export declare class StockOpnameService {
             productId: number;
             productSku: string;
             productName: string;
-            productCategory: string | null;
             productUom: string | null;
             erpStock: number;
             realtimeStock: number;

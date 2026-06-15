@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import { useProducts } from '@/hooks/useInventory';
 import { useDebounce } from '@/hooks/useDebounce';
+import { globalSelectStyles } from '@/lib/react-select';
 
 interface ProductSelectorProps {
   value: number;
@@ -65,41 +66,7 @@ export function ProductSelector({ value, onChange, error }: ProductSelectorProps
         noOptionsMessage={() => (isLoading ? 'Memuat...' : 'Produk tidak ditemukan')}
         className="text-sm"
         classNamePrefix="react-select"
-        styles={{
-          control: (base) => ({
-            ...base,
-            backgroundColor: '#f8fafc',
-            borderColor: '#e2e8f0',
-            borderRadius: '0.5rem',
-            padding: '2px',
-            fontSize: '0.875rem',
-            fontWeight: '600',
-            color: '#0f172a',
-            '&:hover': {
-              borderColor: '#3b82f6',
-            },
-          }),
-          option: (base, state) => ({
-            ...base,
-            color: '#1e293b',
-            backgroundColor: state.isSelected ? '#e2e8f0' : state.isFocused ? '#f1f5f9' : '#ffffff',
-            fontSize: '0.875rem',
-            fontWeight: '550',
-            cursor: 'pointer',
-            '&:active': {
-              backgroundColor: '#cbd5e1',
-            },
-          }),
-          singleValue: (base) => ({
-            ...base,
-            color: '#0f172a',
-          }),
-          noOptionsMessage: (base) => ({
-            ...base,
-            color: '#64748b',
-            fontSize: '0.875rem',
-          }),
-        }}
+        styles={globalSelectStyles}
       />
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>

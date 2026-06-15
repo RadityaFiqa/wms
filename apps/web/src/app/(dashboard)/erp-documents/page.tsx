@@ -42,10 +42,15 @@ export default function ErpDocumentsPage() {
   const state = searchParams.get('state') || '';
   const startDate = searchParams.get('startDate') || '';
   const endDate = searchParams.get('endDate') || '';
+  const refFax = searchParams.get('refFax') || '';
 
   // Local state for search input (to debounce)
   const [searchInput, setSearchInput] = useState(search);
   const debouncedSearch = useDebounce(searchInput, 400);
+
+  // Local state for refFax input (to debounce)
+  const [refFaxInput, setRefFaxInput] = useState(refFax);
+  const debouncedRefFax = useDebounce(refFaxInput, 400);
 
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -61,10 +66,27 @@ export default function ErpDocumentsPage() {
     router.push(`${pathname}?${params.toString()}`);
   }, [debouncedSearch]);
 
+  // Sync debounced refFax to URL
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (debouncedRefFax) {
+      params.set('refFax', debouncedRefFax);
+    } else {
+      params.delete('refFax');
+    }
+    params.set('page', '1');
+    router.push(`${pathname}?${params.toString()}`);
+  }, [debouncedRefFax]);
+
   // Sync initial URL search param to searchInput
   useEffect(() => {
     setSearchInput(search);
   }, [search]);
+
+  // Sync initial URL refFax param to refFaxInput
+  useEffect(() => {
+    setRefFaxInput(refFax);
+  }, [refFax]);
 
   const { syncStatus, refreshStatus } = useErpSyncStatus();
   const [lastHandledStatus, setLastHandledStatus] = useState<string | null>(null);
@@ -78,6 +100,7 @@ export default function ErpDocumentsPage() {
     state: state || undefined,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
+    refFax: refFax || undefined,
   });
 
   const isSyncActive = isSyncing || syncStatus?.status === 'RUNNING' || syncStatus?.status === 'PENDING';
@@ -316,7 +339,7 @@ export default function ErpDocumentsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Search Input */}
-          <div className="md:col-span-2">
+          <div>
             <label className="block text-xs font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider mb-1.5">
               Cari Nomor Dokumen
             </label>
@@ -327,6 +350,23 @@ export default function ErpDocumentsPage() {
                 placeholder="Contoh: WH/IN/0001..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-850 transition"
+              />
+            </div>
+          </div>
+
+          {/* Reference Fax Input */}
+          <div>
+            <label className="block text-xs font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+              Cari Reference Fax
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search Reference Fax"
+                value={refFaxInput}
+                onChange={(e) => setRefFaxInput(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-850 transition"
               />
             </div>
@@ -428,12 +468,13 @@ export default function ErpDocumentsPage() {
           <table className="w-full text-left border-collapse table-layout-fixed min-w-[1000px]">
             <thead className="bg-slate-50/95 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800">
               <tr className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[16%]">No. Dokumen</th>
-                <th className="px-6 py-4 text-center w-[10%]">Tipe</th>
-                <th className="px-6 py-4 text-center w-[12%]">Status</th>
-                <th className="px-6 py-4 w-[18%]">Mitra / Partner</th>
-                <th className="px-6 py-4 w-[14%]">Ref PO/SO</th>
-                <th className="px-6 py-4 text-right w-[10%]">Total Qty</th>
+                <th className="px-6 py-4 w-[14%]">No. Dokumen</th>
+                <th className="px-6 py-4 text-center w-[8%]">Tipe</th>
+                <th className="px-6 py-4 text-center w-[10%]">Status</th>
+                <th className="px-6 py-4 w-[16%]">Mitra / Partner</th>
+                <th className="px-6 py-4 w-[12%]">Ref PO/SO</th>
+                <th className="px-6 py-4 w-[12%]">Reference Fax</th>
+                <th className="px-6 py-4 text-right w-[8%]">Total Qty</th>
                 <th className="px-6 py-4 text-center w-[10%]">Tgl Jadwal</th>
                 <th className="px-6 py-4 text-center w-[10%]">Aksi</th>
               </tr>
@@ -454,7 +495,7 @@ export default function ErpDocumentsPage() {
                 ))
               ) : !documentsData?.data || documentsData.data.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold">
+                  <td colSpan={9} className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold">
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <FolderOpen className="h-12 w-12 text-slate-300 dark:text-slate-700" />
                       <span>Tidak ada data dokumen ERP ditemukan. Silakan klik "Sync ERP Documents".</span>
@@ -580,15 +621,18 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
             {getStatusText(doc.state)}
           </span>
         </td>
-        <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[200px]" title={doc.partnerName || ''}>
+        <td className="px-6 py-4 font-semibold text-slate-750 dark:text-slate-300 truncate max-w-[200px]" title={doc.partnerName || ''}>
           {doc.partnerName || '-'}
         </td>
-        <td className="px-6 py-4 font-semibold text-slate-600 dark:text-slate-400 truncate font-mono">
+        <td className="px-6 py-4 font-semibold text-slate-605 dark:text-slate-400 truncate font-mono">
           {doc.purchaseName || doc.origin || '-'}
+        </td>
+        <td className="px-6 py-4 font-semibold text-slate-605 dark:text-slate-400 truncate font-mono">
+          {doc.ref_fax || '-'}
         </td>
         <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-slate-200">
           {doc.totalQuantity.toLocaleString('id-ID')}
-          <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 ml-1">
+          <span className="text-[10px] font-normal text-slate-400 dark:text-slate-505 ml-1">
             ({doc.totalItems} item)
           </span>
         </td>
@@ -620,7 +664,7 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
       {/* Expanded Row showing line items list */}
       {isExpanded && (
         <tr>
-          <td colSpan={8} className="bg-slate-50/40 dark:bg-slate-900/30 px-10 py-5 border-b border-slate-200 dark:border-slate-800">
+          <td colSpan={9} className="bg-slate-50/40 dark:bg-slate-900/30 px-10 py-5 border-b border-slate-200 dark:border-slate-800">
             <div className="space-y-3">
               <div className="text-[11px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider flex items-center space-x-1">
                 <span>Rincian Barang Muatan ({doc.documentNumber})</span>
@@ -645,7 +689,7 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
                       {doc.items.map((item: any) => (
-                        <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/20 transition">
+                        <tr key={item.uuid} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/20 transition">
                           <td className="px-5 py-3 font-semibold text-slate-800 dark:text-slate-200">
                             {item.productName}
                           </td>

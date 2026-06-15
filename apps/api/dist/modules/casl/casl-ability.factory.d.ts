@@ -7,7 +7,6 @@ type ExtendedSubjects = Subjects<{
     Role: Role;
     Permission: Permission;
     Warehouse: any;
-    Product: any;
     Inventory: any;
     Order: any;
     OrderItem: any;

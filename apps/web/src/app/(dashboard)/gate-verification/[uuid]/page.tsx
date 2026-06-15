@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateGateVerificationSchema } from '@bulog-wms/schema';
 import { useGate, useGateOperationDetail, useAvailableReferences } from '@/hooks/useGate';
 import { useAuthStore } from '@/store/auth';
+import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import {
   ShieldCheck,
@@ -32,8 +34,49 @@ import {
   Search,
 } from 'lucide-react';
 import { AttachmentUploader } from '@/components/AttachmentUploader';
-import { ProductSelector } from '@/components/ProductSelector';
+import { AddCargoItemDrawer } from '@/components/AddCargoItemDrawer';
 import { ERPReferenceSelector } from '@/components/ERPReferenceSelector';
+import { DocumentReferenceSelector } from '@/components/DocumentReferenceSelector';
+
+const getProductDetails = (item: any) => {
+  if (!item) return { sku: '-', name: '-', uom: '-' };
+
+  const sku = item.sku || item.inventory?.sku || item.product?.sku;
+  const name = item.name || item.inventory?.name || item.product?.name;
+  const uom = item.uom || item.inventory?.uom || item.product?.uom;
+
+  if (!sku || !name || !uom) {
+    console.warn('Warning: Product details mapping failed or incomplete for item:', item);
+  }
+
+  return {
+    sku: sku || '-',
+    name: name || '-',
+    uom: uom || '-',
+  };
+};
+
+const getRealizationStatusBadge = (realized: number, original: number) => {
+  if (realized === 0) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider font-sans leading-none">
+        Belum Realisasi
+      </span>
+    );
+  }
+  if (realized < original) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider font-sans leading-none">
+        Sebagian ({Math.round((realized / original) * 100)}%)
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider font-sans leading-none">
+      Penuh (100%)
+    </span>
+  );
+};
 
 export default function GateVerificationDetailPage() {
   const router = useRouter();
@@ -49,11 +92,30 @@ export default function GateVerificationDetailPage() {
   } | null>(null);
   const [selectedZoomImage, setSelectedZoomImage] = useState<string | null>(null);
   const [isAddCargoOpen, setIsAddCargoOpen] = useState(false);
+  const [editingCargoItem, setEditingCargoItem] = useState<any>(null);
 
   const { gateOperation, isLoading: detailLoading, refresh: refreshDetail } = useGateOperationDetail(uuid);
-  const { verifyGateOperation, cancelGateVerification, unassignReference, addCargoItem, deleteCargoItem } = useGate();
+  const { verifyGateOperation, cancelGateVerification, confirmGateVerification, unassignReference, addCargoItem, deleteCargoItem, updateCargoItem } = useGate();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'WAREHOUSE_ADMIN';
+  const isReadOnly = gateOperation?.status === 'VERIFIED' || gateOperation?.status === 'CANCELED';
+
+  const handleConfirmVerification = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin mengonfirmasi verifikasi ini? Stok quant akan dipotong dan status akan dikunci.')) {
+      return;
+    }
+    setIsSubmitting(true);
+    const toastId = toast.loading('Mengonfirmasi verifikasi...');
+    try {
+      await confirmGateVerification(uuid);
+      toast.success('Verifikasi berhasil dikonfirmasi dan stok telah dipotong!', { id: toastId });
+      refreshDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal mengonfirmasi verifikasi.', { id: toastId });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleUnassignReference = async (referenceUuid: string, docNumber: string) => {
     if (!window.confirm(`Apakah Anda yakin ingin melepas referensi ${docNumber} dari barang ini?`)) {
@@ -119,9 +181,10 @@ export default function GateVerificationDetailPage() {
       status: 'PENDING' as any,
       notes: '',
       attachmentPaths: [] as string[],
-      products: [] as { productId: number; quantity: number }[],
+      products: [] as { productId: number; quantity: number; quantId?: number | null; locationId?: number | null }[],
       poReferences: [] as string[],
       soReferences: [] as string[],
+      documentReferenceId: null as number | null,
     },
   });
 
@@ -171,10 +234,16 @@ export default function GateVerificationDetailPage() {
     if (gateOperation) {
       // Map products to verified quantities (sum of assignments), defaulting to 0
       const items = gateOperation.products?.map((gp: any) => {
-        const vp = gateOperation.verification?.products?.find((p: any) => p.productId === gp.productId);
+        const vp = gateOperation.verification?.products?.find(
+          (p: any) => p.productId === gp.productId && 
+                       (p.quantId || null) === (gp.quantId || null) && 
+                       (p.locationId || null) === (gp.locationId || null)
+        );
         return {
           productId: gp.productId,
           quantity: vp ? vp.quantity : 0,
+          quantId: gp.quantId || null,
+          locationId: gp.locationId || null,
         };
       }) || [];
 
@@ -182,8 +251,9 @@ export default function GateVerificationDetailPage() {
       const detailsCache: Record<number, any> = {};
       const sourceItems = gateOperation.products || [];
       sourceItems.forEach((item: any) => {
-        if (item.product) {
-          detailsCache[item.productId] = item.product;
+        const prod = item.product || item.inventory || item;
+        if (prod) {
+          detailsCache[item.productId] = prod;
         }
       });
       setProductDetailsMap(detailsCache);
@@ -195,6 +265,7 @@ export default function GateVerificationDetailPage() {
         products: items,
         poReferences: gateOperation.poReferences || [],
         soReferences: gateOperation.soReferences || [],
+        documentReferenceId: gateOperation.documentReferenceId || null,
       });
     }
   }, [gateOperation, reset]);
@@ -218,6 +289,8 @@ export default function GateVerificationDetailPage() {
     const cleanedProducts = (data.products || []).map((p: any) => ({
       productId: Number(p.productId),
       quantity: isNaN(Number(p.quantity)) || p.quantity === '' || p.quantity === null ? 0 : Number(p.quantity),
+      quantId: p.quantId || null,
+      locationId: p.locationId || null,
     }));
 
     const payload = {
@@ -368,7 +441,7 @@ export default function GateVerificationDetailPage() {
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 md:col-span-2 self-stretch">
           <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
             <ImageIcon className="h-5 w-5 mr-2 text-blue-600 shrink-0" />
-            Bukti Foto Satpam
+            Bukti Foto
           </h3>
 
           {gateOperation.attachments && gateOperation.attachments.length > 0 ? (
@@ -402,7 +475,7 @@ export default function GateVerificationDetailPage() {
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 md:col-span-2 self-stretch">
           <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
             <Truck className="h-5 w-5 mr-2 text-blue-600 shrink-0" />
-            Laporan Satpam (Gate In/Out)
+            Laporan (Gate In/Out)
           </h3>
 
           <div className="space-y-4 text-xs">
@@ -430,6 +503,21 @@ export default function GateVerificationDetailPage() {
                 </span>
               </div>
               <div>
+                <span className="font-bold text-slate-400 uppercase tracking-wider block">No. Telp Driver</span>
+                <span className="text-sm font-semibold text-slate-700 mt-1 block">
+                  {gateOperation.driverPhone || '-'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="font-bold text-slate-400 uppercase tracking-wider block">Client Partner</span>
+                <span className="text-sm font-bold text-slate-850 mt-1 block">
+                  {gateOperation.clientPartner || gateOperation.documentReference?.partnerName || '-'}
+                </span>
+              </div>
+              <div>
                 <span className="font-bold text-slate-400 uppercase tracking-wider block">Tanggal Masuk</span>
                 <span className="text-sm font-semibold text-slate-700 mt-1 block flex items-center">
                   <Calendar className="h-4 w-4 mr-1.5 text-slate-400" />
@@ -441,8 +529,42 @@ export default function GateVerificationDetailPage() {
               </div>
             </div>
 
+            <div className="border-t border-slate-100 pt-3">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Dokumen Referensi ERP (Editable)
+              </label>
+              <Controller
+                control={control}
+                name="documentReferenceId"
+                render={({ field }) => (
+                  <DocumentReferenceSelector
+                    value={field.value ?? null}
+                    cardType={gateOperation.cardType as 'IN' | 'OUT'}
+                    onChange={async (docRef: any) => {
+                      const newId = docRef ? docRef.id : null;
+                      field.onChange(newId);
+                      
+                      const toastId = toast.loading('Mengubah dokumen referensi ERP...');
+                      try {
+                        await verifyGateOperation(uuid, {
+                          status: watch('status'),
+                          notes: watch('notes'),
+                          documentReferenceId: newId,
+                        });
+                        toast.success('Dokumen referensi ERP berhasil diubah.', { id: toastId });
+                        refreshDetail();
+                      } catch (err: any) {
+                        toast.error(err.response?.data?.message || 'Gagal mengubah dokumen referensi.', { id: toastId });
+                      }
+                    }}
+                    disabled={isReadOnly}
+                  />
+                )}
+              />
+            </div>
+
             <div>
-              <span className="font-bold text-slate-400 uppercase tracking-wider block">Keterangan Satpam</span>
+              <span className="font-bold text-slate-400 uppercase tracking-wider block">Keterangan Reporter</span>
               <p className="text-slate-650 bg-slate-50 border border-slate-150 rounded-lg p-3 mt-1.5 italic leading-normal text-xs font-medium">
                 {gateOperation.notes || 'Tidak ada catatan.'}
               </p>
@@ -464,7 +586,7 @@ export default function GateVerificationDetailPage() {
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Langkah 1: Registrasi Gerbang</div>
               <div className="text-sm font-semibold text-slate-800 mt-1">Registrasi Kendaraan Selesai</div>
               <div className="text-xs text-slate-500 mt-1 flex items-center space-x-4">
-                <span>Oleh: <strong className="text-slate-700">{gateOperation.createdByUser?.name || 'Satpam'}</strong></span>
+                <span>Oleh: <strong className="text-slate-700">{gateOperation.createdByUser?.name || '-'}</strong></span>
                 <span>Waktu: <strong className="text-slate-700">{new Date(gateOperation.createdAt).toLocaleString('id-ID')}</strong></span>
               </div>
               {gateOperation.notes && (
@@ -516,7 +638,7 @@ export default function GateVerificationDetailPage() {
               <Boxes className="h-5 w-5 mr-2 text-indigo-500 shrink-0" />
               Barang Muatan
             </h3>
-            {isAdmin && (
+            {isAdmin && !isReadOnly && (
               <button
                 type="button"
                 onClick={() => setIsAddCargoOpen(true)}
@@ -535,7 +657,7 @@ export default function GateVerificationDetailPage() {
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-3">Nama Produk</th>
-                    <th className="px-4 py-3 text-right">Qty Awal (Satpam)</th>
+                    <th className="px-4 py-3 text-right">Qty Awal</th>
                     <th className="px-4 py-3 text-right">Qty Realisasi ERP</th>
                     <th className="px-4 py-3 text-center">Aksi</th>
                   </tr>
@@ -549,13 +671,70 @@ export default function GateVerificationDetailPage() {
                     </tr>
                   ) : (
                     fields.map((field, index) => {
-                      const productInfo = productDetailsMap[field.productId] || { name: 'Memuat...', sku: '...' };
-                      const originalItem = gateOperation.products?.find((gp: any) => gp.productId === field.productId);
+                      const fQuantId = (field as any).quantId || null;
+                      const fLocId = (field as any).locationId || null;
+                      
+                      const productInfo = productDetailsMap[field.productId];
+                      const productDetails = getProductDetails(productInfo);
+                      
+                      const originalItem = gateOperation.products?.find(
+                        (gp: any) => gp.productId === field.productId && 
+                                     (gp.quantId || null) === fQuantId && 
+                                     (gp.locationId || null) === fLocId
+                      );
+                      const originalDetails = getProductDetails(originalItem);
+                      const locLabel = originalItem?.location?.displayName || null;
+                      const quantLabel = originalItem?.quant?.lotName || null;
                       return (
                         <tr key={field.id} className="hover:bg-slate-50/30 transition">
                           <td className="px-4 py-3">
-                            <div className="font-bold text-slate-800">{productInfo.name}</div>
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">SKU: {productInfo.sku}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800">{productDetails.name}</span>
+                              {originalItem && getRealizationStatusBadge(field.quantity, originalItem.quantity)}
+                            </div>
+                            <div className="flex flex-wrap gap-2 items-center mt-1">
+                              <span className="text-[10px] text-slate-400 font-mono">SKU: {productDetails.sku}</span>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                UOM: {productDetails.uom}
+                              </span>
+                              {locLabel && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                                  📍 {locLabel}
+                                </span>
+                              )}
+                              {quantLabel && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                                  📦 Tumpukan: {quantLabel}
+                                </span>
+                              )}
+                              {originalItem && !isReadOnly && (
+                                <>
+                                  {(!locLabel || !quantLabel) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingCargoItem(originalItem);
+                                        setIsAddCargoOpen(true);
+                                      }}
+                                      className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer text-[10px] font-bold"
+                                    >
+                                      ⚠️ Pilih Lokasi & Tumpukan
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingCargoItem(originalItem);
+                                        setIsAddCargoOpen(true);
+                                      }}
+                                      className="inline-flex items-center px-2 py-0.5 rounded bg-slate-50 text-blue-700 border border-slate-200 hover:bg-slate-100 transition cursor-pointer text-[10px] font-bold"
+                                    >
+                                      Ubah Lokasi & Tumpukan
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                             
                             {/* Linked References list */}
                             {gateOperation.verification?.references
@@ -565,44 +744,48 @@ export default function GateVerificationDetailPage() {
                                   <Link2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                                   <span className="font-semibold font-mono text-slate-700">{ref.erpDocument?.documentNumber}</span>
                                   <span className="text-slate-300">|</span>
-                                  <span className="text-slate-600 font-bold">Qty: {ref.assignedQuantity} Unit</span>
+                                  <span className="text-slate-650 font-bold">Qty: {ref.assignedQuantity} Unit</span>
                                   <span className="flex-grow" />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUnassignReference(ref.uuid, ref.erpDocument?.documentNumber)}
-                                    className="text-red-650 hover:text-red-750 font-bold text-[10px] uppercase hover:underline ml-2"
-                                  >
-                                    Lepas
-                                  </button>
+                                  {!isReadOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnassignReference(ref.uuid, ref.erpDocument?.documentNumber)}
+                                      className="text-red-650 hover:text-red-750 font-bold text-[10px] uppercase hover:underline ml-2"
+                                    >
+                                      Lepas
+                                    </button>
+                                  )}
                                 </div>
                               ))
                             }
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-500">
-                            {originalItem ? `${originalItem.quantity.toLocaleString('id-ID')} ${originalItem.product?.uom || 'Unit'}` : '0 Unit'}
+                            {originalItem ? `${originalItem.quantity.toLocaleString('id-ID')} ${originalDetails.uom}` : `0 ${productDetails.uom}`}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
                               <span>{field.quantity.toLocaleString('id-ID')}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">{productInfo.uom || 'Unit'}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">{productDetails.uom}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedItemToAssign({
-                                  gateItemId: originalItem?.id || 0,
-                                  productId: field.productId,
-                                  productName: productInfo.name,
-                                  qtyGate: originalItem?.quantity || 0,
-                                })}
-                                className="inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
-                              >
-                                <Link2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-                                Assign Reference
-                              </button>
-                              {isAdmin && originalItem && (
+                              {!isReadOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedItemToAssign({
+                                    gateItemId: originalItem?.id || 0,
+                                    productId: field.productId,
+                                    productName: productDetails.name,
+                                    qtyGate: originalItem?.quantity || 0,
+                                  })}
+                                  className="inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                                >
+                                  <Link2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                                  Assign Reference
+                                </button>
+                              )}
+                              {isAdmin && !isReadOnly && originalItem && (
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteCargo(originalItem.uuid)}
@@ -641,7 +824,8 @@ export default function GateVerificationDetailPage() {
               rows={4}
               placeholder="Masukkan rincian hasil verifikasi fisik barang, plat nomor, driver, dan kesesuaian data..."
               {...register('notes')}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-medium"
+              disabled={isReadOnly}
+              className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-550 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
             />
             {errors.notes && (
               <p className="text-xs text-red-500 mt-1 font-semibold">{errors.notes.message}</p>
@@ -665,6 +849,7 @@ export default function GateVerificationDetailPage() {
                 onChange={field.onChange}
                 initialAttachments={gateOperation.verification?.attachments || []}
                 label="Unggah Dokumen Pendukung / Surat Jalan (Multiple)"
+                disabled={isReadOnly}
               />
             )}
           />
@@ -681,27 +866,135 @@ export default function GateVerificationDetailPage() {
             >
               Kembali
             </button>
-            <button
-              type="button"
-              onClick={handleCancelVerification}
-              disabled={isSubmitting}
-              className="border border-red-250 hover:bg-red-50 text-red-650 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center flex items-center justify-center"
-            >
-              <XCircle className="h-4.5 w-4.5 mr-1.5" />
-              Batalkan Verifikasi
-            </button>
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={handleCancelVerification}
+                disabled={isSubmitting}
+                className="bg-red-50 hover:bg-red-105 border border-red-200 text-red-700 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center flex items-center justify-center"
+              >
+                <XCircle className="h-4.5 w-4.5 mr-1.5" />
+                Batalkan Verifikasi
+              </button>
+            )}
           </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full sm:w-auto flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2.5 rounded-lg shadow-md hover:shadow-blue-500/10 active:scale-[0.98] transition text-sm cursor-pointer"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            Simpan Hasil Verifikasi
-          </button>
+          {!isReadOnly && (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2.5 rounded-lg shadow-md hover:shadow-blue-500/10 active:scale-[0.98] transition text-sm cursor-pointer"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Simpan Hasil Verifikasi
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmVerification}
+                disabled={isSubmitting}
+                className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-lg shadow-md hover:shadow-emerald-500/10 active:scale-[0.98] transition text-sm cursor-pointer"
+              >
+                <ShieldCheck className="h-4.5 w-4.5 mr-1.5" />
+                Konfirmasi (CONFIRM)
+              </button>
+            </div>
+          )}
         </div>
       </form>
+
+      {/* Riwayat Realisasi Dokumen ERP Card */}
+      {gateOperation.documentHistory && (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center">
+              <FileText className="h-5 w-5 mr-2 text-indigo-500 shrink-0" />
+              Riwayat Realisasi Dokumen ERP
+            </h3>
+            <p className="text-slate-400 text-xs mt-0.5">
+              Daftar tiket gerbang yang menggunakan dokumen referensi ERP ({gateOperation.documentReference?.documentNumber}) yang sama.
+            </p>
+          </div>
+
+          {/* Other Operations List */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiket Terkait</h4>
+            {gateOperation.documentHistory.otherOperations && gateOperation.documentHistory.otherOperations.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {gateOperation.documentHistory.otherOperations.map((op: any, index: number) => (
+                  <Link
+                    key={index}
+                    href={`/gate-verification/${op.uuid}`}
+                    className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 rounded-xl transition group"
+                  >
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-slate-800 font-mono group-hover:text-blue-700 transition">
+                        {op.opNumber}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        Driver: {op.driverName} • {op.licensePlate}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(op.status)}
+                      <ExternalLink className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition shrink-0" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-555 italic">Tidak ada tiket terkait lainnya.</p>
+            )}
+          </div>
+
+          {/* Realization Summary Per Product */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ringkasan Kuantitas Dokumen ERP</h4>
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-505 text-[10px] font-bold uppercase tracking-wider">
+                    <th className="px-4 py-3">Nama Produk</th>
+                    <th className="px-4 py-3">SKU</th>
+                    <th className="px-4 py-3 text-center">UOM</th>
+                    <th className="px-4 py-3 text-right">Kuantitas ERP</th>
+                    <th className="px-4 py-3 text-right">Total Realisasi</th>
+                    <th className="px-4 py-3 text-right">Kuantitas Sisa</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                  {gateOperation.documentHistory.summary?.map((item: any, idx: number) => {
+                    const getBadgeClass = (status: string) => {
+                      switch (status) {
+                        case 'COMPLETED': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        case 'PARTIAL': return 'bg-blue-50 text-blue-700 border-blue-200';
+                        default: return 'bg-amber-50 text-amber-700 border-amber-200';
+                      }
+                    };
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/20 transition-all duration-150">
+                        <td className="px-4 py-3.5 font-bold text-slate-800">{item.productName}</td>
+                        <td className="px-4 py-3.5 font-mono text-[11px] text-slate-500">{item.sku}</td>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-650">{item.uom}</td>
+                        <td className="px-4 py-3.5 text-right font-semibold text-slate-500">{item.erpQty.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 text-right font-bold text-slate-800">{item.realizedQty.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 text-right font-black text-slate-900">{item.remainingQty.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getBadgeClass(item.status)}`}>
+                            {item.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Assign Reference Drawer */}
       {selectedItemToAssign && (
@@ -719,13 +1012,55 @@ export default function GateVerificationDetailPage() {
         />
       )}
 
-      {/* Add Cargo Item Modal */}
-      <AddCargoItemModal
+      {/* Add Cargo Item Drawer */}
+      <AddCargoItemDrawer
         isOpen={isAddCargoOpen}
-        onClose={() => setIsAddCargoOpen(false)}
-        operationUuid={uuid}
-        onSaved={() => {
-          refreshDetail();
+        onClose={() => {
+          setIsAddCargoOpen(false);
+          setEditingCargoItem(null);
+        }}
+        cardType={gateOperation?.cardType || 'IN'}
+        editData={editingCargoItem ? {
+          productId: editingCargoItem.productId,
+          quantity: editingCargoItem.quantity,
+          locationId: editingCargoItem.locationId,
+          quantId: editingCargoItem.quantId,
+          name: getProductDetails(editingCargoItem).name,
+          sku: getProductDetails(editingCargoItem).sku,
+          uom: getProductDetails(editingCargoItem).uom,
+          uuid: editingCargoItem.product?.uuid || editingCargoItem.inventory?.uuid
+        } : null}
+        onAdd={async (data) => {
+          if (editingCargoItem) {
+            const toastId = toast.loading('Mengubah lokasi & tumpukan barang...');
+            try {
+              await updateCargoItem(editingCargoItem.uuid, uuid, {
+                quantId: data.quantId,
+                locationId: data.locationId,
+                quantity: data.quantity,
+              });
+              toast.success('Pilihan lokasi & tumpukan berhasil disimpan!', { id: toastId });
+              refreshDetail();
+            } catch (err: any) {
+              toast.error(err.response?.data?.message || 'Gagal mengubah lokasi & tumpukan.', { id: toastId });
+              throw err;
+            }
+          } else {
+            const toastId = toast.loading('Menambahkan barang muatan...');
+            try {
+              await addCargoItem(uuid, {
+                productId: data.productId,
+                quantity: data.quantity,
+                quantId: data.quantId,
+                locationId: data.locationId,
+              });
+              toast.success('Barang muatan berhasil ditambahkan!', { id: toastId });
+              refreshDetail();
+            } catch (err: any) {
+              toast.error(err.response?.data?.message || 'Gagal menambahkan barang muatan.', { id: toastId });
+              throw err;
+            }
+          }
         }}
       />
 
@@ -777,7 +1112,13 @@ function AssignReferenceDrawer({
   onSaved: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const { data: references, isLoading } = useAvailableReferences(operationUuid, productId, gateItemId);
+  const debouncedSearch = useDebounce(search, 300);
+  const { data: references, isLoading } = useAvailableReferences(
+    operationUuid,
+    productId,
+    gateItemId,
+    debouncedSearch || undefined
+  );
   const { assignReferences } = useGate();
   const [assignedQuantities, setAssignedQuantities] = useState<Record<number, number>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -806,10 +1147,7 @@ function AssignReferenceDrawer({
     setAssignedQuantities(updated);
   };
 
-  const filteredReferences = references?.filter((ref) =>
-    ref.documentNumber.toLowerCase().includes(search.toLowerCase()) ||
-    ref.partnerName.toLowerCase().includes(search.toLowerCase())
-  ) || [];
+  const filteredReferences = references || [];
 
   const totalAssigned = Object.values(assignedQuantities).reduce((sum, val) => sum + val, 0);
   const isOverGateQty = totalAssigned > qtyGate;
@@ -872,7 +1210,7 @@ function AssignReferenceDrawer({
             <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Cari No. Dokumen atau Partner..."
+              placeholder="Cari berdasarkan No. SO/CT (Origin)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg pl-10 pr-4 py-2 text-xs focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
@@ -976,169 +1314,4 @@ function AssignReferenceDrawer({
   );
 }
 
-// Modal component for adding new cargo item
-function AddCargoItemModal({
-  isOpen,
-  onClose,
-  operationUuid,
-  onSaved,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  operationUuid: string;
-  onSaved: () => void;
-}) {
-  const { addCargoItem } = useGate();
-  const [newCargoProduct, setNewCargoProduct] = useState<number>(0);
-  const [newCargoProductObj, setNewCargoProductObj] = useState<any>(null);
-  const [newCargoQty, setNewCargoQty] = useState<number>(1);
-  const [newCargoNotes, setNewCargoNotes] = useState<string>('');
-  const [isAddingCargo, setIsAddingCargo] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) {
-      setNewCargoProduct(0);
-      setNewCargoProductObj(null);
-      setNewCargoQty(1);
-      setNewCargoNotes('');
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSave = async () => {
-    if (!newCargoProduct || newCargoProduct <= 0) {
-      toast.error('Silakan pilih produk terlebih dahulu.');
-      return;
-    }
-    if (newCargoQty <= 0 || isNaN(newCargoQty)) {
-      toast.error('Kuantitas harus lebih besar dari 0.');
-      return;
-    }
-
-    setIsAddingCargo(true);
-    const toastId = toast.loading('Menambahkan barang muatan...');
-    try {
-      await addCargoItem(operationUuid, {
-        productId: newCargoProduct,
-        quantity: newCargoQty,
-        notes: newCargoNotes || undefined,
-      });
-      toast.success('Barang muatan berhasil ditambahkan!');
-      onSaved();
-      onClose();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Gagal menambahkan barang muatan.');
-    } finally {
-      setIsAddingCargo(false);
-      toast.dismiss(toastId);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-55 flex items-center justify-center p-4">
-      <div 
-        className="fixed inset-0 bg-black/45 backdrop-blur-xs transition-opacity" 
-        onClick={onClose}
-      />
-
-      <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl flex flex-col z-10 animate-scale-in overflow-hidden border border-slate-100">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-extrabold text-slate-800">Tambah Barang Muatan</h3>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Tambahkan barang muatan baru ke kendaraan ini.
-            </p>
-          </div>
-          <button 
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4 text-xs font-medium text-slate-700">
-          {/* Product Select */}
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Produk / Barang <span className="text-red-500">*</span>
-            </label>
-            <ProductSelector 
-              value={newCargoProduct} 
-              onChange={(val, prod) => { 
-                setNewCargoProduct(val); 
-                setNewCargoProductObj(prod); 
-              }} 
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {/* Quantity */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Quantity <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                min="0.01"
-                step="any"
-                placeholder="0"
-                value={newCargoQty === 0 ? '' : newCargoQty}
-                onChange={(e) => setNewCargoQty(parseFloat(e.target.value) || 0)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition"
-              />
-            </div>
-
-            {/* UOM */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Unit of Measure (UOM)
-              </label>
-              <input
-                type="text"
-                disabled
-                value={newCargoProductObj?.uom || 'Unit'}
-                className="w-full bg-slate-100 border border-slate-200 text-slate-550 rounded-lg px-3 py-2 text-xs font-bold cursor-not-allowed"
-              />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Keterangan (Opsional)
-            </label>
-            <textarea
-              rows={3}
-              placeholder="Masukkan keterangan tambahan jika diperlukan..."
-              value={newCargoNotes}
-              onChange={(e) => setNewCargoNotes(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-xs font-medium"
-            />
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end space-x-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isAddingCargo}
-            className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-lg text-xs transition disabled:opacity-40 cursor-pointer"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isAddingCargo}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow-md transition disabled:opacity-40 cursor-pointer"
-          >
-            {isAddingCargo ? 'Menyimpan...' : 'Simpan Barang'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

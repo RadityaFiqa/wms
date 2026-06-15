@@ -343,10 +343,10 @@ function GateOperationRow({
                     item.products.map((p: any) => (
                       <tr key={p.id} className="hover:bg-slate-50/30 transition">
                         <td className="px-4 py-2.5 font-bold">
-                          {p.product?.name} <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">SKU: {p.product?.sku}</span>
+                          {p.inventory?.name} <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">SKU: {p.inventory?.sku}</span>
                         </td>
                         <td className="px-4 py-2.5 text-right font-black">
-                          {p.quantity.toLocaleString('id-ID')} {p.product?.uom || 'Unit'}
+                          {p.quantity.toLocaleString('id-ID')} {p.inventory?.uom || 'Unit'}
                         </td>
                       </tr>
                     ))

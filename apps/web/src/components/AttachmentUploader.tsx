@@ -15,6 +15,7 @@ interface AttachmentUploaderProps {
   initialAttachments?: Attachment[];
   label?: string;
   accept?: string;
+  disabled?: boolean;
 }
 
 export function AttachmentUploader({
@@ -23,6 +24,7 @@ export function AttachmentUploader({
   initialAttachments = [],
   label = 'Unggah Lampiran/Foto Bukti',
   accept = 'image/*,application/pdf',
+  disabled = false,
 }: AttachmentUploaderProps) {
   const { uploadFile } = useGate();
   const [isUploading, setIsUploading] = useState(false);
@@ -39,6 +41,7 @@ export function AttachmentUploader({
   }, [initialAttachments]);
 
   const processFile = useCallback(async (file: File) => {
+    if (disabled) return;
     setIsUploading(true);
     const toastId = toast.loading(`Mengunggah ${file.name}...`);
     try {
@@ -58,9 +61,10 @@ export function AttachmentUploader({
     } finally {
       setIsUploading(false);
     }
-  }, [uploadFile, attachments, onChange]);
+  }, [uploadFile, attachments, onChange, disabled]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled) return;
     const files = e.target.files;
     if (!files) return;
     for (let i = 0; i < files.length; i++) {
@@ -71,6 +75,7 @@ export function AttachmentUploader({
   };
 
   const handleDrag = (e: React.DragEvent) => {
+    if (disabled) return;
     e.preventDefault();
     e.stopPropagation();
     if (e.type === 'dragenter' || e.type === 'dragover') {
@@ -81,10 +86,11 @@ export function AttachmentUploader({
   };
 
   const handleDrop = async (e: React.DragEvent) => {
+    if (disabled) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
-
+ 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
       for (let i = 0; i < files.length; i++) {
@@ -94,6 +100,7 @@ export function AttachmentUploader({
   };
 
   const handleRemove = (filePathToRemove: string) => {
+    if (disabled) return;
     const updatedAttachments = attachments.filter((a) => a.filePath !== filePathToRemove);
     setAttachments(updatedAttachments);
     onChange(updatedAttachments.map((a) => a.filePath));
@@ -110,44 +117,46 @@ export function AttachmentUploader({
       {label && <label className="block text-sm font-semibold text-slate-700">{label}</label>}
 
       {/* Drag & Drop Area */}
-      <div
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-xl p-6 text-center transition min-h-[140px] flex flex-col items-center justify-center bg-slate-50/50 ${
-          isDragActive
-            ? 'border-blue-500 bg-blue-50/20'
-            : 'border-slate-200 hover:border-blue-400'
-        }`}
-      >
-        <input
-          type="file"
-          multiple
-          accept={accept}
-          onChange={handleFileChange}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          disabled={isUploading}
-        />
-        
-        <div className="space-y-2 pointer-events-none flex flex-col items-center">
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center border transition ${
-            isDragActive ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-blue-50 border-blue-100 text-blue-500'
-          }`}>
-            {isUploading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Upload className="h-5 w-5" />
-            )}
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-700">
-              {isUploading ? 'Sedang mengunggah...' : 'Pilih file atau seret ke sini'}
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1">PNG, JPG, JPEG, atau PDF maks 5MB per file</p>
+      {!disabled && (
+        <div
+          onDragEnter={handleDrag}
+          onDragOver={handleDrag}
+          onDragLeave={handleDrag}
+          onDrop={handleDrop}
+          className={`relative border-2 border-dashed rounded-xl p-6 text-center transition min-h-[140px] flex flex-col items-center justify-center bg-slate-50/50 ${
+            isDragActive
+              ? 'border-blue-500 bg-blue-50/20'
+              : 'border-slate-200 hover:border-blue-400'
+          }`}
+        >
+          <input
+            type="file"
+            multiple
+            accept={accept}
+            onChange={handleFileChange}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            disabled={isUploading}
+          />
+          
+          <div className="space-y-2 pointer-events-none flex flex-col items-center">
+            <div className={`h-10 w-10 rounded-lg flex items-center justify-center border transition ${
+              isDragActive ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-blue-50 border-blue-100 text-blue-500'
+            }`}>
+              {isUploading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Upload className="h-5 w-5" />
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-700">
+                {isUploading ? 'Sedang mengunggah...' : 'Pilih file atau seret ke sini'}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">PNG, JPG, JPEG, atau PDF maks 5MB per file</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Uploaded Files Grid */}
       {attachments.length > 0 && (
@@ -185,14 +194,16 @@ export function AttachmentUploader({
                   >
                     Buka File
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(attach.filePath)}
-                    className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg shadow-md transition cursor-pointer active:scale-95"
-                    title="Hapus"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                  {!disabled && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(attach.filePath)}
+                      className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg shadow-md transition cursor-pointer active:scale-95"
+                      title="Hapus"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

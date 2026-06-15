@@ -29,7 +29,7 @@ let ErpDocumentReferenceController = class ErpDocumentReferenceController {
         this.service = service;
         this.warehouseContext = warehouseContext;
     }
-    async findAll(search, page, limit, type, state, startDate, endDate) {
+    async findAll(search, page, limit, type, state, startDate, endDate, refFax) {
         const warehouseId = this.warehouseContext.getWarehouseId();
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
@@ -42,7 +42,15 @@ let ErpDocumentReferenceController = class ErpDocumentReferenceController {
             state,
             startDate,
             endDate,
+            refFax,
         });
+    }
+    async findUniquePartners() {
+        const warehouseId = this.warehouseContext.getWarehouseId();
+        if (!warehouseId) {
+            throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+        }
+        return this.service.findUniquePartners(warehouseId);
     }
     async findOne(uuid) {
         const warehouseId = this.warehouseContext.getWarehouseId();
@@ -89,10 +97,18 @@ __decorate([
     __param(4, (0, common_1.Query)('state')),
     __param(5, (0, common_1.Query)('startDate')),
     __param(6, (0, common_1.Query)('endDate')),
+    __param(7, (0, common_1.Query)('refFax')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ErpDocumentReferenceController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)('partners'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Inventory')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], ErpDocumentReferenceController.prototype, "findUniquePartners", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Inventory')),

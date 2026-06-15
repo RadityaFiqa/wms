@@ -6,8 +6,6 @@ export declare class ErpDocumentReferenceService {
     private readonly odooClient;
     private readonly odooSessionManager;
     private readonly logger;
-    private readonly PO_PICKING_TYPE;
-    private readonly SO_PICKING_TYPE;
     constructor(prisma: PrismaService, odooClient: OdooClient, odooSessionManager: OdooSessionManager);
     private getRelationalName;
     private getRelationalId;
@@ -39,6 +37,7 @@ export declare class ErpDocumentReferenceService {
         state?: string;
         startDate?: string;
         endDate?: string;
+        refFax?: string;
     }): Promise<{
         data: any[];
         meta: {
@@ -56,6 +55,8 @@ export declare class ErpDocumentReferenceService {
     }>;
     findOne(warehouseId: number, uuid: string): Promise<any>;
     forceSyncDocument(warehouseId: number, idOrUuid: string, triggeredBy: string): Promise<any>;
+    private upsertDocumentRecord;
+    findUniquePartners(warehouseId: number): Promise<string[]>;
     private sanitizeDocReferences;
     private sanitizeDocReference;
     private safeOdooCall;

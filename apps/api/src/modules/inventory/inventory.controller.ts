@@ -51,14 +51,24 @@ export class InventoryController {
   @Get('products')
   @CheckPolicies((ability) => ability.can('read', 'GateOperation') || ability.can('read', 'Inventory'))
   async findAllProducts(@Query('search') search?: string) {
-    const where: any = {};
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+    }
+    const where: any = {
+      warehouseId,
+    };
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { sku: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { sku: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
-    return this.prisma.product.findMany({
+    return this.prisma.inventory.findMany({
       where,
       orderBy: { name: 'asc' },
     });
@@ -112,6 +122,19 @@ export class InventoryController {
     });
 
     res.end(pdfBuffer);
+  }
+
+  @Get('locations')
+  @CheckPolicies((ability) => ability.can('read', 'Inventory'))
+  async findAllLocations() {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+    }
+    return this.prisma.location.findMany({
+      where: { warehouseId },
+      orderBy: { displayName: 'asc' },
+    });
   }
 
   @Get(':uuid')

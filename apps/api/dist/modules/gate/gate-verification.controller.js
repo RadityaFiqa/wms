@@ -28,11 +28,11 @@ let GateVerificationController = class GateVerificationController {
     constructor(service) {
         this.service = service;
     }
-    async getAvailableReferences(operationUuid, productId, gateItemId) {
+    async getAvailableReferences(operationUuid, productId, gateItemId, search) {
         if (!productId) {
             throw new common_1.BadRequestException('Parameter productId diperlukan.');
         }
-        return this.service.getAvailableReferences(operationUuid, Number(productId), gateItemId ? Number(gateItemId) : undefined);
+        return this.service.getAvailableReferences(operationUuid, Number(productId), gateItemId ? Number(gateItemId) : undefined, search);
     }
     async assignReferences(operationUuid, req, body) {
         const userId = req.user?.id;
@@ -46,6 +46,10 @@ let GateVerificationController = class GateVerificationController {
     async cancel(operationUuid, req) {
         const userId = req.user?.id;
         return this.service.cancelGateVerification(operationUuid, userId);
+    }
+    async confirm(operationUuid, req) {
+        const userId = req.user?.id;
+        return this.service.confirmGateVerification(operationUuid, userId);
     }
     async unassignReference(referenceUuid, req) {
         const userId = req.user?.id;
@@ -62,8 +66,9 @@ __decorate([
     __param(0, (0, common_1.Param)('operationUuid')),
     __param(1, (0, common_1.Query)('productId')),
     __param(2, (0, common_1.Query)('gateItemId')),
+    __param(3, (0, common_1.Query)('search')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], GateVerificationController.prototype, "getAvailableReferences", null);
 __decorate([
@@ -98,6 +103,16 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], GateVerificationController.prototype, "cancel", null);
+__decorate([
+    (0, common_1.Post)(':operationUuid/confirm'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('create', 'GateVerification')),
+    (0, audit_log_decorator_1.AuditLogAction)('GATE_OPERATION_CONFIRM'),
+    __param(0, (0, common_1.Param)('operationUuid')),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], GateVerificationController.prototype, "confirm", null);
 __decorate([
     (0, common_1.Delete)('references/:referenceUuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('create', 'GateVerification')),

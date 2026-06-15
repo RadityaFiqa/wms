@@ -44,6 +44,13 @@ export function useGate() {
     return res.data;
   }, [refreshList]);
 
+  const confirmGateVerification = useCallback(async (operationUuid: string) => {
+    const res = await api.post(API_ROUTES.gateVerifications.confirm(operationUuid));
+    refreshList();
+    mutate(API_ROUTES.gateOperations.detail(operationUuid));
+    return res.data;
+  }, [refreshList]);
+
   const assignReferences = useCallback(async (operationUuid: string, payload: any) => {
     const res = await api.post(API_ROUTES.gateVerifications.assignReferences(operationUuid), payload);
     refreshList();
@@ -51,15 +58,22 @@ export function useGate() {
     return res.data;
   }, [refreshList]);
 
-  const addCargoItem = useCallback(async (operationUuid: string, payload: { productId: number; quantity: number; notes?: string }) => {
-    const res = await api.post(`/gate-operations/${operationUuid}/products`, payload);
+  const addCargoItem = useCallback(async (operationUuid: string, payload: { productId: number; quantity: number; notes?: string; quantId?: number | null; locationId?: number | null }) => {
+    const res = await api.post(`/gate-operations/${operationUuid}/cargo`, payload);
     refreshList();
     mutate(API_ROUTES.gateOperations.detail(operationUuid));
     return res.data;
   }, [refreshList]);
 
   const deleteCargoItem = useCallback(async (cargoItemUuid: string, operationUuid: string) => {
-    const res = await api.delete(`/gate-operations/products/${cargoItemUuid}`);
+    const res = await api.delete(`/gate-operations/cargo/${cargoItemUuid}`);
+    refreshList();
+    mutate(API_ROUTES.gateOperations.detail(operationUuid));
+    return res.data;
+  }, [refreshList]);
+
+  const updateCargoItem = useCallback(async (cargoItemUuid: string, operationUuid: string, payload: { quantId?: number | null; locationId?: number | null; quantity?: number }) => {
+    const res = await api.put(`/gate-operations/cargo/${cargoItemUuid}`, payload);
     refreshList();
     mutate(API_ROUTES.gateOperations.detail(operationUuid));
     return res.data;
@@ -77,18 +91,21 @@ export function useGate() {
     createGateOperation,
     verifyGateOperation,
     cancelGateVerification,
+    confirmGateVerification,
     assignReferences,
     unassignReference,
     addCargoItem,
     deleteCargoItem,
+    updateCargoItem,
     refreshList,
   };
 }
 
-export function useAvailableReferences(operationUuid: string | null, productId: number | null, gateItemId?: number | null) {
+export function useAvailableReferences(operationUuid: string | null, productId: number | null, gateItemId?: number | null, search?: string) {
   const queryParams = new URLSearchParams();
   if (productId) queryParams.append('productId', String(productId));
   if (gateItemId) queryParams.append('gateItemId', String(gateItemId));
+  if (search) queryParams.append('search', search);
 
   const swrKey = operationUuid && productId
     ? `${API_ROUTES.gateVerifications.availableReferences(operationUuid)}?${queryParams.toString()}`

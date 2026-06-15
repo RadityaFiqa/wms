@@ -4,7 +4,7 @@ export declare class ReportsController {
     private readonly service;
     private readonly warehouseContext;
     constructor(service: ReportsService, warehouseContext: WarehouseContextService);
-    getReport(startDate: string, endDate: string, productId?: string, category?: string): Promise<any[]>;
+    getReport(startDate: string, endDate: string, productId?: string): Promise<any[]>;
     getDetail(date: string, productUuid: string): Promise<{
         product: {
             sku: string;
@@ -29,6 +29,6 @@ export declare class ReportsController {
             type: string;
         }[];
     }>;
-    exportPdf(startDate: string, endDate: string, productId: string, category: string, res: any): Promise<void>;
-    exportCsv(startDate: string, endDate: string, productId: string, category: string, res: any): Promise<void>;
+    exportPdf(startDate: string, endDate: string, productId: string, res: any): Promise<void>;
+    exportCsv(startDate: string, endDate: string, productId: string, res: any): Promise<void>;
 }

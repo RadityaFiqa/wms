@@ -93,7 +93,7 @@ export class InventoryService {
     try {
       // 4. DB Transaction to save results locally
       await this.prisma.$transaction(async (tx) => {
-        // Upsert Products
+        // Upsert Inventory (Product catalog)
         for (const record of records) {
           const odooProd = record.product_id;
           if (!odooProd) continue;
@@ -106,21 +106,21 @@ export class InventoryService {
             : `OP-${odooProdId}`;
           const uom = odooProd.uom_id?.display_name || 'Unit';
 
-          // Upsert product using direct Odoo ID
-          await tx.product.upsert({
+          // Upsert inventory (product catalog) using direct Odoo ID
+          await tx.inventory.upsert({
             where: { id: odooProdId },
             update: {
               sku,
               name: productName,
               uom,
+              warehouseId,
             },
             create: {
               id: odooProdId,
               sku,
               name: productName,
               uom,
-              category: 'Odoo Synced',
-              price: 0.0,
+              warehouseId,
             },
           });
         }
@@ -181,7 +181,7 @@ export class InventoryService {
 
           quantsToCreate.push({
             id: record.id,
-            productId: odooProdId,
+            inventoryId: odooProdId,
             locationId: odooLocId,
             quantity,
             reservedQuantity,
@@ -197,55 +197,43 @@ export class InventoryService {
             data: quantsToCreate,
             skipDuplicates: true,
           });
-        }
 
-        // Calculate aggregated Product quantities for (warehouseId, productId) Inventory
-        const productTotalQtyMap = new Map<number, { qty: number }>();
-        for (const q of quantsToCreate) {
-          const cur = productTotalQtyMap.get(q.productId) || { qty: 0 };
-          cur.qty += q.quantity;
-          productTotalQtyMap.set(q.productId, cur);
-        }
-
-        // Update Inventory summary table
-        const existingInventory = await tx.inventory.findMany({
-          where: { warehouseId },
-        });
-        const existingProductIds = new Set(existingInventory.map((i) => i.productId));
-
-        for (const [productId, totals] of productTotalQtyMap.entries()) {
-          await tx.inventory.upsert({
+          // Recalculate and apply active local reservations!
+          const activeReservations = await tx.gateOperationProduct.groupBy({
+            by: ['quantId'],
             where: {
-              warehouseId_productId: {
-                warehouseId,
-                productId,
+              gateOperation: {
+                cardType: 'OUT',
+                status: { in: ['PENDING', 'PARTIAL'] },
               },
+              quantId: { not: null },
             },
-            update: {
-              quantity: Math.round(totals.qty),
-            },
-            create: {
-              warehouseId,
-              productId,
-              quantity: Math.round(totals.qty),
+            _sum: {
+              quantity: true,
             },
           });
-          existingProductIds.delete(productId);
-        }
 
-        // Set quantity to 0 for products that no longer have stock in this warehouse
-        if (existingProductIds.size > 0) {
-          await tx.inventory.updateMany({
-            where: {
-              warehouseId,
-              productId: { in: Array.from(existingProductIds) },
-            },
-            data: {
-              quantity: 0,
-            },
-          });
+          for (const res of activeReservations) {
+            if (res.quantId && res._sum.quantity) {
+              const localReserved = res._sum.quantity;
+              const quant = await tx.quant.findUnique({
+                where: { id: res.quantId },
+              });
+              if (quant) {
+                const newReserved = quant.reservedQuantity + localReserved;
+                const newAvailable = Math.max(0, quant.quantity - newReserved);
+                await tx.quant.update({
+                  where: { id: res.quantId },
+                  data: {
+                    reservedQuantity: newReserved,
+                    availableQuantity: newAvailable,
+                  },
+                });
+              }
+            }
+          }
         }
-      });
+      }, {timeout: 300_000});
 
       // Update sync log status on success
       await this.prisma.odooAccount.update({
@@ -293,12 +281,14 @@ export class InventoryService {
     };
 
     if (query.search) {
-      where.product = {
-        OR: [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { sku: { contains: query.search, mode: 'insensitive' } },
-        ],
-      };
+      where.AND = [
+        {
+          OR: [
+            { name: { contains: query.search, mode: 'insensitive' } },
+            { sku: { contains: query.search, mode: 'insensitive' } },
+          ],
+        },
+      ];
     }
 
     // 1. Query paginated list
@@ -308,20 +298,16 @@ export class InventoryService {
         where,
         skip,
         take: limit,
-        orderBy: { product: { name: 'asc' } },
+        orderBy: { name: 'asc' },
         include: {
-          product: {
-            include: {
-              quants: {
-                where: {
-                  location: {
-                    warehouseId,
-                  },
-                },
-                include: {
-                  location: true,
-                },
+          quants: {
+            where: {
+              location: {
+                warehouseId,
               },
+            },
+            include: {
+              location: true,
             },
           },
         },
@@ -329,8 +315,7 @@ export class InventoryService {
     ]);
 
     const formattedData = data.map((inv) => {
-      const product = inv.product;
-      const quants = product.quants || [];
+      const quants = inv.quants || [];
 
       let totalQty = 0;
       let totalAvailable = 0;
@@ -343,10 +328,10 @@ export class InventoryService {
       }
 
       return {
-        uuid: product.uuid,
-        sku: product.sku,
-        name: product.name,
-        uom: product.uom || 'Unit',
+        uuid: inv.uuid,
+        sku: inv.sku,
+        name: inv.name,
+        uom: inv.uom || 'Unit',
         totalQuantity: totalQty,
         totalAvailable: totalAvailable,
         locationCount: uniqueLocationIds.size,
@@ -354,10 +339,15 @@ export class InventoryService {
     });
 
     // 2. Query summary statistics for the ENTIRE warehouse
-    const [summaryProducts, summaryLocations, quantAggregates] = await Promise.all([
-      this.prisma.inventory.count({
-        where: { warehouseId, quantity: { gt: 0 } },
-      }),
+    const activeProducts = await this.prisma.quant.groupBy({
+      by: ['inventoryId'],
+      where: {
+        location: { warehouseId },
+        quantity: { gt: 0 },
+      },
+    });
+
+    const [summaryLocations, quantAggregates] = await Promise.all([
       this.prisma.location.count({
         where: { warehouseId },
       }),
@@ -374,7 +364,7 @@ export class InventoryService {
     ]);
 
     const summary = {
-      totalProducts: summaryProducts,
+      totalProducts: activeProducts.length,
       totalLocations: summaryLocations,
       totalQuantity: quantAggregates._sum.quantity || 0,
       totalReserved: quantAggregates._sum.reservedQuantity || 0,
@@ -396,9 +386,9 @@ export class InventoryService {
   /**
    * Get detailed product inventory, grouped by locations and showing quants.
    */
-  async findDetail(warehouseId: number, productUuid: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { uuid: productUuid },
+  async findDetail(warehouseId: number, inventoryUuid: string) {
+    const inventory = await this.prisma.inventory.findUnique({
+      where: { uuid: inventoryUuid },
       include: {
         quants: {
           where: {
@@ -417,20 +407,22 @@ export class InventoryService {
       },
     });
 
-    if (!product) {
-      throw new NotFoundException('Produk tidak ditemukan.');
+    if (!inventory) {
+      throw new NotFoundException('Inventory tidak ditemukan.');
     }
 
     const locationsMap = new Map<string, {
+      locationId: number;
       locationUuid: string;
       locationDisplayName: string;
       quants: any[];
     }>();
 
-    for (const q of product.quants) {
+    for (const q of inventory.quants) {
       const loc = q.location;
       if (!locationsMap.has(loc.uuid)) {
         locationsMap.set(loc.uuid, {
+          locationId: loc.id,
           locationUuid: loc.uuid,
           locationDisplayName: loc.displayName,
           quants: [],
@@ -438,7 +430,9 @@ export class InventoryService {
       }
 
       locationsMap.get(loc.uuid)!.quants.push({
+        id: q.id,
         uuid: q.uuid,
+        locationId: loc.id,
         lotName: q.lotName || '-',
         quantity: q.quantity,
         reservedQuantity: q.reservedQuantity,
@@ -449,12 +443,10 @@ export class InventoryService {
 
     return {
       product: {
-        uuid: product.uuid,
-        sku: product.sku,
-        name: product.name,
-        uom: product.uom || 'Unit',
-        description: product.description,
-        category: product.category,
+        uuid: inventory.uuid,
+        sku: inventory.sku,
+        name: inventory.name,
+        uom: inventory.uom || 'Unit',
       },
       locations: Array.from(locationsMap.values()),
     };
@@ -470,34 +462,32 @@ export class InventoryService {
     const warehouseName = warehouse ? warehouse.name : 'Gudang WMS';
 
     const where: any = {
-      warehouseId,
+      quants: {
+        some: {
+          location: { warehouseId },
+        },
+      },
     };
 
     if (query.search) {
-      where.product = {
-        OR: [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { sku: { contains: query.search, mode: 'insensitive' } },
-        ],
-      };
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { sku: { contains: query.search, mode: 'insensitive' } },
+      ];
     }
 
     const data = await this.prisma.inventory.findMany({
       where,
-      orderBy: { product: { name: 'asc' } },
+      orderBy: { name: 'asc' },
       include: {
-        product: {
-          include: {
-            quants: {
-              where: {
-                location: {
-                  warehouseId,
-                },
-              },
-              include: {
-                location: true,
-              },
+        quants: {
+          where: {
+            location: {
+              warehouseId,
             },
+          },
+          include: {
+            location: true,
           },
         },
       },
@@ -505,7 +495,7 @@ export class InventoryService {
 
     let totalItems = 0;
     for (const inv of data) {
-      totalItems += inv.product.quants?.length || 0;
+      totalItems += inv.quants?.length || 0;
     }
 
     return new Promise((resolve, reject) => {
@@ -546,8 +536,7 @@ export class InventoryService {
         doc.fillColor('#94a3b8').fontSize(7.5).text('Tidak ada data persediaan barang dengan stok aktif.', 15, doc.y + 10, { align: 'center' });
       } else {
         for (const inv of data) {
-          const product = inv.product;
-          const quants = product.quants || [];
+          const quants = inv.quants || [];
 
           // Group by location
           const locationsMap = new Map<number, { name: string; quants: any[] }>();
@@ -604,9 +593,9 @@ export class InventoryService {
           doc.moveTo(15, currentY).lineTo(580, currentY).lineWidth(0.4).stroke('#475569');
 
           doc.fillColor('#1e293b').fontSize(6.8).font('Helvetica-Bold');
-          doc.text(`${product.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
+          doc.text(`${inv.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
           doc.text(productQtyTotal.toLocaleString('id-ID'), 360, currentY + 4, { width: 50, align: 'right' });
-          doc.text(product.uom || 'Unit', 415, currentY + 4, { width: 75, ellipsis: true });
+          doc.text(inv.uom || 'Unit', 415, currentY + 4, { width: 75, ellipsis: true });
           const prodSecQtyText = productSecQtyTotal > 0 ? productSecQtyTotal.toLocaleString('id-ID') : '-';
           doc.text(prodSecQtyText, 495, currentY + 4, { width: 70, align: 'right' });
           doc.font('Helvetica');
@@ -642,7 +631,7 @@ export class InventoryService {
             doc.fillColor('#475569').fontSize(6.5).font('Helvetica-Bold');
             doc.text(`${locData.name}`, 165, currentY + 3, { width: 190, ellipsis: true });
             doc.text(locQtyTotal.toLocaleString('id-ID'), 360, currentY + 3, { width: 50, align: 'right' });
-            doc.text(product.uom || 'Unit', 415, currentY + 3, { width: 75, ellipsis: true });
+            doc.text(inv.uom || 'Unit', 415, currentY + 3, { width: 75, ellipsis: true });
             const locSecQtyText = locSecQtyTotal > 0 ? locSecQtyTotal.toLocaleString('id-ID') : '-';
             doc.text(locSecQtyText, 495, currentY + 3, { width: 70, align: 'right' });
             doc.font('Helvetica');
@@ -678,7 +667,7 @@ export class InventoryService {
                 doc.fillColor('#334155');
                 doc.text(lotName, 250, currentY, { width: 105, ellipsis: true });
                 doc.text(q.quantity.toLocaleString('id-ID'), 360, currentY, { width: 50, align: 'right' });
-                doc.text(product.uom || 'Unit', 415, currentY, { width: 75, ellipsis: true });
+                doc.text(inv.uom || 'Unit', 415, currentY, { width: 75, ellipsis: true });
                 doc.text(secQtyText, 495, currentY, { width: 70, align: 'right' });
 
                 doc.moveTo(15, currentY + rowHeight - 0.5).lineTo(580, currentY + rowHeight - 0.5).lineWidth(0.08).stroke('#e2e8f0');
@@ -689,7 +678,7 @@ export class InventoryService {
                 doc.fillColor('#334155').fontSize(5.8);
                 doc.text(lotName, 250, currentY, { width: 105, ellipsis: true });
                 doc.text(q.quantity.toLocaleString('id-ID'), 360, currentY, { width: 50, align: 'right' });
-                doc.text(product.uom || 'Unit', 415, currentY, { width: 75, ellipsis: true });
+                doc.text(inv.uom || 'Unit', 415, currentY, { width: 75, ellipsis: true });
                 doc.text(secQtyText, 495, currentY, { width: 70, align: 'right' });
 
                 doc.moveTo(15, currentY + rowHeight - 0.5).lineTo(580, currentY + rowHeight - 0.5).lineWidth(0.08).stroke('#e2e8f0');

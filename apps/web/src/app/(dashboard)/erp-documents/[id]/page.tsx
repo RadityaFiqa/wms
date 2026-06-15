@@ -205,6 +205,18 @@ export default function ErpDocumentDetailPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <span className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Reference Fax</span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 block font-mono">
+                  {documentDetail.ref_fax || '-'}
+                </span>
+              </div>
+              <div>
+                {/* Empty block to align layout */}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <span className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Tanggal Dijadwalkan</span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 block flex items-center">
                   <Calendar className="h-4 w-4 mr-1.5 text-slate-400" />

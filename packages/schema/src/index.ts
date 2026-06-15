@@ -83,6 +83,8 @@ export const VerificationStatusEnum = z.enum(['PENDING', 'PARTIAL', 'COMPLETED',
 export const GateOperationProductSchema = z.object({
   productId: z.number().int('ID Produk harus berupa angka'),
   quantity: z.number().positive('Quantity harus lebih besar dari 0'),
+  quantId: z.number().int().optional().nullable(),
+  locationId: z.number().int().optional().nullable(),
 });
 
 export const CreateGateOperationSchema = z.object({
@@ -92,6 +94,9 @@ export const CreateGateOperationSchema = z.object({
   notes: z.string().min(1, 'Keterangan/catatan wajib diisi'),
   attachmentPaths: z.array(z.string()).optional().default([]),
   products: z.array(GateOperationProductSchema).optional().default([]),
+  documentReferenceId: z.number().int().optional().nullable(),
+  clientPartner: z.string().optional().nullable(),
+  driverPhone: z.string().optional().nullable(),
 });
 export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
 
@@ -102,9 +107,12 @@ export const CreateGateVerificationSchema = z.object({
   products: z.array(z.object({
     productId: z.number().int(),
     quantity: z.number().nonnegative('Quantity tidak boleh negatif'),
+    quantId: z.number().int().optional().nullable(),
+    locationId: z.number().int().optional().nullable(),
   })).optional().default([]),
   poReferences: z.array(z.string()).optional().default([]),
   soReferences: z.array(z.string()).optional().default([]),
+  documentReferenceId: z.number().int().optional().nullable(),
 });
 export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
 
@@ -123,6 +131,7 @@ export const ErpDocumentReferenceQuerySchema = z.object({
   limit: z.number().int().positive().optional(),
   type: z.enum(['IN', 'OUT']).optional(),
   state: z.string().optional(),
+  refFax: z.string().optional(),
 });
 export type ErpDocumentReferenceQueryInput = z.infer<typeof ErpDocumentReferenceQuerySchema>;
 

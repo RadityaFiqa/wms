@@ -35,10 +35,12 @@ export const API_ROUTES = {
     list: '/gate-operations',
     create: '/gate-operations',
     detail: (uuid: string) => `/gate-operations/${uuid}`,
+    clientHistory: '/gate-operations/client-history',
   },
   gateVerifications: {
     verify: (operationUuid: string) => `/gate-verifications/${operationUuid}`,
     cancel: (operationUuid: string) => `/gate-verifications/${operationUuid}/cancel`,
+    confirm: (operationUuid: string) => `/gate-verifications/${operationUuid}/confirm`,
     availableReferences: (operationUuid: string) => `/gate-verifications/${operationUuid}/available-references`,
     assignReferences: (operationUuid: string) => `/gate-verifications/${operationUuid}/assign-references`,
   },
@@ -48,6 +50,7 @@ export const API_ROUTES = {
     sync: '/erp-document-references/sync',
     syncStatus: '/erp-document-references/sync/status',
     forceSync: (uuid: string) => `/erp-document-references/${uuid}/force-sync`,
+    partners: '/erp-document-references/partners',
   },
   odoo: {
     list: '/odoo-accounts',

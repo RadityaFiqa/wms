@@ -39,16 +39,15 @@ export declare class InventoryService {
             totalAvailable: number;
         };
     }>;
-    findDetail(warehouseId: number, productUuid: string): Promise<{
+    findDetail(warehouseId: number, inventoryUuid: string): Promise<{
         product: {
             uuid: string;
             sku: string;
             name: string;
             uom: string;
-            description: string | null;
-            category: string;
         };
         locations: {
+            locationId: number;
             locationUuid: string;
             locationDisplayName: string;
             quants: any[];

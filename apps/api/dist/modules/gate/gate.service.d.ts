@@ -26,7 +26,12 @@ export declare class GateService {
         items: any[];
     }>;
     getGateOperationByUuid(uuid: string): Promise<any>;
-    getAvailableReferences(operationUuid: string, productId: number, gateItemId?: number): Promise<any[]>;
+    getClientHistory(warehouseId: number, clientPartner: string): Promise<{
+        licensePlate: string;
+        driverName: string;
+        driverPhone: string;
+    }[]>;
+    getAvailableReferences(operationUuid: string, productId: number, gateItemId?: number, search?: string): Promise<any[]>;
     assignReferences(operationUuid: string, userId: number, userName: string, body: AssignReferencesInput): Promise<any>;
     unassignReference(referenceUuid: string, userId: number, userName: string): Promise<{
         success: boolean;
@@ -40,17 +45,32 @@ export declare class GateService {
     private updateGateStatusAndRealisasi;
     verifyGateOperation(uuid: string, verifiedById: number, body: CreateGateVerificationInput): Promise<any>;
     cancelGateVerification(uuid: string, verifiedById: number): Promise<any>;
+    confirmGateVerification(uuid: string, verifiedById: number): Promise<any>;
     private mapOperationUrls;
     private stripIdField;
+    private validateDocumentReferenceLimits;
     addCargoItem(operationUuid: string, body: {
         productId: number;
         quantity: number;
         notes?: string;
+        quantId?: number | null;
+        locationId?: number | null;
     }): Promise<any>;
     deleteCargoItem(gateOperationProductUuid: string): Promise<{
         success: boolean;
         message: string;
         deletedItem: any;
     }>;
+    updateCargoItem(cargoItemUuid: string, body: {
+        quantId?: number | null;
+        locationId?: number | null;
+        quantity?: number;
+    }): Promise<any>;
+    private validateStackQuantity;
+    private reserveQuantStock;
+    private releaseQuantStock;
+    private processStockReductionOnCompletion;
+    generateDeliveryOrderPdf(idOrUuid: string): Promise<Buffer>;
+    generateDeliveryOrderHtml(idOrUuid: string): Promise<string>;
     private sanitizeVerification;
 }

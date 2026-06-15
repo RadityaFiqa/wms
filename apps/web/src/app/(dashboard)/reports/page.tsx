@@ -222,7 +222,7 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-200">
                         <div>{row.product.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{row.product.sku} | Kategori: {row.product.category}</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{row.product.sku}</div>
                       </td>
                       <td className="px-6 py-4 text-right font-semibold text-slate-650 dark:text-slate-400">
                         {row.openingStock.toLocaleString('id-ID')} <span className="text-slate-400 text-xs font-normal ml-0.5">{row.product.uom}</span>

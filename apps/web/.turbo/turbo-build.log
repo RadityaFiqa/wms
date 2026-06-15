@@ -1,42 +1,46 @@
 
-> @bulog-wms/web@0.1.0 build C:\Users\raditya\Documents\WMS\apps\web
+> @bulog-wms/web@0.1.0 build C:\Users\raditya\Documents\Coding\WMS\apps\web
 > next build
 
 ▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 15.1s
+✓ Compiled successfully in 8.6s
   Running TypeScript ...
-  Finished TypeScript in 24.3s ...
+  Finished TypeScript in 18.1s ...
   Collecting page data using 7 workers ...
-  Generating static pages using 7 workers (0/19) ...
-  Generating static pages using 7 workers (4/19) 
-  Generating static pages using 7 workers (9/19) 
-  Generating static pages using 7 workers (14/19) 
-✓ Generating static pages using 7 workers (19/19) in 2.4s
+  Generating static pages using 7 workers (0/21) ...
+  Generating static pages using 7 workers (5/21) 
+  Generating static pages using 7 workers (10/21) 
+  Generating static pages using 7 workers (15/21) 
+✓ Generating static pages using 7 workers (21/21) in 2.5s
   Finalizing page optimization ...
 
 Route (app)
 ┌ ○ /
 ├ ○ /_not-found
-├ ○ /dashboard
-├ ○ /dashboard/audit-logs
-├ ○ /dashboard/erp-documents
-├ ƒ /dashboard/erp-documents/[id]
-├ ○ /dashboard/gate-operations
-├ ƒ /dashboard/gate-operations/[uuid]
-├ ○ /dashboard/gate-operations/new
-├ ○ /dashboard/gate-verification
-├ ƒ /dashboard/gate-verification/[uuid]
-├ ○ /dashboard/inventory
-├ ○ /dashboard/odoo
-├ ○ /dashboard/profile
-├ ○ /dashboard/roles
-├ ○ /dashboard/users
-├ ○ /dashboard/warehouses
+├ ○ /audit-logs
+├ ○ /erp-documents
+├ ƒ /erp-documents/[id]
 ├ ○ /forgot-password
+├ ○ /gate-operations
+├ ƒ /gate-operations/[uuid]
+├ ○ /gate-operations/new
+├ ○ /gate-verification
+├ ƒ /gate-verification/[uuid]
+├ ○ /inventory
 ├ ○ /login
-└ ○ /reset-password
+├ ○ /odoo
+├ ○ /profile
+├ ○ /reconciliation
+├ ○ /reports
+├ ○ /reset-password
+├ ○ /roles
+├ ○ /stock-opname
+├ ƒ /stock-opname/[uuid]
+├ ○ /users
+└ ○ /warehouses
 
 
 ○  (Static)   prerendered as static content

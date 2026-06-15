@@ -4,7 +4,7 @@ export declare class ErpDocumentReferenceController {
     private readonly service;
     private readonly warehouseContext;
     constructor(service: ErpDocumentReferenceService, warehouseContext: WarehouseContextService);
-    findAll(search?: string, page?: string, limit?: string, type?: 'IN' | 'OUT', state?: string, startDate?: string, endDate?: string): Promise<{
+    findAll(search?: string, page?: string, limit?: string, type?: 'IN' | 'OUT', state?: string, startDate?: string, endDate?: string, refFax?: string): Promise<{
         data: any[];
         meta: {
             total: number;
@@ -19,6 +19,7 @@ export declare class ErpDocumentReferenceController {
             lastSyncTime: Date | null;
         };
     }>;
+    findUniquePartners(): Promise<string[]>;
     findOne(uuid: string): Promise<any>;
     getSyncStatus(): Promise<{
         status: string;

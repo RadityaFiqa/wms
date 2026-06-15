@@ -44,14 +44,24 @@ let InventoryController = class InventoryController {
         });
     }
     async findAllProducts(search) {
-        const where = {};
+        const warehouseId = this.warehouseContext.getWarehouseId();
+        if (!warehouseId) {
+            throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+        }
+        const where = {
+            warehouseId,
+        };
         if (search) {
-            where.OR = [
-                { name: { contains: search, mode: 'insensitive' } },
-                { sku: { contains: search, mode: 'insensitive' } },
+            where.AND = [
+                {
+                    OR: [
+                        { name: { contains: search, mode: 'insensitive' } },
+                        { sku: { contains: search, mode: 'insensitive' } },
+                    ],
+                },
             ];
         }
-        return this.prisma.product.findMany({
+        return this.prisma.inventory.findMany({
             where,
             orderBy: { name: 'asc' },
         });
@@ -91,6 +101,16 @@ let InventoryController = class InventoryController {
             'Content-Length': pdfBuffer.length,
         });
         res.end(pdfBuffer);
+    }
+    async findAllLocations() {
+        const warehouseId = this.warehouseContext.getWarehouseId();
+        if (!warehouseId) {
+            throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+        }
+        return this.prisma.location.findMany({
+            where: { warehouseId },
+            orderBy: { displayName: 'asc' },
+        });
     }
     async findDetail(uuid) {
         const warehouseId = this.warehouseContext.getWarehouseId();
@@ -148,6 +168,13 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], InventoryController.prototype, "exportPdf", null);
+__decorate([
+    (0, common_1.Get)('locations'),
+    (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Inventory')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], InventoryController.prototype, "findAllLocations", null);
 __decorate([
     (0, common_1.Get)(':uuid'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'Inventory')),

@@ -6,7 +6,6 @@ export declare class ReportsService {
         startDate: string;
         endDate: string;
         productId?: string;
-        category?: string;
     }): Promise<any[]>;
     getDailyStockMovementDetail(warehouseId: number, query: {
         date: string;
@@ -41,12 +40,10 @@ export declare class ReportsService {
         startDate: string;
         endDate: string;
         productId?: string;
-        category?: string;
     }): Promise<Buffer>;
     generateCsvReport(warehouseId: number, query: {
         startDate: string;
         endDate: string;
         productId?: string;
-        category?: string;
     }): Promise<string>;
 }
