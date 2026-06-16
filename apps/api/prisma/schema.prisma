@@ -8,32 +8,32 @@ datasource db {
 }
 
 model User {
-  id                        Int                   @id @default(autoincrement())
-  uuid                      String                @unique @default(uuid())
-  email                     String                @unique
+  id                        Int                  @id @default(autoincrement())
+  uuid                      String               @unique @default(uuid())
+  email                     String               @unique
   password                  String
   name                      String
-  isActive                  Boolean               @default(true)
-  isFirstLogin              Boolean               @default(true)
+  isActive                  Boolean              @default(true)
+  isFirstLogin              Boolean              @default(true)
   roleId                    Int
   warehouseId               Int?
-  createdAt                 DateTime              @default(now())
-  updatedAt                 DateTime              @updatedAt
-  auditLogsActor            AuditLog[]            @relation("ActorRelation")
-  auditLogsTarget           AuditLog[]            @relation("TargetRelation")
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  auditLogsActor            AuditLog[]           @relation("ActorRelation")
+  auditLogsTarget           AuditLog[]           @relation("TargetRelation")
   uploadedFiles             FileAttachment[]
-  gateOperationsCreated     GateOperation[]       @relation("GateOpCreator")
-  gateVerificationsVerified GateVerification[]    @relation("GateVerifier")
+  gateOperationsCreated     GateOperation[]      @relation("GateOpCreator")
+  gateVerificationsVerified GateVerification[]   @relation("GateVerifier")
   orders                    Order[]
   passwordResetTokens       PasswordResetToken[]
   sessions                  Session[]
-  role                      Role                  @relation(fields: [roleId], references: [id])
-  warehouse                 Warehouse?            @relation(fields: [warehouseId], references: [id])
-  warehouseAccesses         WarehouseAccess[]
   stockOpnames              StockOpname[]
+  role                      Role                 @relation(fields: [roleId], references: [id])
+  warehouse                 Warehouse?           @relation(fields: [warehouseId], references: [id])
+  warehouseAccesses         WarehouseAccess[]
+  signatureAuditLogs        SignatureAuditLog[]
   manualDocuments           ManualDocument[]
   signedDocuments           SignedDocument[]
-  signatureAuditLogs        SignatureAuditLog[]
   signatures                UserSignature[]
 
   @@index([email])
@@ -129,30 +129,30 @@ model AuditLog {
 }
 
 model Warehouse {
-  id                 Int                  @id @default(autoincrement())
-  uuid               String               @unique @default(uuid())
-  code               String               @unique @default("TEMP")
-  name               String
-  location           String
-  capacity           Float
-  type               String?
-  address            String?
-  isActive           Boolean              @default(true)
-  odooReference      String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  gateOperations     GateOperation[]
-  locations          Location[]
-  odooAccount        OdooAccount?
-  users              User[]
-  warehouseAccesses  WarehouseAccess[]
-  documentReferences DocumentReference[]
-  odooSyncLogs       OdooSyncLog[]
-  manualDocuments    ManualDocument[]
-  signedDocuments    SignedDocument[]
-  stockOpnames       StockOpname[]
+  id                  Int                  @id @default(autoincrement())
+  uuid                String               @unique @default(uuid())
+  code                String               @unique @default("TEMP")
+  name                String
+  location            String
+  capacity            Float
+  type                String?
+  address             String?
+  isActive            Boolean              @default(true)
+  odooReference       String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   dailyStockSnapshots DailyStockSnapshot[]
-  inventories        Inventory[]
+  documentReferences  DocumentReference[]
+  gateOperations      GateOperation[]
+  inventories         Inventory[]
+  locations           Location[]
+  odooAccount         OdooAccount?
+  odooSyncLogs        OdooSyncLog[]
+  stockOpnames        StockOpname[]
+  users               User[]
+  warehouseAccesses   WarehouseAccess[]
+  manualDocuments     ManualDocument[]
+  signedDocuments     SignedDocument[]
 
   @@index([uuid])
   @@index([code])
@@ -186,37 +186,37 @@ model OdooAccount {
 }
 
 model Location {
-  id             Int       @id
-  uuid           String    @unique @default(uuid())
-  displayName    String
-  warehouseId    Int
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  quants         Quant[]
-  stockOpnameStacks StockOpnameStack[]
+  id                       Int                       @id
+  uuid                     String                    @unique @default(uuid())
+  displayName              String
+  warehouseId              Int
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
   gateOperationProducts    GateOperationProduct[]
   gateVerificationProducts GateVerificationProduct[]
+  warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  quants                   Quant[]
+  stockOpnameStacks        StockOpnameStack[]
 
   @@index([warehouseId])
 }
 
 model Quant {
-  id                Int       @id
-  uuid              String    @unique @default(uuid())
-  inventoryId       Int
-  locationId        Int
-  quantity          Float     @default(0)
-  reservedQuantity  Float     @default(0)
-  availableQuantity Float     @default(0)
-  secondaryUnitQty  Float?    @default(0)
-  lotName           String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  location          Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  inventory         Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  id                       Int                       @id
+  uuid                     String                    @unique @default(uuid())
+  inventoryId              Int
+  locationId               Int
+  quantity                 Float                     @default(0)
+  reservedQuantity         Float                     @default(0)
+  availableQuantity        Float                     @default(0)
+  secondaryUnitQty         Float?                    @default(0)
+  lotName                  String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
   gateOperationProducts    GateOperationProduct[]
   gateVerificationProducts GateVerificationProduct[]
+  inventory                Inventory                 @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  location                 Location                  @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@index([inventoryId])
   @@index([locationId])
@@ -229,15 +229,15 @@ model Inventory {
   name                     String
   uom                      String?
   warehouseId              Int                       @default(1)
-  warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
+  dailyStockSnapshots      DailyStockSnapshot[]
   gateOperationProducts    GateOperationProduct[]
   gateVerificationProducts GateVerificationProduct[]
+  warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   orderItems               OrderItem[]
   quants                   Quant[]
   stockOpnameItems         StockOpnameItem[]
-  dailyStockSnapshots      DailyStockSnapshot[]
 
   @@index([uuid])
   @@index([sku])
@@ -264,8 +264,8 @@ model OrderItem {
   orderId     Int
   inventoryId Int
   quantity    Int
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([uuid])
 }
@@ -288,39 +288,39 @@ model FileAttachment {
   sizeBytes          Int
   uploadedById       Int
   uploadedAt         DateTime          @default(now())
-  uploadedBy         User              @relation(fields: [uploadedById], references: [id])
   gateOperationId    Int?
   gateVerificationId Int?
   stockOpnameId      Int?
   gateOperation      GateOperation?    @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
   gateVerification   GateVerification? @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
   stockOpname        StockOpname?      @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
+  uploadedBy         User              @relation(fields: [uploadedById], references: [id])
 }
 
 model GateOperation {
-  id              Int                    @id @default(autoincrement())
-  uuid            String                 @unique @default(uuid())
-  opNumber        String                 @unique
-  cardType        CardType
-  driverName      String
-  licensePlate    String
-  clientPartner   String?
-  driverPhone     String?
-  notes           String?
-  status          VerificationStatus     @default(PENDING)
-  warehouseId     Int
-  createdByUserId Int
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  createdByUser   User                   @relation("GateOpCreator", fields: [createdByUserId], references: [id])
-  warehouse       Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  products        GateOperationProduct[]
-  verification    GateVerification?
-  poReferences    String[]               @default([])
-  soReferences    String[]               @default([])
+  id                  Int                    @id @default(autoincrement())
+  uuid                String                 @unique @default(uuid())
+  opNumber            String                 @unique
+  cardType            CardType
+  driverName          String
+  licensePlate        String
+  clientPartner       String?
+  driverPhone         String?
+  notes               String?
+  status              VerificationStatus     @default(PENDING)
+  warehouseId         Int
+  createdByUserId     Int
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  poReferences        String[]               @default([])
+  soReferences        String[]               @default([])
   documentReferenceId Int?
-  documentReference   DocumentReference?     @relation(fields: [documentReferenceId], references: [id], onDelete: SetNull)
-  attachments     FileAttachment[]
+  attachments         FileAttachment[]
+  createdByUser       User                   @relation("GateOpCreator", fields: [createdByUserId], references: [id])
+  documentReference   DocumentReference?     @relation(fields: [documentReferenceId], references: [id])
+  warehouse           Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  products            GateOperationProduct[]
+  verification        GateVerification?
 
   @@index([uuid])
   @@index([opNumber])
@@ -329,19 +329,19 @@ model GateOperation {
 }
 
 model GateOperationProduct {
-  id              Int                      @id @default(autoincrement())
-  uuid            String                   @unique @default(uuid())
+  id              Int                     @id @default(autoincrement())
+  uuid            String                  @unique @default(uuid())
   gateOperationId Int
   inventoryId     Int
   quantity        Float
   notes           String?
   quantId         Int?
   locationId      Int?
-  gateOperation   GateOperation            @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
-  inventory       Inventory                @relation(fields: [inventoryId], references: [id])
-  quant           Quant?                   @relation(fields: [quantId], references: [id], onDelete: SetNull)
-  location        Location?                @relation(fields: [locationId], references: [id], onDelete: SetNull)
   references      GateDocumentReference[]
+  gateOperation   GateOperation           @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
+  inventory       Inventory               @relation(fields: [inventoryId], references: [id])
+  location        Location?               @relation(fields: [locationId], references: [id])
+  quant           Quant?                  @relation(fields: [quantId], references: [id])
 
   @@index([gateOperationId])
   @@index([inventoryId])
@@ -357,11 +357,11 @@ model GateVerification {
   verifiedAt      DateTime                  @default(now())
   status          VerificationStatus        @default(PENDING)
   notes           String?
+  attachments     FileAttachment[]
+  references      GateDocumentReference[]
   gateOperation   GateOperation             @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
   verifiedBy      User                      @relation("GateVerifier", fields: [verifiedById], references: [id])
   products        GateVerificationProduct[]
-  attachments     FileAttachment[]
-  references      GateDocumentReference[]
 
   @@index([uuid])
   @@index([gateOperationId])
@@ -377,13 +377,308 @@ model GateVerificationProduct {
   locationId         Int?
   gateVerification   GateVerification @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
   inventory          Inventory        @relation(fields: [inventoryId], references: [id])
-  quant              Quant?           @relation(fields: [quantId], references: [id], onDelete: SetNull)
-  location           Location?        @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  location           Location?        @relation(fields: [locationId], references: [id])
+  quant              Quant?           @relation(fields: [quantId], references: [id])
 
   @@index([gateVerificationId])
   @@index([inventoryId])
   @@index([quantId])
   @@index([locationId])
+}
+
+model DocumentReference {
+  id                      Int                     @id
+  uuid                    String                  @unique @default(uuid())
+  warehouseId             Int
+  documentNumber          String
+  state                   String
+  pickingTypeCode         String
+  partnerName             String?
+  purchaseName            String?
+  origin                  String?
+  ref_fax                 String?                 @db.VarChar(255)
+  sourceLocationName      String?
+  destinationLocationName String?
+  scheduledDate           DateTime?
+  dateDone                DateTime?
+  driver                  String?
+  plateNumber             String?
+  totalItems              Int
+  totalQuantity           Float
+  rawPayload              Json
+  lastSyncedAt            DateTime                @default(now())
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  warehouse               Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  items                   DocumentReferenceItem[]
+  references              GateDocumentReference[]
+  gateOperations          GateOperation[]
+
+  @@index([warehouseId])
+  @@index([uuid])
+  @@index([documentNumber])
+}
+
+model DocumentReferenceItem {
+  id                  Int                     @id
+  uuid                String                  @unique @default(uuid())
+  documentReferenceId Int
+  inventoryId         Int
+  productName         String
+  uom                 String
+  analyticAccountName String?
+  quantity            Float
+  productQty          Float
+  secondaryQuantity   Float?
+  secondaryUom        String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  documentReference   DocumentReference       @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
+  references          GateDocumentReference[]
+
+  @@index([documentReferenceId])
+}
+
+model OdooSyncLog {
+  id                 Int            @id @default(autoincrement())
+  uuid               String         @unique @default(uuid())
+  warehouseId        Int
+  status             OdooSyncStatus
+  startedAt          DateTime       @default(now())
+  finishedAt         DateTime?
+  totalDocuments     Int            @default(0)
+  processedDocuments Int            @default(0)
+  errorMessage       String?
+  createdBy          String
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  warehouse          Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@index([uuid])
+}
+
+model GateDocumentReference {
+  id                 Int                   @id @default(autoincrement())
+  uuid               String                @unique @default(uuid())
+  gateVerificationId Int
+  gateItemId         Int
+  erpDocumentId      Int
+  erpDocumentItemId  Int
+  inventoryId        Int
+  assignedQuantity   Float
+  createdAt          DateTime              @default(now())
+  createdBy          String
+  erpDocument        DocumentReference     @relation(fields: [erpDocumentId], references: [id], onDelete: Cascade)
+  erpDocumentItem    DocumentReferenceItem @relation(fields: [erpDocumentItemId], references: [id], onDelete: Cascade)
+  gateItem           GateOperationProduct  @relation(fields: [gateItemId], references: [id], onDelete: Cascade)
+  gateVerification   GateVerification      @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
+
+  @@index([gateVerificationId])
+  @@index([gateItemId])
+  @@index([erpDocumentId])
+  @@index([erpDocumentItemId])
+  @@index([inventoryId])
+}
+
+model StockOpname {
+  id             Int               @id @default(autoincrement())
+  uuid           String            @unique @default(uuid())
+  opnameNumber   String            @unique
+  warehouseId    Int
+  status         StockOpnameStatus @default(DRAFT)
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  completionDate DateTime?
+  createdById    Int
+  attachments    FileAttachment[]
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  warehouse      Warehouse         @relation(fields: [warehouseId], references: [id])
+  items          StockOpnameItem[]
+
+  @@index([warehouseId])
+  @@index([uuid])
+  @@index([opnameNumber])
+  @@index([status])
+}
+
+model StockOpnameItem {
+  id            Int                @id @default(autoincrement())
+  uuid          String             @unique @default(uuid())
+  stockOpnameId Int
+  inventoryId   Int
+  productSku    String
+  productName   String
+  productUom    String?
+  erpStock      Float
+  realtimeStock Float
+  difference    Float?
+  inventory     Inventory          @relation(fields: [inventoryId], references: [id])
+  stockOpname   StockOpname        @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
+  stacks        StockOpnameStack[]
+
+  @@index([stockOpnameId])
+  @@index([inventoryId])
+}
+
+model StockOpnameStack {
+  id                Int             @id @default(autoincrement())
+  uuid              String          @unique @default(uuid())
+  stockOpnameItemId Int
+  locationId        Int
+  locationName      String
+  erpQty            Float
+  actualQty         Float?
+  variance          Float?
+  location          Location        @relation(fields: [locationId], references: [id])
+  item              StockOpnameItem @relation(fields: [stockOpnameItemId], references: [id], onDelete: Cascade)
+
+  @@index([stockOpnameItemId])
+  @@index([locationId])
+}
+
+model DailyStockSnapshot {
+  id           Int       @id @default(autoincrement())
+  uuid         String    @unique @default(uuid())
+  date         DateTime
+  warehouseId  Int
+  inventoryId  Int
+  closingStock Float
+  inventory    Inventory @relation(fields: [inventoryId], references: [id])
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([date, warehouseId, inventoryId])
+  @@index([date])
+  @@index([warehouseId])
+  @@index([inventoryId])
+}
+
+model DocumentCategory {
+  id              Int              @id @default(autoincrement())
+  name            String
+  description     String?
+  isActive        Boolean          @default(true) @map("is_active")
+  deletedAt       DateTime?        @map("deleted_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  manualDocuments ManualDocument[]
+  signedDocuments SignedDocument[]
+
+  @@map("document_categories")
+}
+
+model SignatureTemplate {
+  id              Int              @id @default(autoincrement())
+  name            String
+  description     String?
+  pageNumber      Int              @map("page_number")
+  posX            Float            @map("pos_x")
+  posY            Float            @map("pos_y")
+  width           Float            @map("width")
+  height          Float            @map("height")
+  qrPosX          Float            @map("qr_pos_x")
+  qrPosY          Float            @map("qr_pos_y")
+  qrWidth         Float            @map("qr_width")
+  qrHeight        Float            @map("qr_height")
+  isDefault       Boolean          @default(false) @map("is_default")
+  isActive        Boolean          @default(true) @map("is_active")
+  deletedAt       DateTime?        @map("deleted_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  signedDocuments SignedDocument[]
+
+  @@map("signature_templates")
+}
+
+model ManualDocument {
+  id          Int              @id @default(autoincrement())
+  uuid        String           @unique @default(uuid())
+  warehouseId Int?             @map("warehouse_id")
+  title       String
+  categoryId  Int              @map("category_id")
+  description String?
+  fileUrl     String           @map("file_url")
+  fileKey     String?          @map("file_key")
+  uploadedBy  Int              @map("uploaded_by")
+  deletedAt   DateTime?        @map("deleted_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  category    DocumentCategory @relation(fields: [categoryId], references: [id])
+  uploader    User             @relation(fields: [uploadedBy], references: [id])
+  warehouse   Warehouse?       @relation(fields: [warehouseId], references: [id])
+
+  @@index([uuid])
+  @@index([warehouseId])
+  @@map("manual_documents")
+}
+
+model SignedDocument {
+  id                  Int                       @id @default(autoincrement())
+  uuid                String                    @unique @default(uuid())
+  warehouseId         Int?                      @map("warehouse_id")
+  sourceType          String                    @map("source_type")
+  sourceDocumentId    Int?                      @map("source_document_id")
+  title               String
+  categoryId          Int                       @map("category_id")
+  signedPdfUrl        String                    @map("signed_pdf_url")
+  fileKey             String?                   @map("file_key")
+  fileHash            String?                   @map("file_hash")
+  originalFileKey     String?                   @map("original_file_key")
+  verificationToken   String                    @unique @map("verification_token")
+  signedBy            Int                       @map("signed_by")
+  signedAt            DateTime                  @default(now()) @map("signed_at")
+  signatureTemplateId Int?                      @map("signature_template_id")
+  status              String                    @default("VALID") @map("status")
+  deletedAt           DateTime?                 @map("deleted_at")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
+  verificationLogs    DocumentVerificationLog[]
+  category            DocumentCategory          @relation(fields: [categoryId], references: [id])
+  template            SignatureTemplate?        @relation(fields: [signatureTemplateId], references: [id])
+  signer              User                      @relation(fields: [signedBy], references: [id])
+  warehouse           Warehouse?                @relation(fields: [warehouseId], references: [id])
+
+  @@index([uuid])
+  @@index([warehouseId])
+  @@map("signed_documents")
+}
+
+model DocumentVerificationLog {
+  id                Int            @id @default(autoincrement())
+  signedDocumentId  Int            @map("signed_document_id")
+  verificationToken String         @map("verification_token")
+  ipAddress         String?        @map("ip_address")
+  userAgent         String?        @map("user_agent")
+  verifiedAt        DateTime       @default(now()) @map("verified_at")
+  signedDocument    SignedDocument @relation(fields: [signedDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("document_verification_logs")
+}
+
+model SignatureAuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  action     String
+  documentId Int?     @map("document_id")
+  metadata   String?  @map("metadata")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model UserSignature {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  fileUrl   String   @map("file_url")
+  fileKey   String   @map("file_key")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_signatures")
 }
 
 enum OrderStatus {
@@ -408,59 +703,6 @@ enum VerificationStatus {
   REJECTED
 }
 
-model DocumentReference {
-  id                        Int                      @id
-  uuid                      String                   @unique @default(uuid())
-  warehouseId               Int
-  documentNumber            String
-  state                     String
-  pickingTypeCode           String
-  partnerName               String?
-  purchaseName              String?
-  origin                    String?
-  ref_fax                   String?                  @db.VarChar(255)
-  sourceLocationName        String?
-  destinationLocationName   String?
-  scheduledDate             DateTime?
-  dateDone                  DateTime?
-  driver                    String?
-  plateNumber               String?
-  totalItems                Int
-  totalQuantity             Float
-  rawPayload                Json
-  lastSyncedAt              DateTime                 @default(now())
-  createdAt                 DateTime                 @default(now())
-  updatedAt                 DateTime                 @updatedAt
-  warehouse                 Warehouse                @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  items                     DocumentReferenceItem[]
-  references                GateDocumentReference[]
-  gateOperations            GateOperation[]
-
-  @@index([warehouseId])
-  @@index([uuid])
-  @@index([documentNumber])
-}
-
-model DocumentReferenceItem {
-  id                  Int                      @id
-  uuid                String                   @unique @default(uuid())
-  documentReferenceId Int
-  inventoryId         Int
-  productName         String
-  uom                 String
-  analyticAccountName String?
-  quantity            Float
-  productQty          Float
-  secondaryQuantity   Float?
-  secondaryUom        String?
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  documentReference   DocumentReference        @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
-  references          GateDocumentReference[]
-
-  @@index([documentReferenceId])
-}
-
 enum OdooSyncStatus {
   PENDING
   RUNNING
@@ -468,262 +710,7 @@ enum OdooSyncStatus {
   FAILED
 }
 
-model OdooSyncLog {
-  id                 Int            @id @default(autoincrement())
-  uuid               String         @unique @default(uuid())
-  warehouseId        Int
-  status             OdooSyncStatus
-  startedAt          DateTime       @default(now())
-  finishedAt         DateTime?
-  totalDocuments     Int            @default(0)
-  processedDocuments Int            @default(0)
-  errorMessage       String?
-  createdBy          String
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-
-  warehouse          Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-
-  @@index([warehouseId])
-  @@index([uuid])
-}
-
-model GateDocumentReference {
-  id                 Int                   @id @default(autoincrement())
-  uuid               String                @unique @default(uuid())
-  gateVerificationId Int
-  gateItemId         Int
-  erpDocumentId      Int
-  erpDocumentItemId  Int
-  inventoryId        Int
-  assignedQuantity   Float
-  createdAt          DateTime              @default(now())
-  createdBy          String
-
-  gateVerification   GateVerification      @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
-  gateItem           GateOperationProduct  @relation(fields: [gateItemId], references: [id], onDelete: Cascade)
-  erpDocument        DocumentReference     @relation(fields: [erpDocumentId], references: [id], onDelete: Cascade)
-  erpDocumentItem    DocumentReferenceItem @relation(fields: [erpDocumentItemId], references: [id], onDelete: Cascade)
-
-  @@index([gateVerificationId])
-  @@index([gateItemId])
-  @@index([erpDocumentId])
-  @@index([erpDocumentItemId])
-  @@index([inventoryId])
-}
-
 enum StockOpnameStatus {
   DRAFT
   COMPLETED
 }
-
-model StockOpname {
-  id               Int                   @id @default(autoincrement())
-  uuid             String                @unique @default(uuid())
-  opnameNumber     String                @unique
-  warehouseId      Int
-  status           StockOpnameStatus     @default(DRAFT)
-  notes            String?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  completionDate   DateTime?
-  createdById      Int
-
-  warehouse        Warehouse             @relation(fields: [warehouseId], references: [id])
-  createdBy        User                  @relation(fields: [createdById], references: [id])
-  items            StockOpnameItem[]
-  attachments      FileAttachment[]
-
-  @@index([warehouseId])
-  @@index([uuid])
-  @@index([opnameNumber])
-  @@index([status])
-}
-
-model StockOpnameItem {
-  id              Int                  @id @default(autoincrement())
-  uuid            String               @unique @default(uuid())
-  stockOpnameId   Int
-  inventoryId     Int
-  productSku      String
-  productName     String
-  productUom      String?
-  erpStock        Float
-  realtimeStock   Float
-  difference      Float?
-
-  stockOpname     StockOpname          @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
-  inventory       Inventory            @relation(fields: [inventoryId], references: [id])
-  stacks          StockOpnameStack[]
-
-  @@index([stockOpnameId])
-  @@index([inventoryId])
-}
-
-model StockOpnameStack {
-  id                Int              @id @default(autoincrement())
-  uuid              String           @unique @default(uuid())
-  stockOpnameItemId Int
-  locationId        Int
-  locationName      String
-  erpQty            Float
-  actualQty         Float?
-  variance          Float?
-
-  item              StockOpnameItem  @relation(fields: [stockOpnameItemId], references: [id], onDelete: Cascade)
-  location          Location         @relation(fields: [locationId], references: [id])
-
-  @@index([stockOpnameItemId])
-  @@index([locationId])
-}
-
-model DailyStockSnapshot {
-  id             Int       @id @default(autoincrement())
-  uuid           String    @unique @default(uuid())
-  date           DateTime
-  warehouseId    Int
-  inventoryId    Int
-  closingStock   Float
-
-  warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
-  inventory      Inventory @relation(fields: [inventoryId], references: [id])
-
-  @@unique([date, warehouseId, inventoryId])
-  @@index([date])
-  @@index([warehouseId])
-  @@index([inventoryId])
-}
-
-model DocumentCategory {
-  id          Int              @id @default(autoincrement())
-  name        String
-  description String?
-  isActive    Boolean          @default(true) @map("is_active")
-  deletedAt   DateTime?        @map("deleted_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  
-  manualDocuments ManualDocument[]
-  signedDocuments SignedDocument[]
-
-  @@map("document_categories")
-}
-
-model SignatureTemplate {
-  id          Int              @id @default(autoincrement())
-  name        String
-  description String?
-  pageNumber  Int              @map("page_number")
-  posX        Float            @map("pos_x")
-  posY        Float            @map("pos_y")
-  width       Float            @map("width")
-  height      Float            @map("height")
-  qrPosX      Float            @map("qr_pos_x")
-  qrPosY      Float            @map("qr_pos_y")
-  qrWidth     Float            @map("qr_width")
-  qrHeight    Float            @map("qr_height")
-  isDefault   Boolean          @default(false) @map("is_default")
-  isActive    Boolean          @default(true) @map("is_active")
-  deletedAt   DateTime?        @map("deleted_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-
-  signedDocuments SignedDocument[]
-
-  @@map("signature_templates")
-}
-
-model ManualDocument {
-  id          Int              @id @default(autoincrement())
-  uuid        String           @unique @default(uuid())
-  warehouseId Int?             @map("warehouse_id")
-  title       String
-  categoryId  Int              @map("category_id")
-  description String?
-  fileUrl     String           @map("file_url")
-  fileKey     String?          @map("file_key")
-  uploadedBy  Int              @map("uploaded_by")
-  deletedAt   DateTime?        @map("deleted_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-
-  warehouse   Warehouse?       @relation(fields: [warehouseId], references: [id])
-  category    DocumentCategory @relation(fields: [categoryId], references: [id])
-  uploader    User             @relation(fields: [uploadedBy], references: [id])
-
-  @@map("manual_documents")
-  @@index([uuid])
-  @@index([warehouseId])
-}
-
-model SignedDocument {
-  id                  Int               @id @default(autoincrement())
-  uuid                String            @unique @default(uuid())
-  warehouseId         Int?              @map("warehouse_id")
-  sourceType          String            @map("source_type") // ERP or MANUAL
-  sourceDocumentId    Int?              @map("source_document_id")
-  title               String
-  categoryId          Int               @map("category_id")
-  signedPdfUrl        String            @map("signed_pdf_url")
-  fileKey             String?           @map("file_key")
-  fileHash            String?           @map("file_hash")
-  originalFileKey     String?           @map("original_file_key")
-  verificationToken   String            @unique @map("verification_token")
-  signedBy            Int               @map("signed_by")
-  signedAt            DateTime          @default(now()) @map("signed_at")
-  signatureTemplateId Int?              @map("signature_template_id")
-  status              String            @default("VALID") @map("status") // VALID, INVALID, REVOKED
-  deletedAt           DateTime?         @map("deleted_at")
-  createdAt           DateTime          @default(now()) @map("created_at")
-  updatedAt           DateTime          @updatedAt @map("updated_at")
-
-  warehouse           Warehouse?        @relation(fields: [warehouseId], references: [id])
-  category            DocumentCategory  @relation(fields: [categoryId], references: [id])
-  signer              User              @relation(fields: [signedBy], references: [id])
-  template            SignatureTemplate? @relation(fields: [signatureTemplateId], references: [id])
-  verificationLogs    DocumentVerificationLog[]
-
-  @@map("signed_documents")
-  @@index([uuid])
-  @@index([warehouseId])
-}
-
-model DocumentVerificationLog {
-  id                Int            @id @default(autoincrement())
-  signedDocumentId  Int            @map("signed_document_id")
-  verificationToken String         @map("verification_token")
-  ipAddress         String?        @map("ip_address")
-  userAgent         String?        @map("user_agent")
-  verifiedAt        DateTime       @default(now()) @map("verified_at")
-
-  signedDocument    SignedDocument @relation(fields: [signedDocumentId], references: [id], onDelete: Cascade)
-
-  @@map("document_verification_logs")
-}
-
-model SignatureAuditLog {
-  id         Int       @id @default(autoincrement())
-  userId     Int?      @map("user_id")
-  action     String
-  documentId Int?      @map("document_id")
-  metadata   String?   @map("metadata")
-  createdAt  DateTime  @default(now()) @map("created_at")
-
-  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@map("audit_logs")
-}
-
-model UserSignature {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @map("user_id")
-  fileUrl   String   @map("file_url")
-  fileKey   String   @map("file_key")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_signatures")
-}
-
