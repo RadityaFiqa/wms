@@ -47,13 +47,19 @@ export class StorageController {
     }
 
     // Determine target folder
-    const folder = file.mimetype.startsWith('image/') ? 'images' : 'attachments';
+    const folder = file.mimetype.startsWith('image/')
+      ? 'images'
+      : 'attachments';
     const uploadedById = req.user?.id;
     if (!uploadedById) {
       throw new BadRequestException('Identitas user pengunggah tidak valid.');
     }
 
-    const attachment = await this.storageService.uploadFile(file, folder, uploadedById);
+    const attachment = await this.storageService.uploadFile(
+      file,
+      folder,
+      uploadedById,
+    );
     const url = this.storageService.getFilePublicUrl(attachment.filePath);
 
     return {

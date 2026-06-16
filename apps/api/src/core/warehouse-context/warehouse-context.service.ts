@@ -9,7 +9,8 @@ export interface WarehouseContext {
 
 @Injectable()
 export class WarehouseContextService {
-  private static readonly asyncLocalStorage = new AsyncLocalStorage<WarehouseContext>();
+  private static readonly asyncLocalStorage =
+    new AsyncLocalStorage<WarehouseContext>();
 
   run(context: WarehouseContext, callback: () => any) {
     return WarehouseContextService.asyncLocalStorage.run(context, callback);

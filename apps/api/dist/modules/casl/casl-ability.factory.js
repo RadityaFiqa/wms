@@ -21,6 +21,7 @@ let CaslAbilityFactory = class CaslAbilityFactory {
     }
     async createForUser(user) {
         const { can, build } = new ability_1.AbilityBuilder(prisma_1.createPrismaAbility);
+        can('manage', 'UserSignature', { userId: user.id });
         const rolePermissions = user.role?.permissions || [];
         for (const rp of rolePermissions) {
             const { action, subject, conditions } = rp.permission;

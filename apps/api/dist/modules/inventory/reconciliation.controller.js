@@ -60,7 +60,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ReconciliationController.prototype, "getDetail", null);
 exports.ReconciliationController = ReconciliationController = __decorate([
-    (0, common_1.Controller)('inventory/reconciliation'),
+    (0, common_1.Controller)('reconciliation'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, warehouse_guard_1.WarehouseGuard, policies_guard_1.PoliciesGuard),
     (0, common_1.UseInterceptors)(audit_log_interceptor_1.AuditLogInterceptor),
     __metadata("design:paramtypes", [reconciliation_service_1.ReconciliationService,

@@ -1,10 +1,43 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
@@ -17,15 +50,19 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../core/prisma/prisma.service");
 const warehouse_context_service_1 = require("../../core/warehouse-context/warehouse-context.service");
 const storage_service_1 = require("../storage/storage.service");
+const config_1 = require("@nestjs/config");
+const QRCode = __importStar(require("qrcode"));
 const pdfkit_1 = __importDefault(require("pdfkit"));
 let GateService = class GateService {
     prisma;
     warehouseContext;
     storageService;
-    constructor(prisma, warehouseContext, storageService) {
+    configService;
+    constructor(prisma, warehouseContext, storageService, configService) {
         this.prisma = prisma;
         this.warehouseContext = warehouseContext;
         this.storageService = storageService;
+        this.configService = configService;
     }
     getStartAndEndOfToday() {
         const start = new Date();
@@ -130,26 +167,32 @@ let GateService = class GateService {
             warehouseId,
         };
         if (query.startDate || query.endDate) {
-            const verifiedAtFilter = {};
+            const createdAtFilter = {};
             if (query.startDate) {
                 const start = new Date(query.startDate);
                 start.setHours(0, 0, 0, 0);
-                verifiedAtFilter.gte = start;
+                createdAtFilter.gte = start;
             }
             if (query.endDate) {
                 const end = new Date(query.endDate);
                 end.setHours(23, 59, 59, 999);
-                verifiedAtFilter.lte = end;
+                createdAtFilter.lte = end;
             }
-            where.verification = {
-                verifiedAt: verifiedAtFilter,
-            };
+            where.createdAt = createdAtFilter;
         }
         if (query.search) {
             where.OR = [
                 { opNumber: { contains: query.search, mode: 'insensitive' } },
                 { driverName: { contains: query.search, mode: 'insensitive' } },
                 { licensePlate: { contains: query.search, mode: 'insensitive' } },
+                {
+                    documentReference: {
+                        OR: [
+                            { documentNumber: { contains: query.search, mode: 'insensitive' } },
+                            { origin: { contains: query.search, mode: 'insensitive' } },
+                        ],
+                    },
+                },
             ];
         }
         if (query.cardType) {
@@ -285,14 +328,15 @@ let GateService = class GateService {
                     },
                     _sum: { assignedQuantity: true },
                 });
+                const erpQty = docItem.productQty || docItem.quantity || 0;
                 const totalRealized = aggregate._sum.assignedQuantity || 0;
-                const remainingQty = Math.max(0, docItem.quantity - totalRealized);
+                const remainingQty = Math.max(0, erpQty - totalRealized);
                 const inventory = await this.prisma.inventory.findUnique({
                     where: { id: docItem.inventoryId },
                     select: { sku: true },
                 });
                 let status = 'PENDING';
-                if (totalRealized >= docItem.quantity) {
+                if (totalRealized >= erpQty) {
                     status = 'COMPLETED';
                 }
                 else if (totalRealized > 0) {
@@ -303,7 +347,7 @@ let GateService = class GateService {
                     productName: docItem.productName,
                     sku: inventory?.sku || docItem.analyticAccountName || '',
                     uom: docItem.uom,
-                    erpQty: docItem.quantity,
+                    erpQty,
                     realizedQty: totalRealized,
                     remainingQty,
                     status,
@@ -437,9 +481,10 @@ let GateService = class GateService {
                     },
                 },
             },
-            orderBy: {
-                scheduledDate: 'desc',
-            },
+            orderBy: [
+                { scheduledDate: 'desc' },
+                { id: 'desc' },
+            ],
         });
         const results = [];
         for (const doc of documents) {
@@ -498,7 +543,8 @@ let GateService = class GateService {
         if (!gateOperation) {
             throw new common_1.NotFoundException('Gate operation tidak ditemukan.');
         }
-        if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+        if (gateOperation.status === 'VERIFIED' ||
+            gateOperation.status === 'CANCELED') {
             throw new common_1.BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
         }
         const gateItem = await this.prisma.gateOperationProduct.findFirst({
@@ -614,7 +660,8 @@ let GateService = class GateService {
             throw new common_1.NotFoundException('Referensi dokumen tidak ditemukan.');
         }
         const gateOperation = docRef.gateVerification.gateOperation;
-        if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+        if (gateOperation.status === 'VERIFIED' ||
+            gateOperation.status === 'CANCELED') {
             throw new common_1.BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
         }
         const gateOperationId = docRef.gateVerification.gateOperationId;
@@ -715,13 +762,15 @@ let GateService = class GateService {
         if (!gateOperation) {
             throw new common_1.NotFoundException('Gate operation tidak ditemukan.');
         }
-        if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+        if (gateOperation.status === 'VERIFIED' ||
+            gateOperation.status === 'CANCELED') {
             throw new common_1.BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
         }
         return this.prisma.$transaction(async (tx) => {
             let verification = gateOperation.verification;
             const newDocRefId = body.documentReferenceId;
-            if (newDocRefId !== undefined && newDocRefId !== gateOperation.documentReferenceId) {
+            if (newDocRefId !== undefined &&
+                newDocRefId !== gateOperation.documentReferenceId) {
                 if (newDocRefId) {
                     const docItems = await tx.documentReferenceItem.findMany({
                         where: { documentReferenceId: newDocRefId },
@@ -732,7 +781,9 @@ let GateService = class GateService {
                     });
                     for (const gp of gateProducts) {
                         if (!docInventoryIds.has(gp.inventoryId)) {
-                            const product = await tx.inventory.findUnique({ where: { id: gp.inventoryId } });
+                            const product = await tx.inventory.findUnique({
+                                where: { id: gp.inventoryId },
+                            });
                             throw new common_1.BadRequestException(`Produk ${product?.name || gp.inventoryId} tidak terdaftar pada dokumen referensi ERP yang baru dipilih.`);
                         }
                     }
@@ -810,7 +861,7 @@ let GateService = class GateService {
             await this.updateGateStatusAndRealisasi(tx, gateOperation.id, verification.id);
             if (body.products && body.products.length > 0) {
                 for (const prod of body.products) {
-                    await this.validateStackQuantity(tx, gateOperation.cardType, prod.productId, prod.quantity, prod.quantId, prod.locationId);
+                    await this.validateStackQuantity(tx, gateOperation.cardType, prod.productId, prod.quantity, prod.quantId, prod.locationId, gateOperation.id);
                 }
                 await tx.gateVerificationProduct.deleteMany({
                     where: { gateVerificationId: verification.id },
@@ -878,7 +929,9 @@ let GateService = class GateService {
                     data: {
                         verifiedById,
                         status: 'CANCELED',
-                        notes: verification.notes ? `${verification.notes} (Dibatalkan)` : 'Dibatalkan',
+                        notes: verification.notes
+                            ? `${verification.notes} (Dibatalkan)`
+                            : 'Dibatalkan',
                     },
                 });
             }
@@ -889,7 +942,9 @@ let GateService = class GateService {
                     status: 'CANCELED',
                 },
             });
-            if (prevStatus !== 'CANCELED' && prevStatus !== 'COMPLETED' && prevStatus !== 'VERIFIED') {
+            if (prevStatus !== 'CANCELED' &&
+                prevStatus !== 'COMPLETED' &&
+                prevStatus !== 'VERIFIED') {
                 for (const p of gateOperation.products) {
                     if (p.quantId) {
                         await this.releaseQuantStock(tx, gateOperation.cardType, p.quantId, p.quantity);
@@ -948,7 +1003,9 @@ let GateService = class GateService {
                     data: {
                         verifiedById,
                         status: 'VERIFIED',
-                        notes: verification.notes ? `${verification.notes} (Diverifikasi)` : 'Diverifikasi',
+                        notes: verification.notes
+                            ? `${verification.notes} (Diverifikasi)`
+                            : 'Diverifikasi',
                         verifiedAt: new Date(),
                     },
                 });
@@ -993,7 +1050,8 @@ let GateService = class GateService {
             }));
         }
         if (mapped.verification) {
-            if (mapped.verification.attachments && Array.isArray(mapped.verification.attachments)) {
+            if (mapped.verification.attachments &&
+                Array.isArray(mapped.verification.attachments)) {
                 mapped.verification.attachments = mapped.verification.attachments.map((attach) => ({
                     ...attach,
                     url: this.storageService.getFilePublicUrl(attach.filePath),
@@ -1008,7 +1066,7 @@ let GateService = class GateService {
         if (obj instanceof Date)
             return obj;
         if (Array.isArray(obj)) {
-            return obj.map(item => this.stripIdField(item));
+            return obj.map((item) => this.stripIdField(item));
         }
         if (typeof obj === 'object') {
             const isProduct = 'sku' in obj && 'name' in obj;
@@ -1016,7 +1074,10 @@ let GateService = class GateService {
             const isGateVerificationProduct = 'gateVerificationId' in obj && 'inventoryId' in obj;
             const newObj = {};
             for (const key of Object.keys(obj)) {
-                if (key === 'id' && !isProduct && !isGateOpProduct && !isGateVerificationProduct)
+                if (key === 'id' &&
+                    !isProduct &&
+                    !isGateOpProduct &&
+                    !isGateVerificationProduct)
                     continue;
                 newObj[key] = this.stripIdField(obj[key]);
             }
@@ -1069,7 +1130,8 @@ let GateService = class GateService {
             if (!gateOperation) {
                 throw new common_1.NotFoundException('Gate operation tidak ditemukan');
             }
-            if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+            if (gateOperation.status === 'VERIFIED' ||
+                gateOperation.status === 'CANCELED') {
                 throw new common_1.BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
             }
             const product = await tx.inventory.findUnique({
@@ -1129,7 +1191,8 @@ let GateService = class GateService {
                 throw new common_1.NotFoundException('Barang muatan tidak ditemukan');
             }
             const gateOperation = cargoItem.gateOperation;
-            if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+            if (gateOperation.status === 'VERIFIED' ||
+                gateOperation.status === 'CANCELED') {
                 throw new common_1.BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
             }
             await tx.gateOperationProduct.delete({
@@ -1164,7 +1227,8 @@ let GateService = class GateService {
                 throw new common_1.NotFoundException('Barang muatan tidak ditemukan');
             }
             const gateOperation = cargoItem.gateOperation;
-            if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+            if (gateOperation.status === 'VERIFIED' ||
+                gateOperation.status === 'CANCELED') {
                 throw new common_1.BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
             }
             const targetQuantity = quantity !== undefined ? quantity : cargoItem.quantity;
@@ -1174,7 +1238,7 @@ let GateService = class GateService {
             if (cargoItem.quantId) {
                 await this.releaseQuantStock(tx, gateOperation.cardType, cargoItem.quantId, cargoItem.quantity);
             }
-            await this.validateStackQuantity(tx, gateOperation.cardType, cargoItem.inventoryId, targetQuantity, quantId, locationId);
+            await this.validateStackQuantity(tx, gateOperation.cardType, cargoItem.inventoryId, targetQuantity, quantId, locationId, gateOperation.id);
             const updated = await tx.gateOperationProduct.update({
                 where: { id: cargoItem.id },
                 data: {
@@ -1197,7 +1261,7 @@ let GateService = class GateService {
             return this.stripIdField(updated);
         });
     }
-    async validateStackQuantity(tx, cardType, productId, quantity, quantId, locationId) {
+    async validateStackQuantity(tx, cardType, productId, quantity, quantId, locationId, gateOperationId) {
         if (quantId) {
             const quant = await tx.quant.findUnique({
                 where: { id: quantId },
@@ -1208,8 +1272,22 @@ let GateService = class GateService {
             if (quant.inventoryId !== productId) {
                 throw new common_1.BadRequestException('Produk tidak cocok dengan tumpukan yang dipilih.');
             }
-            if (cardType === 'OUT' && quantity > quant.availableQuantity) {
-                throw new common_1.BadRequestException(`Kuantitas (${quantity}) melebihi kuantitas tersedia di tumpukan (tersedia: ${quant.availableQuantity}).`);
+            if (cardType === 'OUT') {
+                let reservedByThisOp = 0;
+                if (gateOperationId) {
+                    const existingProduct = await tx.gateOperationProduct.findFirst({
+                        where: {
+                            gateOperationId,
+                            quantId,
+                            inventoryId: productId,
+                        },
+                    });
+                    reservedByThisOp = existingProduct ? existingProduct.quantity : 0;
+                }
+                const totalAvailable = quant.availableQuantity + reservedByThisOp;
+                if (quantity > totalAvailable) {
+                    throw new common_1.BadRequestException(`Kuantitas (${quantity}) melebihi kuantitas tersedia di tumpukan (tersedia: ${totalAvailable}).`);
+                }
             }
             if (locationId && quant.locationId !== locationId) {
                 throw new common_1.BadRequestException('Lokasi tidak cocok dengan tumpukan yang dipilih.');
@@ -1311,6 +1389,15 @@ let GateService = class GateService {
         if (!gateOperation) {
             throw new common_1.NotFoundException('Gate operation tidak ditemukan.');
         }
+        const appDomain = this.configService.get('APP_DOMAIN') || 'localhost:3001';
+        const useSSL = this.configService.get('FRONTEND_USE_SSL') === 'true';
+        const protocol = useSSL ? 'https' : 'http';
+        const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
+        const qrCodeBuffer = await QRCode.toBuffer(verificationUrl, {
+            type: 'png',
+            width: 150,
+            margin: 1,
+        });
         return new Promise((resolve, reject) => {
             const doc = new pdfkit_1.default({ margin: 40, size: 'A4' });
             const buffers = [];
@@ -1318,29 +1405,61 @@ let GateService = class GateService {
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', (err) => reject(err));
             doc.rect(40, 40, 50, 40).fill('#1e3a8a');
-            doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold').text('BULOG', 45, 48);
+            doc
+                .fillColor('#ffffff')
+                .fontSize(11)
+                .font('Helvetica-Bold')
+                .text('BULOG', 45, 48);
             doc.fontSize(8).text('WMS', 54, 62);
-            doc.fillColor('#1e293b').fontSize(14).font('Helvetica-Bold').text('SURAT PENGANTAR / SURAT JALAN', 110, 50, { align: 'center', width: 380 });
+            doc
+                .fillColor('#1e293b')
+                .fontSize(14)
+                .font('Helvetica-Bold')
+                .text('SURAT PENGANTAR / SURAT JALAN', 110, 50, {
+                align: 'center',
+                width: 380,
+            });
+            doc.image(qrCodeBuffer, 505, 40, { width: 50, height: 50 });
             doc.moveTo(40, 95).lineTo(555, 95).lineWidth(1.5).stroke('#1e3a8a');
             doc.fillColor('#334155').fontSize(9).font('Helvetica');
             let currentY = 115;
             const drawInfoRow = (label1, val1, label2, val2) => {
-                doc.font('Helvetica-Bold').fillColor('#64748b').text(label1, 40, currentY, { width: 120 });
-                doc.font('Helvetica').fillColor('#1e293b').text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
-                doc.font('Helvetica-Bold').fillColor('#64748b').text(label2, 320, currentY, { width: 110 });
-                doc.font('Helvetica').fillColor('#1e293b').text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
+                doc
+                    .font('Helvetica-Bold')
+                    .fillColor('#64748b')
+                    .text(label1, 40, currentY, { width: 120 });
+                doc
+                    .font('Helvetica')
+                    .fillColor('#1e293b')
+                    .text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
+                doc
+                    .font('Helvetica-Bold')
+                    .fillColor('#64748b')
+                    .text(label2, 320, currentY, { width: 110 });
+                doc
+                    .font('Helvetica')
+                    .fillColor('#1e293b')
+                    .text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
                 currentY += 18;
             };
             const dateStr = new Date(gateOperation.createdAt).toLocaleDateString('id-ID', {
                 day: '2-digit',
                 month: '2-digit',
-                year: 'numeric'
+                year: 'numeric',
             });
-            drawInfoRow('No Tiket', gateOperation.opNumber, 'Tujuan / Partner', gateOperation.clientPartner || gateOperation.documentReference?.partnerName || '-');
+            drawInfoRow('No Tiket', gateOperation.opNumber, 'Tujuan / Partner', gateOperation.clientPartner ||
+                gateOperation.documentReference?.partnerName ||
+                '-');
             drawInfoRow('Tanggal', dateStr, 'Nama Driver', gateOperation.driverName);
-            drawInfoRow('No. Dokumen Ref', gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber || '-', 'Nomor Plat', gateOperation.licensePlate);
+            drawInfoRow('No. Dokumen Ref', gateOperation.documentReference?.origin ||
+                gateOperation.documentReference?.documentNumber ||
+                '-', 'Nomor Plat', gateOperation.licensePlate);
             drawInfoRow('No. Telp Driver', gateOperation.driverPhone || '-', '', '');
-            doc.moveTo(40, currentY + 5).lineTo(555, currentY + 5).lineWidth(0.5).stroke('#cbd5e1');
+            doc
+                .moveTo(40, currentY + 5)
+                .lineTo(555, currentY + 5)
+                .lineWidth(0.5)
+                .stroke('#cbd5e1');
             currentY += 15;
             doc.fillColor('#f8fafc').rect(40, currentY, 515, 20).fill();
             doc.fillColor('#475569').fontSize(8).font('Helvetica-Bold');
@@ -1349,8 +1468,7 @@ let GateService = class GateService {
             doc.text('SKU', 220, currentY + 6, { width: 65 });
             doc.text('UOM', 290, currentY + 6, { width: 35 });
             doc.text('Jumlah', 330, currentY + 6, { width: 45, align: 'right' });
-            doc.text('Location', 380, currentY + 6, { width: 70 });
-            doc.text('Tumpukan / Lot', 455, currentY + 6, { width: 95 });
+            doc.text('Location', 380, currentY + 6, { width: 175 });
             currentY += 20;
             let totalQty = 0;
             const products = gateOperation.products || [];
@@ -1360,17 +1478,35 @@ let GateService = class GateService {
                     currentY = 50;
                 }
                 const locationName = p.location?.displayName || '-';
-                const lotName = p.quant?.lotName || p.lotName || '-';
                 doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica');
                 doc.text(String(idx + 1), 45, currentY + 6, { width: 20 });
-                doc.font('Helvetica-Bold').text(p.inventory?.name || '-', 70, currentY + 6, { width: 145, ellipsis: true });
-                doc.font('Helvetica').text(p.inventory?.sku || '-', 220, currentY + 6, { width: 65, ellipsis: true });
+                doc
+                    .font('Helvetica-Bold')
+                    .text(p.inventory?.name || '-', 70, currentY + 6, {
+                    width: 145,
+                    ellipsis: true,
+                });
+                doc
+                    .font('Helvetica')
+                    .text(p.inventory?.sku || '-', 220, currentY + 6, {
+                    width: 65,
+                    ellipsis: true,
+                });
                 doc.text(p.inventory?.uom || '-', 290, currentY + 6, { width: 35 });
-                doc.text(p.quantity.toLocaleString('id-ID'), 330, currentY + 6, { width: 45, align: 'right' });
-                doc.text(locationName, 380, currentY + 6, { width: 70, ellipsis: true });
-                doc.text(lotName, 455, currentY + 6, { width: 95, ellipsis: true });
+                doc.text(p.quantity.toLocaleString('id-ID'), 330, currentY + 6, {
+                    width: 45,
+                    align: 'right',
+                });
+                doc.text(locationName, 380, currentY + 6, {
+                    width: 175,
+                    ellipsis: true,
+                });
                 totalQty += p.quantity;
-                doc.moveTo(40, currentY + 18).lineTo(555, currentY + 18).lineWidth(0.3).stroke('#e2e8f0');
+                doc
+                    .moveTo(40, currentY + 18)
+                    .lineTo(555, currentY + 18)
+                    .lineWidth(0.3)
+                    .stroke('#e2e8f0');
                 currentY += 18;
             });
             currentY += 10;
@@ -1380,13 +1516,38 @@ let GateService = class GateService {
             doc.text(`:  ${products.length}`, 430, currentY + 8);
             doc.text('Total Quantity', 330, currentY + 22);
             doc.text(`:  ${totalQty.toLocaleString('id-ID')}`, 430, currentY + 22);
-            currentY += 60;
+            currentY += 55;
+            if (currentY + 20 > 750) {
+                doc.addPage();
+                currentY = 50;
+            }
+            doc
+                .fillColor('#ef4444')
+                .fontSize(8)
+                .font('Helvetica-Oblique')
+                .text('Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.', 40, currentY, { width: 515, align: 'center' });
+            currentY += 25;
+            if (currentY + 60 > 750) {
+                doc.addPage();
+                currentY = 50;
+            }
             doc.fillColor('#1e293b').fontSize(9).font('Helvetica');
-            doc.text('Pengangkut / Driver', 70, currentY, { width: 150, align: 'center' });
+            doc.text('Pengangkut / Driver', 70, currentY, {
+                width: 150,
+                align: 'center',
+            });
             doc.text('Kepala Gudang', 375, currentY, { width: 150, align: 'center' });
             currentY += 50;
-            doc.font('Helvetica-Bold').text(`(  ${gateOperation.driverName}  )`, 70, currentY, { width: 150, align: 'center' });
-            doc.text('(  ........................  )', 375, currentY, { width: 150, align: 'center' });
+            doc
+                .font('Helvetica-Bold')
+                .text(`(  ${gateOperation.driverName}  )`, 70, currentY, {
+                width: 150,
+                align: 'center',
+            });
+            doc.text('(  ........................  )', 375, currentY, {
+                width: 150,
+                align: 'center',
+            });
             doc.end();
         });
     }
@@ -1414,16 +1575,21 @@ let GateService = class GateService {
         if (!gateOperation) {
             throw new common_1.NotFoundException('Gate operation tidak ditemukan.');
         }
+        const appDomain = this.configService.get('APP_DOMAIN') || 'localhost:3001';
+        const useSSL = this.configService.get('FRONTEND_USE_SSL') === 'true';
+        const protocol = useSSL ? 'https' : 'http';
+        const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
+        const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl);
         const dateStr = new Date(gateOperation.createdAt).toLocaleDateString('id-ID', {
             day: '2-digit',
             month: '2-digit',
-            year: 'numeric'
+            year: 'numeric',
         });
         const products = gateOperation.products || [];
         const totalQty = products.reduce((sum, p) => sum + p.quantity, 0);
-        const rowsHtml = products.map((p, idx) => {
+        const rowsHtml = products
+            .map((p, idx) => {
             const locationName = p.location?.displayName || '-';
-            const lotName = p.quant?.lotName || p.lotName || '-';
             return `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
@@ -1432,10 +1598,10 @@ let GateService = class GateService {
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${p.inventory?.uom || '-'}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${p.quantity.toLocaleString('id-ID')}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${locationName}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${lotName}</td>
         </tr>
       `;
-        }).join('');
+        })
+            .join('');
         return `
       <!DOCTYPE html>
       <html lang="id">
@@ -1493,7 +1659,10 @@ let GateService = class GateService {
             color: #1e293b;
             text-align: center;
             flex-grow: 1;
-            margin-right: 80px;
+          }
+          .qr-box {
+            text-align: right;
+            width: 80px;
           }
           .info-grid {
             display: grid;
@@ -1596,6 +1765,9 @@ let GateService = class GateService {
               <span class="logo-sub">WMS</span>
             </div>
             <div class="title">SURAT PENGANTAR / SURAT JALAN</div>
+            <div class="qr-box">
+              <img src="${qrCodeDataUrl}" style="width: 55px; height: 55px; display: inline-block;" alt="Verification QR" />
+            </div>
           </div>
           
           <div class="info-grid">
@@ -1642,11 +1814,10 @@ let GateService = class GateService {
               <tr>
                 <th style="width: 30px; text-align: center;">No</th>
                 <th>Nama Produk</th>
-                <th style="width: 80px;">SKU</th>
-                <th style="width: 50px; text-align: center;">UOM</th>
-                <th style="width: 80px; text-align: right;">Jumlah Muatan</th>
-                <th style="width: 100px;">Location</th>
-                <th style="width: 120px;">Tumpukan / Lot</th>
+                <th style="width: 100px;">SKU</th>
+                <th style="width: 60px; text-align: center;">UOM</th>
+                <th style="width: 100px; text-align: right;">Jumlah Muatan</th>
+                <th style="width: 180px;">Location</th>
               </tr>
             </thead>
             <tbody>
@@ -1663,6 +1834,10 @@ let GateService = class GateService {
               <div class="summary-label">Total Quantity</div>
               <div class="summary-value">${totalQty.toLocaleString('id-ID')}</div>
             </div>
+          </div>
+
+          <div style="margin-top: 20px; margin-bottom: 20px; font-style: italic; color: #ef4444; font-size: 10px; text-align: center; border: 1px dashed #fca5a5; padding: 8px; border-radius: 4px; background-color: #fef2f2;">
+            Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.
           </div>
 
           <div class="signatures">
@@ -1700,6 +1875,7 @@ exports.GateService = GateService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         warehouse_context_service_1.WarehouseContextService,
-        storage_service_1.StorageService])
+        storage_service_1.StorageService,
+        config_1.ConfigService])
 ], GateService);
 //# sourceMappingURL=gate.service.js.map

@@ -98,6 +98,26 @@ async function main() {
     { action: 'read', subject: 'Reconciliation' },
     // Reporting
     { action: 'read', subject: 'Report' },
+    // Signature Template
+    { action: 'create', subject: 'SignatureTemplate' },
+    { action: 'read', subject: 'SignatureTemplate' },
+    { action: 'update', subject: 'SignatureTemplate' },
+    { action: 'delete', subject: 'SignatureTemplate' },
+    // Manual Document
+    { action: 'create', subject: 'ManualDocument' },
+    { action: 'read', subject: 'ManualDocument' },
+    { action: 'update', subject: 'ManualDocument' },
+    { action: 'delete', subject: 'ManualDocument' },
+    // Signed Document
+    { action: 'create', subject: 'SignedDocument' },
+    { action: 'read', subject: 'SignedDocument' },
+    { action: 'update', subject: 'SignedDocument' },
+    { action: 'delete', subject: 'SignedDocument' },
+    // Document Category
+    { action: 'create', subject: 'DocumentCategory' },
+    { action: 'read', subject: 'DocumentCategory' },
+    { action: 'update', subject: 'DocumentCategory' },
+    { action: 'delete', subject: 'DocumentCategory' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -116,13 +136,15 @@ async function main() {
     {
       id: 1,
       name: 'SUPER_ADMIN',
-      description: 'Super Administrator with full access to all system features',
+      description:
+        'Super Administrator with full access to all system features',
       permissionKeys: ['manage:all'],
     },
     {
       id: 2,
       name: 'WAREHOUSE_ADMIN',
-      description: 'Warehouse Manager overseeing warehouse operations, inventory, and staff list',
+      description:
+        'Warehouse Manager overseeing warehouse operations, inventory, and staff list',
       permissionKeys: [
         'read:User',
         'read:Warehouse',
@@ -147,12 +169,29 @@ async function main() {
         'delete:StockOpname',
         'read:Reconciliation',
         'read:Report',
+        'create:SignatureTemplate',
+        'read:SignatureTemplate',
+        'update:SignatureTemplate',
+        'delete:SignatureTemplate',
+        'create:ManualDocument',
+        'read:ManualDocument',
+        'update:ManualDocument',
+        'delete:ManualDocument',
+        'create:SignedDocument',
+        'read:SignedDocument',
+        'update:SignedDocument',
+        'delete:SignedDocument',
+        'create:DocumentCategory',
+        'read:DocumentCategory',
+        'update:DocumentCategory',
+        'delete:DocumentCategory',
       ],
     },
     {
       id: 3,
       name: 'OPERATOR',
-      description: 'Operator executing warehouse movements, scanning, and updating inventory status',
+      description:
+        'Operator executing warehouse movements, scanning, and updating inventory status',
       permissionKeys: [
         'read:Warehouse',
         'create:Inventory',
@@ -167,7 +206,8 @@ async function main() {
     {
       id: 4,
       name: 'CHECKER',
-      description: 'Checker verifying received or dispatched items matching orders',
+      description:
+        'Checker verifying received or dispatched items matching orders',
       permissionKeys: [
         'read:Warehouse',
         'read:Inventory',
@@ -178,7 +218,8 @@ async function main() {
     {
       id: 5,
       name: 'SUPERVISOR',
-      description: 'Supervisor reviewing operations and managing orders dispatching',
+      description:
+        'Supervisor reviewing operations and managing orders dispatching',
       permissionKeys: [
         'read:Warehouse',
         'read:Inventory',
@@ -189,7 +230,8 @@ async function main() {
     {
       id: 6,
       name: 'AUDITOR',
-      description: 'Auditor reviewing logs, tracking status history and reporting',
+      description:
+        'Auditor reviewing logs, tracking status history and reporting',
       permissionKeys: [
         'read:Warehouse',
         'read:Inventory',
@@ -200,7 +242,8 @@ async function main() {
     {
       id: 7,
       name: 'SATPAM',
-      description: 'Satpam registering inbound/outbound vehicle gate operations',
+      description:
+        'Satpam registering inbound/outbound vehicle gate operations',
       permissionKeys: [
         'read:Warehouse',
         'create:GateOperation',
@@ -313,23 +356,6 @@ async function main() {
     },
   });
   console.log('Seeded WarehouseAccess for Super Admin');
-
-  // Seed default products if none exist
-  const productsCount = await prisma.product.count();
-  if (productsCount === 0) {
-    const mockProducts = [
-      { id: 9001, sku: 'BRS-PREM-10K', name: 'Beras Premium Bulog 10kg', category: 'Beras', price: 145000, uom: 'Kg' },
-      { id: 9002, sku: 'BRS-MED-5K', name: 'Beras Medium Bulog 5kg', category: 'Beras', price: 65000, uom: 'Kg' },
-      { id: 9003, sku: 'MYK-GORENG-1L', name: 'Minyak Goreng Kita 1L', category: 'Minyak', price: 14000, uom: 'Liter' },
-      { id: 9004, sku: 'GULA-PASIR-1K', name: 'Gula Pasir Maniskita 1kg', category: 'Gula', price: 16000, uom: 'Kg' },
-    ];
-    for (const prod of mockProducts) {
-      await prisma.product.create({
-        data: prod,
-      });
-    }
-    console.log('Seeded default mock products.');
-  }
 
   console.log('Seeding completed successfully!');
 }

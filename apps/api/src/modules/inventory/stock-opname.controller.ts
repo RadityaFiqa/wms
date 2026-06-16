@@ -43,7 +43,9 @@ export class StockOpnameController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getList(warehouseId, {
       search,
@@ -61,7 +63,9 @@ export class StockOpnameController {
   async getDetail(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getDetail(warehouseId, uuid);
   }
@@ -72,7 +76,9 @@ export class StockOpnameController {
   async create(@Req() req: any, @Body('notes') notes?: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     const createdById = req.user.id;
     return this.service.createStockOpname(warehouseId, createdById, notes);
@@ -92,7 +98,9 @@ export class StockOpnameController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.updateStockOpname(warehouseId, uuid, body);
   }
@@ -103,7 +111,9 @@ export class StockOpnameController {
   async submit(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.submitStockOpname(warehouseId, uuid);
   }
@@ -113,10 +123,15 @@ export class StockOpnameController {
   async exportCountingSheet(@Param('uuid') uuid: string, @Res() res: any) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
-    const pdfBuffer = await this.service.generateCountingSheetPdf(warehouseId, uuid);
+    const pdfBuffer = await this.service.generateCountingSheetPdf(
+      warehouseId,
+      uuid,
+    );
 
     res.set({
       'Content-Type': 'application/pdf',
@@ -132,7 +147,9 @@ export class StockOpnameController {
   async exportResultPdf(@Param('uuid') uuid: string, @Res() res: any) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const pdfBuffer = await this.service.generateResultPdf(warehouseId, uuid);

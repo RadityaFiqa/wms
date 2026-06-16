@@ -43,7 +43,9 @@ let StorageController = class StorageController {
         if (!allowedMimeTypes.includes(file.mimetype)) {
             throw new common_1.BadRequestException('Format file tidak didukung. Hanya file PNG, JPG, JPEG, dan PDF yang diperbolehkan.');
         }
-        const folder = file.mimetype.startsWith('image/') ? 'images' : 'attachments';
+        const folder = file.mimetype.startsWith('image/')
+            ? 'images'
+            : 'attachments';
         const uploadedById = req.user?.id;
         if (!uploadedById) {
             throw new common_1.BadRequestException('Identitas user pengunggah tidak valid.');

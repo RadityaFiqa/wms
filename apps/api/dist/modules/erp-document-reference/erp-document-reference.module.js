@@ -19,12 +19,7 @@ let ErpDocumentReferenceModule = class ErpDocumentReferenceModule {
 exports.ErpDocumentReferenceModule = ErpDocumentReferenceModule;
 exports.ErpDocumentReferenceModule = ErpDocumentReferenceModule = __decorate([
     (0, common_1.Module)({
-        imports: [
-            prisma_module_1.PrismaModule,
-            odoo_module_1.OdooModule,
-            warehouse_context_module_1.WarehouseContextModule,
-            audit_log_module_1.AuditLogModule,
-        ],
+        imports: [prisma_module_1.PrismaModule, odoo_module_1.OdooModule, warehouse_context_module_1.WarehouseContextModule, audit_log_module_1.AuditLogModule],
         controllers: [erp_document_reference_controller_1.ErpDocumentReferenceController],
         providers: [erp_document_reference_service_1.ErpDocumentReferenceService],
         exports: [erp_document_reference_service_1.ErpDocumentReferenceService],

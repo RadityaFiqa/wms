@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useAuditLog } from '@/hooks/useAuditLog';
+import React, { useState } from "react";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import {
   Search,
   ChevronDown,
@@ -12,13 +12,13 @@ import {
   Clock,
   Terminal,
   User,
-} from 'lucide-react';
+} from "lucide-react";
 
 export default function AuditLogsPage() {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const limit = 10;
-  
+
   // Track expanded detail rows
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
 
@@ -33,41 +33,54 @@ export default function AuditLogsPage() {
   };
 
   const getActionColor = (action: string) => {
-    if (action.includes('FAILED')) return 'bg-red-50 text-red-700 border-red-100';
-    if (action.includes('SUCCESS') || action.includes('CREATE') || action.includes('REACTIVATE')) {
-      return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+    if (action.includes("FAILED"))
+      return "bg-red-50 text-red-700 border-red-100";
+    if (
+      action.includes("SUCCESS") ||
+      action.includes("CREATE") ||
+      action.includes("REACTIVATE")
+    ) {
+      return "bg-emerald-50 text-emerald-700 border-emerald-100";
     }
-    if (action.includes('UPDATE') || action.includes('CHANGE')) {
-      return 'bg-amber-50 text-amber-700 border-amber-100';
+    if (action.includes("UPDATE") || action.includes("CHANGE")) {
+      return "bg-amber-50 text-amber-700 border-amber-100";
     }
-    if (action.includes('DEACTIVATE')) return 'bg-rose-50 text-rose-700 border-rose-100';
-    return 'bg-slate-50 text-slate-700 border-slate-100';
+    if (action.includes("DEACTIVATE"))
+      return "bg-rose-50 text-rose-700 border-rose-100";
+    return "bg-slate-50 text-slate-700 border-slate-100";
   };
 
   const formatBrowser = (userAgent: string) => {
-    if (!userAgent) return 'Unknown';
-    if (userAgent.includes('Firefox')) return 'Firefox';
-    if (userAgent.includes('Chrome') && userAgent.includes('Safari')) return 'Chrome';
-    if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari';
-    if (userAgent.includes('Edge')) return 'Edge';
-    if (userAgent.includes('Postman')) return 'Postman';
-    return 'Web Browser';
+    if (!userAgent) return "Unknown";
+    if (userAgent.includes("Firefox")) return "Firefox";
+    if (userAgent.includes("Chrome") && userAgent.includes("Safari"))
+      return "Chrome";
+    if (userAgent.includes("Safari") && !userAgent.includes("Chrome"))
+      return "Safari";
+    if (userAgent.includes("Edge")) return "Edge";
+    if (userAgent.includes("Postman")) return "Postman";
+    return "Web Browser";
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Audit Logs</h1>
+        <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
+          Audit Logs
+        </h1>
         <p className="text-slate-500 mt-1">
-          Catatan aktivitas sistem yang melacak setiap login, mutasi data, dan perubahan hak akses pengguna.
+          Catatan aktivitas sistem yang melacak setiap login, mutasi data, dan
+          perubahan hak akses pengguna.
         </p>
       </div>
 
       {/* Search Filter Card */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <div>
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cari Log</label>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+            Cari Log
+          </label>
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input
@@ -109,7 +122,10 @@ export default function AuditLogsPage() {
                 ))
               ) : logsData?.data?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td
+                    colSpan={6}
+                    className="px-6 py-12 text-center text-slate-400 font-medium"
+                  >
                     Tidak ada catatan log aktivitas ditemukan.
                   </td>
                 </tr>
@@ -134,7 +150,7 @@ export default function AuditLogsPage() {
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getActionColor(
-                              log.action
+                              log.action,
                             )}`}
                           >
                             {log.action}
@@ -147,7 +163,9 @@ export default function AuditLogsPage() {
                               {log.actor.name}
                             </span>
                           ) : (
-                            <span className="text-slate-400 font-italic">Sistem</span>
+                            <span className="text-slate-400 font-italic">
+                              Sistem
+                            </span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-slate-700">
@@ -161,15 +179,20 @@ export default function AuditLogsPage() {
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-slate-800 font-semibold">{log.ipAddress || '127.0.0.1'}</div>
-                          <div className="text-xs text-slate-400 mt-0.5" title={log.userAgent}>
+                          <div className="text-slate-800 font-semibold">
+                            {log.ipAddress || "127.0.0.1"}
+                          </div>
+                          <div
+                            className="text-xs text-slate-400 mt-0.5"
+                            title={log.userAgent}
+                          >
                             {formatBrowser(log.userAgent)}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-slate-500 font-semibold">
                           <span className="flex items-center">
                             <Clock className="h-4 w-4 mr-1 text-slate-300" />
-                            {new Date(log.timestamp).toLocaleString('id-ID')}
+                            {new Date(log.timestamp).toLocaleString("id-ID")}
                           </span>
                         </td>
                       </tr>
@@ -177,17 +200,23 @@ export default function AuditLogsPage() {
                       {/* Expanded Details Section */}
                       {isExpanded && (
                         <tr>
-                          <td colSpan={6} className="bg-slate-50/50 p-6 border-t border-b border-slate-100">
+                          <td
+                            colSpan={6}
+                            className="bg-slate-50/50 p-6 border-t border-b border-slate-100"
+                          >
                             <div className="bg-slate-950 border border-slate-900 text-slate-300 rounded-xl p-4 font-mono text-xs shadow-inner">
                               <div className="flex items-center text-slate-400 font-bold border-b border-slate-800 pb-2 mb-3">
                                 <Terminal className="h-4 w-4 mr-2" />
                                 RAW METADATA / DATA MUTATIONS
                               </div>
                               <pre className="overflow-x-auto whitespace-pre-wrap">
-                                {log.details 
-                                  ? JSON.stringify(JSON.parse(log.details), null, 2) 
-                                  : '// Tidak ada detail perubahan data (Authentication event)'
-                                }
+                                {log.details
+                                  ? JSON.stringify(
+                                      JSON.parse(log.details),
+                                      null,
+                                      2,
+                                    )
+                                  : "// Tidak ada detail perubahan data (Authentication event)"}
                               </pre>
                             </div>
                           </td>
@@ -215,7 +244,9 @@ export default function AuditLogsPage() {
               >
                 <ChevronLeft className="h-4 w-4 text-slate-600" />
               </button>
-              <span className="text-sm font-bold text-slate-700">{page} / {logsData.meta.totalPages}</span>
+              <span className="text-sm font-bold text-slate-700">
+                {page} / {logsData.meta.totalPages}
+              </span>
               <button
                 disabled={page >= logsData.meta.totalPages}
                 onClick={() => setPage((p) => p + 1)}

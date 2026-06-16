@@ -18,8 +18,14 @@ import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { AuditLogAction } from '../audit-log/audit-log.decorator';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
-import { CreateGateVerificationSchema, AssignReferencesSchema } from '@bulog-wms/schema';
-import type { CreateGateVerificationInput, AssignReferencesInput } from '@bulog-wms/schema';
+import {
+  CreateGateVerificationSchema,
+  AssignReferencesSchema,
+} from '@bulog-wms/schema';
+import type {
+  CreateGateVerificationInput,
+  AssignReferencesInput,
+} from '@bulog-wms/schema';
 import { GateService } from './gate.service';
 
 @Controller('gate-verifications')
@@ -53,7 +59,8 @@ export class GateVerificationController {
   async assignReferences(
     @Param('operationUuid') operationUuid: string,
     @Req() req: any,
-    @Body(new ZodValidationPipe(AssignReferencesSchema)) body: AssignReferencesInput,
+    @Body(new ZodValidationPipe(AssignReferencesSchema))
+    body: AssignReferencesInput,
   ) {
     const userId = req.user?.id;
     const userName = req.user?.name || req.user?.email || 'System';
@@ -66,7 +73,8 @@ export class GateVerificationController {
   async verify(
     @Param('operationUuid') operationUuid: string,
     @Req() req: any,
-    @Body(new ZodValidationPipe(CreateGateVerificationSchema)) body: CreateGateVerificationInput,
+    @Body(new ZodValidationPipe(CreateGateVerificationSchema))
+    body: CreateGateVerificationInput,
   ) {
     const userId = req.user?.id;
     return this.service.verifyGateOperation(operationUuid, userId, body);
@@ -75,10 +83,7 @@ export class GateVerificationController {
   @Post(':operationUuid/cancel')
   @CheckPolicies((ability) => ability.can('create', 'GateVerification'))
   @AuditLogAction('GATE_OPERATION_CANCEL')
-  async cancel(
-    @Param('operationUuid') operationUuid: string,
-    @Req() req: any,
-  ) {
+  async cancel(@Param('operationUuid') operationUuid: string, @Req() req: any) {
     const userId = req.user?.id;
     return this.service.cancelGateVerification(operationUuid, userId);
   }
@@ -103,7 +108,11 @@ export class GateVerificationController {
   ) {
     const userId = req.user?.id;
     const userName = req.user?.name || req.user?.email || 'System';
-    const result = await this.service.unassignReference(referenceUuid, userId, userName);
+    const result = await this.service.unassignReference(
+      referenceUuid,
+      userId,
+      userName,
+    );
     req.auditDetails = result.auditDetails;
     return result;
   }

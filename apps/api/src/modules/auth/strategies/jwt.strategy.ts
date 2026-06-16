@@ -16,7 +16,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: { email: string; sub: number }) {
     const user = await this.userService.findByEmail(payload.email);
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Sesi tidak valid atau akun dinonaktifkan');
+      throw new UnauthorizedException(
+        'Sesi tidak valid atau akun dinonaktifkan',
+      );
     }
     return user;
   }

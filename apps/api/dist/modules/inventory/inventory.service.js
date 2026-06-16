@@ -40,6 +40,156 @@ let InventoryService = InventoryService_1 = class InventoryService {
         if (!account.isActive) {
             throw new common_1.BadRequestException('Akun Odoo untuk gudang ini tidak aktif.');
         }
+        await this.odooSessionManager.validateAndRefreshSession(account.id);
+        const refreshedAccount = await this.prisma.odooAccount.findUnique({
+            where: { id: account.id },
+        });
+        if (!refreshedAccount?.sessionId) {
+            throw new common_1.BadRequestException('Session ID Odoo kosong setelah refresh.');
+        }
+        let uid = 6900;
+        let allowed_company_ids = [122];
+        let current_company_id = 122;
+        try {
+            const userRes = await this.safeOdooCall(warehouseId, 'res.users', 'web_search_read', [], {
+                domain: [['login', '=', account.username]],
+                specification: {
+                    id: {},
+                    company_id: { fields: { display_name: {} } },
+                    company_ids: { fields: { display_name: {} } },
+                },
+                limit: 1,
+            });
+            const userRecord = userRes?.records?.[0];
+            if (userRecord) {
+                uid = userRecord.id;
+                current_company_id = userRecord.company_id?.id || 122;
+                allowed_company_ids = Array.isArray(userRecord.company_ids)
+                    ? userRecord.company_ids.map((c) => c.id).filter(Boolean)
+                    : [current_company_id];
+            }
+        }
+        catch (err) {
+            this.logger.warn(`Gagal mengambil informasi user dari res.users: ${err.message}. Menggunakan default context.`);
+        }
+        const context = {
+            lang: 'id_ID',
+            tz: 'Asia/Makassar',
+            uid,
+            allowed_company_ids,
+            bin_size: true,
+            current_company_id,
+        };
+        let productResponse;
+        try {
+            productResponse = await this.safeOdooCall(warehouseId, 'product.product', 'web_search_read', [], {
+                specification: {
+                    priority: {},
+                    default_code: {},
+                    barcode: {},
+                    name: {},
+                    is_published: {},
+                    product_template_variant_value_ids: { fields: { display_name: {} } },
+                    company_id: { fields: { display_name: {} } },
+                    lst_price: {},
+                    standard_price: {},
+                    categ_id: { fields: { display_name: {} } },
+                    product_tag_ids: { fields: { display_name: {} } },
+                    additional_product_tag_ids: { fields: { display_name: {} } },
+                    ribbon_id: { fields: { display_name: {} } },
+                    type: {},
+                    uom_id: { fields: { display_name: {} } },
+                    sh_secondary_uom_onhand: {},
+                    sh_secondary_uom_forecasted: {},
+                    sh_secondary_uom_id: { fields: { display_name: {} } },
+                    product_tmpl_id: { fields: {} },
+                    active: {},
+                },
+                offset: 0,
+                order: '',
+                limit: 5000,
+                context,
+                count_limit: 10001,
+                domain: [],
+            });
+        }
+        catch (err) {
+            await this.prisma.odooAccount
+                .update({
+                where: { id: account.id },
+                data: {
+                    lastSyncAt: new Date(),
+                    lastSyncStatus: 'FAILED',
+                    lastSyncError: `Gagal memanggil API product.product: ${err.message}`,
+                    lastSyncBy: triggeredBy,
+                },
+            })
+                .catch((e) => console.error('Failed to log sync status error', e));
+            throw new common_1.BadRequestException(`Gagal memanggil API Odoo product.product: ${err.message}`);
+        }
+        const products = productResponse?.records || [];
+        let locationResponse;
+        try {
+            locationResponse = await this.safeOdooCall(warehouseId, 'stock.location', 'web_search_read', [], {
+                specification: {
+                    company_id: { fields: { display_name: {} } },
+                    triger_compute: {},
+                    branch_id: { fields: { display_name: {} } },
+                    warehouse_id: { fields: { display_name: {} } },
+                    active: {},
+                    complete_name: {},
+                    qty_on_hand: {},
+                    usage: {},
+                    barcode: {},
+                    posx: {},
+                    posy: {},
+                    posz: {},
+                    sizex: {},
+                    sizey: {},
+                    sizez: {},
+                    tag_ids: { fields: { display_name: {}, color: {} } },
+                },
+                offset: 0,
+                order: '',
+                limit: 5000,
+                context: {
+                    ...context,
+                    params: {
+                        action: 2693,
+                        model: 'stock.location',
+                        view_type: 'list',
+                        cids: current_company_id,
+                        menu_id: 2090,
+                    },
+                    create: false,
+                    delete: false,
+                    edit: false,
+                },
+                count_limit: 10001,
+                domain: [
+                    '&',
+                    '&',
+                    ['usage', '=', 'internal'],
+                    ['access_user_ids', 'in', [uid]],
+                    ['usage', '=', 'internal'],
+                ],
+            });
+        }
+        catch (err) {
+            await this.prisma.odooAccount
+                .update({
+                where: { id: account.id },
+                data: {
+                    lastSyncAt: new Date(),
+                    lastSyncStatus: 'FAILED',
+                    lastSyncError: `Gagal memanggil API stock.location: ${err.message}`,
+                    lastSyncBy: triggeredBy,
+                },
+            })
+                .catch((e) => console.error('Failed to log sync status error', e));
+            throw new common_1.BadRequestException(`Gagal memanggil API Odoo stock.location: ${err.message}`);
+        }
+        const locations = locationResponse?.records || [];
         const domain = [
             ['quantity', '>=', 0.01],
             ['product_id.type', '=', 'product'],
@@ -82,23 +232,87 @@ let InventoryService = InventoryService_1 = class InventoryService {
             });
         }
         catch (err) {
-            await this.prisma.odooAccount.update({
+            await this.prisma.odooAccount
+                .update({
                 where: { id: account.id },
                 data: {
                     lastSyncAt: new Date(),
                     lastSyncStatus: 'FAILED',
-                    lastSyncError: `Gagal memanggil API: ${err.message}`,
+                    lastSyncError: `Gagal memanggil API stock.quant: ${err.message}`,
                     lastSyncBy: triggeredBy,
                 },
-            }).catch((e) => console.error('Failed to log sync status error', e));
-            throw new common_1.BadRequestException(`Gagal memanggil API Odoo: ${err.message}`);
+            })
+                .catch((e) => console.error('Failed to log sync status error', e));
+            throw new common_1.BadRequestException(`Gagal memanggil API Odoo stock.quant: ${err.message}`);
         }
         const records = response?.records || [];
         try {
             await this.prisma.$transaction(async (tx) => {
+                const allProductIds = products.map((p) => p.id);
+                const existingInv = await tx.inventory.findMany({
+                    where: { id: { in: allProductIds } },
+                    select: { id: true, sku: true, name: true, uom: true, warehouseId: true },
+                });
+                const existingMap = new Map(existingInv.map(p => [p.id, p]));
+                const productsToCreate = [];
+                const productsToUpdate = [];
+                for (const record of products) {
+                    const odooProdId = record.id;
+                    const rawSku = record.default_code;
+                    const productName = record.name || record.display_name || 'Unnamed Product';
+                    const sku = rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
+                        ? rawSku.trim()
+                        : `OP-${odooProdId}`;
+                    const uom = record.uom_id?.display_name || 'Unit';
+                    const existing = existingMap.get(odooProdId);
+                    if (!existing) {
+                        productsToCreate.push({
+                            id: odooProdId,
+                            sku,
+                            name: productName,
+                            uom,
+                            warehouseId,
+                        });
+                    }
+                    else if (existing.sku !== sku ||
+                        existing.name !== productName ||
+                        existing.uom !== uom ||
+                        existing.warehouseId !== warehouseId) {
+                        productsToUpdate.push({
+                            id: odooProdId,
+                            sku,
+                            name: productName,
+                            uom,
+                            warehouseId,
+                        });
+                    }
+                }
+                if (productsToCreate.length > 0) {
+                    await tx.inventory.createMany({
+                        data: productsToCreate,
+                        skipDuplicates: true,
+                    });
+                }
+                for (const item of productsToUpdate) {
+                    await tx.inventory.update({
+                        where: { id: item.id },
+                        data: {
+                            sku: item.sku,
+                            name: item.name,
+                            uom: item.uom,
+                            warehouseId: item.warehouseId,
+                        },
+                    });
+                }
+                const quantProductIds = records.map((r) => r.product_id?.id).filter(Boolean);
+                const finalExistingInv = await tx.inventory.findMany({
+                    where: { id: { in: quantProductIds } },
+                    select: { id: true },
+                });
+                const finalExistingInvIds = new Set(finalExistingInv.map(p => p.id));
                 for (const record of records) {
                     const odooProd = record.product_id;
-                    if (!odooProd)
+                    if (!odooProd || finalExistingInvIds.has(odooProd.id))
                         continue;
                     const odooProdId = odooProd.id;
                     const rawSku = odooProd.default_code;
@@ -123,19 +337,67 @@ let InventoryService = InventoryService_1 = class InventoryService {
                             warehouseId,
                         },
                     });
+                    finalExistingInvIds.add(odooProdId);
                 }
-                const uniqueOdooLocations = new Map();
-                for (const record of records) {
-                    const odooLoc = record.location_id;
-                    if (odooLoc) {
-                        uniqueOdooLocations.set(odooLoc.id, odooLoc.display_name || 'Unnamed Location');
+                const allLocIds = locations.map((l) => l.id);
+                const existingLocs = await tx.location.findMany({
+                    where: { id: { in: allLocIds } },
+                    select: { id: true, displayName: true, warehouseId: true },
+                });
+                const existingLocMap = new Map(existingLocs.map(l => [l.id, l]));
+                const locsToCreate = [];
+                const locsToUpdate = [];
+                for (const record of locations) {
+                    const odooLocId = record.id;
+                    const displayName = record.complete_name || record.display_name || 'Unnamed Location';
+                    const existing = existingLocMap.get(odooLocId);
+                    if (!existing) {
+                        locsToCreate.push({
+                            id: odooLocId,
+                            displayName,
+                            warehouseId,
+                        });
+                    }
+                    else if (existing.displayName !== displayName ||
+                        existing.warehouseId !== warehouseId) {
+                        locsToUpdate.push({
+                            id: odooLocId,
+                            displayName,
+                            warehouseId,
+                        });
                     }
                 }
-                for (const [odooLocId, displayName] of uniqueOdooLocations.entries()) {
-                    await tx.location.upsert({
-                        where: {
-                            id: odooLocId,
+                if (locsToCreate.length > 0) {
+                    await tx.location.createMany({
+                        data: locsToCreate,
+                        skipDuplicates: true,
+                    });
+                }
+                for (const item of locsToUpdate) {
+                    await tx.location.update({
+                        where: { id: item.id },
+                        data: {
+                            displayName: item.displayName,
+                            warehouseId: item.warehouseId,
                         },
+                    });
+                }
+                const quantLocIds = records.map((r) => r.location_id?.id).filter(Boolean);
+                const finalExistingLoc = await tx.location.findMany({
+                    where: { id: { in: quantLocIds } },
+                    select: { id: true },
+                });
+                const finalExistingLocIds = new Set(finalExistingLoc.map(l => l.id));
+                const uniqueQuantLocations = new Map();
+                for (const record of records) {
+                    const odooLoc = record.location_id;
+                    if (odooLoc && !finalExistingLocIds.has(odooLoc.id)) {
+                        uniqueQuantLocations.set(odooLoc.id, odooLoc.display_name || 'Unnamed Location');
+                    }
+                }
+                for (const [odooLocId, displayName] of uniqueQuantLocations.entries()) {
+                    await tx.location.upsert({
+                        where: { id: odooLocId },
                         update: {
                             displayName,
                         },
@@ -163,11 +425,15 @@ let InventoryService = InventoryService_1 = class InventoryService {
                         continue;
                     const odooProdId = odooProd.id;
                     const odooLocId = odooLoc.id;
-                    const lotName = record.lot_id ? (record.lot_id.display_name || null) : null;
+                    const lotName = record.lot_id
+                        ? record.lot_id.display_name || null
+                        : null;
                     const quantity = Number(record.quantity) || 0.0;
                     const reservedQuantity = Number(record.reserved_quantity) || 0.0;
                     const availableQuantity = Number(record.available_quantity) || 0.0;
-                    const secondaryUnitQty = record.sh_secondary_unit_qty !== undefined ? (Number(record.sh_secondary_unit_qty) || 0.0) : 0.0;
+                    const secondaryUnitQty = record.sh_secondary_unit_qty !== undefined
+                        ? Number(record.sh_secondary_unit_qty) || 0.0
+                        : 0.0;
                     quantsToCreate.push({
                         id: record.id,
                         inventoryId: odooProdId,
@@ -217,24 +483,16 @@ let InventoryService = InventoryService_1 = class InventoryService {
                         }
                     }
                 }
-            }, { timeout: 300_000 });
-            await this.prisma.odooAccount.update({
-                where: { id: account.id },
-                data: {
-                    lastSyncAt: new Date(),
-                    lastSyncStatus: 'SUCCESS',
-                    lastSyncError: null,
-                    lastSyncBy: triggeredBy,
-                    lastSyncCount: records.length,
-                },
-            });
+            }, { timeout: 900_000 });
+            console.log(`completed`);
             return {
                 success: true,
                 syncedCount: records.length,
             };
         }
         catch (err) {
-            await this.prisma.odooAccount.update({
+            await this.prisma.odooAccount
+                .update({
                 where: { id: account.id },
                 data: {
                     lastSyncAt: new Date(),
@@ -242,7 +500,8 @@ let InventoryService = InventoryService_1 = class InventoryService {
                     lastSyncError: `Gagal menyimpan ke database: ${err.message}`,
                     lastSyncBy: triggeredBy,
                 },
-            }).catch((e) => console.error('Failed to log sync status error', e));
+            })
+                .catch((e) => console.error('Failed to log sync status error', e));
             throw err;
         }
     }
@@ -252,6 +511,16 @@ let InventoryService = InventoryService_1 = class InventoryService {
         const skip = (page - 1) * limit;
         const where = {
             warehouseId,
+            quants: {
+                some: {
+                    location: {
+                        warehouseId,
+                    },
+                    quantity: {
+                        gt: 0,
+                    },
+                },
+            },
         };
         if (query.search) {
             where.AND = [
@@ -357,10 +626,7 @@ let InventoryService = InventoryService_1 = class InventoryService {
                     include: {
                         location: true,
                     },
-                    orderBy: [
-                        { location: { displayName: 'asc' } },
-                        { lotName: 'asc' },
-                    ],
+                    orderBy: [{ location: { displayName: 'asc' } }, { lotName: 'asc' }],
                 },
             },
         });
@@ -446,8 +712,16 @@ let InventoryService = InventoryService_1 = class InventoryService {
             const drawPageHeader = (pageDoc, isFirstPage = false) => {
                 let y = 15;
                 if (isFirstPage) {
-                    pageDoc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold').text('LAPORAN INVENTORY', 15, y, { align: 'center', width: 565 });
-                    pageDoc.fontSize(6.8).font('Helvetica').fillColor('#64748b').text(`Cetak: ${new Date().toLocaleString('id-ID')}  |  Warehouse: ${warehouseName}`, 15, y + 14, { align: 'center', width: 565 });
+                    pageDoc
+                        .fillColor('#1e293b')
+                        .fontSize(10)
+                        .font('Helvetica-Bold')
+                        .text('LAPORAN INVENTORY', 15, y, { align: 'center', width: 565 });
+                    pageDoc
+                        .fontSize(6.8)
+                        .font('Helvetica')
+                        .fillColor('#64748b')
+                        .text(`Cetak: ${new Date().toLocaleString('id-ID')}  |  Warehouse: ${warehouseName}`, 15, y + 14, { align: 'center', width: 565 });
                     y = 48;
                 }
                 pageDoc.fillColor('#475569').fontSize(6.5).font('Helvetica-Bold');
@@ -458,13 +732,20 @@ let InventoryService = InventoryService_1 = class InventoryService {
                 pageDoc.text('UOM', 415, y, { width: 75, ellipsis: true });
                 pageDoc.text('Sekunder Qty', 495, y, { width: 70, align: 'right' });
                 pageDoc.font('Helvetica');
-                pageDoc.moveTo(15, y + 8).lineTo(580, y + 8).lineWidth(0.4).stroke('#475569');
+                pageDoc
+                    .moveTo(15, y + 8)
+                    .lineTo(580, y + 8)
+                    .lineWidth(0.4)
+                    .stroke('#475569');
                 return y + 12;
             };
             let currentY = drawPageHeader(doc, true);
             doc.y = currentY;
             if (data.length === 0) {
-                doc.fillColor('#94a3b8').fontSize(7.5).text('Tidak ada data persediaan barang dengan stok aktif.', 15, doc.y + 10, { align: 'center' });
+                doc
+                    .fillColor('#94a3b8')
+                    .fontSize(7.5)
+                    .text('Tidak ada data persediaan barang dengan stok aktif.', 15, doc.y + 10, { align: 'center' });
             }
             else {
                 for (const inv of data) {
@@ -486,7 +767,10 @@ let InventoryService = InventoryService_1 = class InventoryService {
                                 return -1;
                             if (partsB[i] === undefined)
                                 return 1;
-                            const cmp = partsA[i].localeCompare(partsB[i], 'id', { numeric: true, sensitivity: 'base' });
+                            const cmp = partsA[i].localeCompare(partsB[i], 'id', {
+                                numeric: true,
+                                sensitivity: 'base',
+                            });
                             if (cmp !== 0)
                                 return cmp;
                         }
@@ -496,7 +780,10 @@ let InventoryService = InventoryService_1 = class InventoryService {
                         locData.quants.sort((a, b) => {
                             const nameA = a.lotName || '';
                             const nameB = b.lotName || '';
-                            return nameA.localeCompare(nameB, 'id', { numeric: true, sensitivity: 'base' });
+                            return nameA.localeCompare(nameB, 'id', {
+                                numeric: true,
+                                sensitivity: 'base',
+                            });
                         });
                     }
                     let productQtyTotal = 0;
@@ -512,15 +799,37 @@ let InventoryService = InventoryService_1 = class InventoryService {
                         doc.addPage();
                         currentY = drawPageHeader(doc);
                     }
-                    doc.moveTo(15, currentY).lineTo(580, currentY).lineWidth(0.4).stroke('#475569');
+                    doc
+                        .moveTo(15, currentY)
+                        .lineTo(580, currentY)
+                        .lineWidth(0.4)
+                        .stroke('#475569');
                     doc.fillColor('#1e293b').fontSize(6.8).font('Helvetica-Bold');
-                    doc.text(`${inv.name}`, 20, currentY + 4, { width: 335, ellipsis: true });
-                    doc.text(productQtyTotal.toLocaleString('id-ID'), 360, currentY + 4, { width: 50, align: 'right' });
-                    doc.text(inv.uom || 'Unit', 415, currentY + 4, { width: 75, ellipsis: true });
-                    const prodSecQtyText = productSecQtyTotal > 0 ? productSecQtyTotal.toLocaleString('id-ID') : '-';
-                    doc.text(prodSecQtyText, 495, currentY + 4, { width: 70, align: 'right' });
+                    doc.text(`${inv.name}`, 20, currentY + 4, {
+                        width: 335,
+                        ellipsis: true,
+                    });
+                    doc.text(productQtyTotal.toLocaleString('id-ID'), 360, currentY + 4, {
+                        width: 50,
+                        align: 'right',
+                    });
+                    doc.text(inv.uom || 'Unit', 415, currentY + 4, {
+                        width: 75,
+                        ellipsis: true,
+                    });
+                    const prodSecQtyText = productSecQtyTotal > 0
+                        ? productSecQtyTotal.toLocaleString('id-ID')
+                        : '-';
+                    doc.text(prodSecQtyText, 495, currentY + 4, {
+                        width: 70,
+                        align: 'right',
+                    });
                     doc.font('Helvetica');
-                    doc.moveTo(15, currentY + prodTotalHeight - 0.5).lineTo(580, currentY + prodTotalHeight - 0.5).lineWidth(0.4).stroke('#475569');
+                    doc
+                        .moveTo(15, currentY + prodTotalHeight - 0.5)
+                        .lineTo(580, currentY + prodTotalHeight - 0.5)
+                        .lineWidth(0.4)
+                        .stroke('#475569');
                     currentY += prodTotalHeight;
                     currentY += 4;
                     let isFirstLoc = true;
@@ -536,15 +845,35 @@ let InventoryService = InventoryService_1 = class InventoryService {
                             doc.addPage();
                             currentY = drawPageHeader(doc);
                         }
-                        doc.moveTo(165, currentY).lineTo(580, currentY).lineWidth(0.2).stroke('#94a3b8');
+                        doc
+                            .moveTo(165, currentY)
+                            .lineTo(580, currentY)
+                            .lineWidth(0.2)
+                            .stroke('#94a3b8');
                         doc.fillColor('#475569').fontSize(6.5).font('Helvetica-Bold');
-                        doc.text(`${locData.name}`, 165, currentY + 3, { width: 190, ellipsis: true });
-                        doc.text(locQtyTotal.toLocaleString('id-ID'), 360, currentY + 3, { width: 50, align: 'right' });
-                        doc.text(inv.uom || 'Unit', 415, currentY + 3, { width: 75, ellipsis: true });
+                        doc.text(`${locData.name}`, 165, currentY + 3, {
+                            width: 190,
+                            ellipsis: true,
+                        });
+                        doc.text(locQtyTotal.toLocaleString('id-ID'), 360, currentY + 3, {
+                            width: 50,
+                            align: 'right',
+                        });
+                        doc.text(inv.uom || 'Unit', 415, currentY + 3, {
+                            width: 75,
+                            ellipsis: true,
+                        });
                         const locSecQtyText = locSecQtyTotal > 0 ? locSecQtyTotal.toLocaleString('id-ID') : '-';
-                        doc.text(locSecQtyText, 495, currentY + 3, { width: 70, align: 'right' });
+                        doc.text(locSecQtyText, 495, currentY + 3, {
+                            width: 70,
+                            align: 'right',
+                        });
                         doc.font('Helvetica');
-                        doc.moveTo(165, currentY + locSubtotalHeight - 0.5).lineTo(580, currentY + locSubtotalHeight - 0.5).lineWidth(0.2).stroke('#94a3b8');
+                        doc
+                            .moveTo(165, currentY + locSubtotalHeight - 0.5)
+                            .lineTo(580, currentY + locSubtotalHeight - 0.5)
+                            .lineWidth(0.2)
+                            .stroke('#94a3b8');
                         currentY += locSubtotalHeight;
                         currentY += 3;
                         for (const q of locData.quants) {
@@ -556,25 +885,64 @@ let InventoryService = InventoryService_1 = class InventoryService {
                                 doc.addPage();
                                 currentY = drawPageHeader(doc);
                                 const pageLocationText = `(Cont.) ${locData.name}`;
-                                const secQtyText = q.secondaryUnitQty > 0 ? q.secondaryUnitQty.toLocaleString('id-ID') : '-';
+                                const secQtyText = q.secondaryUnitQty > 0
+                                    ? q.secondaryUnitQty.toLocaleString('id-ID')
+                                    : '-';
                                 doc.fillColor('#475569').fontSize(5.8);
-                                doc.text(pageLocationText, 165, currentY, { width: 80, ellipsis: true });
+                                doc.text(pageLocationText, 165, currentY, {
+                                    width: 80,
+                                    ellipsis: true,
+                                });
                                 doc.fillColor('#334155');
-                                doc.text(lotName, 250, currentY, { width: 105, ellipsis: true });
-                                doc.text(q.quantity.toLocaleString('id-ID'), 360, currentY, { width: 50, align: 'right' });
-                                doc.text(inv.uom || 'Unit', 415, currentY, { width: 75, ellipsis: true });
-                                doc.text(secQtyText, 495, currentY, { width: 70, align: 'right' });
-                                doc.moveTo(15, currentY + rowHeight - 0.5).lineTo(580, currentY + rowHeight - 0.5).lineWidth(0.08).stroke('#e2e8f0');
+                                doc.text(lotName, 250, currentY, {
+                                    width: 105,
+                                    ellipsis: true,
+                                });
+                                doc.text(q.quantity.toLocaleString('id-ID'), 360, currentY, {
+                                    width: 50,
+                                    align: 'right',
+                                });
+                                doc.text(inv.uom || 'Unit', 415, currentY, {
+                                    width: 75,
+                                    ellipsis: true,
+                                });
+                                doc.text(secQtyText, 495, currentY, {
+                                    width: 70,
+                                    align: 'right',
+                                });
+                                doc
+                                    .moveTo(15, currentY + rowHeight - 0.5)
+                                    .lineTo(580, currentY + rowHeight - 0.5)
+                                    .lineWidth(0.08)
+                                    .stroke('#e2e8f0');
                                 currentY += rowHeight;
                             }
                             else {
-                                const secQtyText = q.secondaryUnitQty > 0 ? q.secondaryUnitQty.toLocaleString('id-ID') : '-';
+                                const secQtyText = q.secondaryUnitQty > 0
+                                    ? q.secondaryUnitQty.toLocaleString('id-ID')
+                                    : '-';
                                 doc.fillColor('#334155').fontSize(5.8);
-                                doc.text(lotName, 250, currentY, { width: 105, ellipsis: true });
-                                doc.text(q.quantity.toLocaleString('id-ID'), 360, currentY, { width: 50, align: 'right' });
-                                doc.text(inv.uom || 'Unit', 415, currentY, { width: 75, ellipsis: true });
-                                doc.text(secQtyText, 495, currentY, { width: 70, align: 'right' });
-                                doc.moveTo(15, currentY + rowHeight - 0.5).lineTo(580, currentY + rowHeight - 0.5).lineWidth(0.08).stroke('#e2e8f0');
+                                doc.text(lotName, 250, currentY, {
+                                    width: 105,
+                                    ellipsis: true,
+                                });
+                                doc.text(q.quantity.toLocaleString('id-ID'), 360, currentY, {
+                                    width: 50,
+                                    align: 'right',
+                                });
+                                doc.text(inv.uom || 'Unit', 415, currentY, {
+                                    width: 75,
+                                    ellipsis: true,
+                                });
+                                doc.text(secQtyText, 495, currentY, {
+                                    width: 70,
+                                    align: 'right',
+                                });
+                                doc
+                                    .moveTo(15, currentY + rowHeight - 0.5)
+                                    .lineTo(580, currentY + rowHeight - 0.5)
+                                    .lineWidth(0.08)
+                                    .stroke('#e2e8f0');
                                 currentY += rowHeight;
                             }
                         }

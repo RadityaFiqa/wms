@@ -1,4 +1,8 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
 @Injectable()
@@ -11,8 +15,11 @@ export class WarehouseResolver {
     }
 
     let warehouse: any = null;
-    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(warehouseIdHeader);
-    
+    const isUuid =
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+        warehouseIdHeader,
+      );
+
     if (isUuid) {
       warehouse = await this.prisma.warehouse.findUnique({
         where: { uuid: warehouseIdHeader },
@@ -33,7 +40,11 @@ export class WarehouseResolver {
     return warehouse;
   }
 
-  async validateUserAccess(userId: number, warehouseId: number, roleName: string): Promise<boolean> {
+  async validateUserAccess(
+    userId: number,
+    warehouseId: number,
+    roleName: string,
+  ): Promise<boolean> {
     if (roleName === 'SUPER_ADMIN') {
       return true;
     }

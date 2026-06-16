@@ -19,6 +19,9 @@ export class AuditLogController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.auditLogService.findAll({ search, action, page, limit }, req.user);
+    return this.auditLogService.findAll(
+      { search, action, page, limit },
+      req.user,
+    );
   }
 }

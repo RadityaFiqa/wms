@@ -18,8 +18,14 @@ import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { AuditLogAction } from '../audit-log/audit-log.decorator';
-import { CreateWarehouseSchema, UpdateWarehouseSchema } from '@bulog-wms/schema';
-import type { CreateWarehouseInput, UpdateWarehouseInput } from '@bulog-wms/schema';
+import {
+  CreateWarehouseSchema,
+  UpdateWarehouseSchema,
+} from '@bulog-wms/schema';
+import type {
+  CreateWarehouseInput,
+  UpdateWarehouseInput,
+} from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
@@ -37,10 +43,13 @@ export class WarehouseController {
   @AuditLogAction('WAREHOUSE_CREATE')
   async create(
     @Req() req: any,
-    @Body(new ZodValidationPipe(CreateWarehouseSchema)) body: CreateWarehouseInput,
+    @Body(new ZodValidationPipe(CreateWarehouseSchema))
+    body: CreateWarehouseInput,
   ) {
     if (req.user?.role?.name !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat membuat gudang.');
+      throw new ForbiddenException(
+        'Akses ditolak. Hanya Super Admin yang dapat membuat gudang.',
+      );
     }
     return this.service.create(body);
   }
@@ -81,7 +90,9 @@ export class WarehouseController {
   @CheckPolicies((ability) => ability.can('read', 'Warehouse'))
   async findOne(@Param('uuid') uuid: string, @Req() req: any) {
     if (req.user?.role?.name !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat melihat detail manajemen gudang.');
+      throw new ForbiddenException(
+        'Akses ditolak. Hanya Super Admin yang dapat melihat detail manajemen gudang.',
+      );
     }
     return this.service.findByUuid(uuid);
   }
@@ -92,10 +103,13 @@ export class WarehouseController {
   async update(
     @Param('uuid') uuid: string,
     @Req() req: any,
-    @Body(new ZodValidationPipe(UpdateWarehouseSchema)) body: UpdateWarehouseInput,
+    @Body(new ZodValidationPipe(UpdateWarehouseSchema))
+    body: UpdateWarehouseInput,
   ) {
     if (req.user?.role?.name !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat memperbarui gudang.');
+      throw new ForbiddenException(
+        'Akses ditolak. Hanya Super Admin yang dapat memperbarui gudang.',
+      );
     }
     return this.service.update(uuid, body);
   }
@@ -105,7 +119,9 @@ export class WarehouseController {
   @AuditLogAction('WAREHOUSE_DEACTIVATE')
   async remove(@Param('uuid') uuid: string, @Req() req: any) {
     if (req.user?.role?.name !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat menonaktifkan gudang.');
+      throw new ForbiddenException(
+        'Akses ditolak. Hanya Super Admin yang dapat menonaktifkan gudang.',
+      );
     }
     return this.service.remove(uuid);
   }

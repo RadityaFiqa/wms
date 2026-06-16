@@ -37,7 +37,8 @@ export class GateOperationController {
   @AuditLogAction('GATE_OPERATION_CREATE')
   async create(
     @Req() req: any,
-    @Body(new ZodValidationPipe(CreateGateOperationSchema)) body: CreateGateOperationInput,
+    @Body(new ZodValidationPipe(CreateGateOperationSchema))
+    body: CreateGateOperationInput,
   ) {
     const userId = req.user?.id;
     return this.service.createGateOperation(userId, body);
@@ -73,7 +74,9 @@ export class GateOperationController {
   ) {
     const warehouseId = this.service['warehouseContext'].getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Konteks warehouse (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Konteks warehouse (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getClientHistory(warehouseId, clientPartner);
   }
@@ -84,11 +87,23 @@ export class GateOperationController {
   async addCargoItem(
     @Param('uuid') uuid: string,
     @Req() req: any,
-    @Body() body: { productId: number; quantity: number; notes?: string; quantId?: number; locationId?: number },
+    @Body()
+    body: {
+      productId: number;
+      quantity: number;
+      notes?: string;
+      quantId?: number;
+      locationId?: number;
+    },
   ) {
     const user = req.user;
-    if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
-      throw new ForbiddenException('Hanya Admin yang dapat menambah barang muatan.');
+    if (
+      user.role?.name !== 'SUPER_ADMIN' &&
+      user.role?.name !== 'WAREHOUSE_ADMIN'
+    ) {
+      throw new ForbiddenException(
+        'Hanya Admin yang dapat menambah barang muatan.',
+      );
     }
     const result = await this.service.addCargoItem(uuid, body);
     req.auditDetails = {
@@ -111,11 +126,21 @@ export class GateOperationController {
   async updateCargoItem(
     @Param('cargoUuid') cargoUuid: string,
     @Req() req: any,
-    @Body() body: { quantId?: number | null; locationId?: number | null; quantity?: number },
+    @Body()
+    body: {
+      quantId?: number | null;
+      locationId?: number | null;
+      quantity?: number;
+    },
   ) {
     const user = req.user;
-    if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
-      throw new ForbiddenException('Hanya Admin yang dapat mengubah barang muatan.');
+    if (
+      user.role?.name !== 'SUPER_ADMIN' &&
+      user.role?.name !== 'WAREHOUSE_ADMIN'
+    ) {
+      throw new ForbiddenException(
+        'Hanya Admin yang dapat mengubah barang muatan.',
+      );
     }
     const result = await this.service.updateCargoItem(cargoUuid, body);
     req.auditDetails = {
@@ -140,8 +165,13 @@ export class GateOperationController {
     @Req() req: any,
   ) {
     const user = req.user;
-    if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
-      throw new ForbiddenException('Hanya Admin yang dapat menghapus barang muatan.');
+    if (
+      user.role?.name !== 'SUPER_ADMIN' &&
+      user.role?.name !== 'WAREHOUSE_ADMIN'
+    ) {
+      throw new ForbiddenException(
+        'Hanya Admin yang dapat menghapus barang muatan.',
+      );
     }
     const result = await this.service.deleteCargoItem(cargoUuid);
     req.auditDetails = {
@@ -158,10 +188,7 @@ export class GateOperationController {
 
   @Get(':id/delivery-order')
   @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
-  async getDeliveryOrderPdf(
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
+  async getDeliveryOrderPdf(@Param('id') id: string, @Res() res: Response) {
     const pdfBuffer = await this.service.generateDeliveryOrderPdf(id);
     res.set({
       'Content-Type': 'application/pdf',
@@ -173,10 +200,7 @@ export class GateOperationController {
 
   @Get(':id/delivery-order-preview')
   @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
-  async getDeliveryOrderPreview(
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
+  async getDeliveryOrderPreview(@Param('id') id: string, @Res() res: Response) {
     const html = await this.service.generateDeliveryOrderHtml(id);
     res.set({
       'Content-Type': 'text/html',

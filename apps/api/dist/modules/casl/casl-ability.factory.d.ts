@@ -20,6 +20,13 @@ type ExtendedSubjects = Subjects<{
     StockOpname: any;
     Reconciliation: any;
     Report: any;
+    SignatureTemplate: any;
+    ManualDocument: any;
+    SignedDocument: any;
+    DocumentCategory: any;
+    DocumentVerificationLog: any;
+    SignatureAuditLog: any;
+    UserSignature: any;
 }> | 'all';
 export type AppAbility = Ability<[string, ExtendedSubjects], PrismaQuery>;
 export declare class CaslAbilityFactory {

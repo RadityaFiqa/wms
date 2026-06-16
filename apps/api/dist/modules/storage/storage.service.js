@@ -65,9 +65,12 @@ let StorageService = StorageService_1 = class StorageService {
         const accessKey = this.configService.get('MINIO_ACCESS_KEY') || 'minioadmin';
         const secretKey = this.configService.get('MINIO_SECRET_KEY') || 'minioadmin';
         const useSSL = this.configService.get('MINIO_USE_SSL') === 'true';
-        this.bucketName = this.configService.get('MINIO_BUCKET') || 'wms-bucket';
+        this.bucketName =
+            this.configService.get('MINIO_BUCKET') || 'wms-bucket';
         this.s3Client = new client_s3_1.S3Client({
-            endpoint: useSSL ? `https://${endpoint}:${port}` : `http://${endpoint}:${port}`,
+            endpoint: useSSL
+                ? `https://${endpoint}:${port}`
+                : `http://${endpoint}:${port}`,
             credentials: {
                 accessKeyId: accessKey,
                 secretAccessKey: secretKey,
@@ -154,8 +157,18 @@ let StorageService = StorageService_1 = class StorageService {
             where: { id },
         });
     }
+    async uploadBuffer(buffer, filePath, mimeType) {
+        await this.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: filePath,
+            Body: buffer,
+            ContentType: mimeType,
+        }));
+        return this.getFilePublicUrl(filePath);
+    }
     getFilePublicUrl(filePath) {
-        const publicUrl = this.configService.get('MINIO_PUBLIC_URL') || 'http://localhost:9000';
+        const publicUrl = this.configService.get('MINIO_PUBLIC_URL') ||
+            'http://localhost:9000';
         return `${publicUrl}/${this.bucketName}/${filePath}`;
     }
     async getFilePrivateUrl(filePath, expiresSeconds = 3600) {
@@ -164,6 +177,24 @@ let StorageService = StorageService_1 = class StorageService {
             Key: filePath,
         });
         return (0, s3_request_presigner_1.getSignedUrl)(this.s3Client, command, { expiresIn: expiresSeconds });
+    }
+    async getFileBuffer(filePath) {
+        const command = new client_s3_1.GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: filePath,
+        });
+        const response = await this.s3Client.send(command);
+        if (!response.Body) {
+            throw new Error(`File buffer untuk ${filePath} kosong.`);
+        }
+        const bytes = await response.Body.transformToByteArray();
+        return Buffer.from(bytes);
+    }
+    async deleteFileByKey(key) {
+        await this.s3Client.send(new client_s3_1.DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+        }));
     }
 };
 exports.StorageService = StorageService;

@@ -17,16 +17,15 @@ import { EmailModule } from '../email/email.module';
       secret: process.env.JWT_SECRET || 'super-secret-bulog-wms-key',
       signOptions: { expiresIn: '15m' },
     }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 5,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 5,
+      },
+    ]),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    JwtStrategy,
-  ],
+  providers: [AuthService, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

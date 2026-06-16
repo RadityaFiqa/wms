@@ -31,7 +31,9 @@ let AuditLogInterceptor = class AuditLogInterceptor {
         return next.handle().pipe((0, operators_1.tap)({
             next: (data) => {
                 const user = request.user;
-                const ipAddress = request.ip || request.headers['x-forwarded-for'] || request.socket.remoteAddress;
+                const ipAddress = request.ip ||
+                    request.headers['x-forwarded-for'] ||
+                    request.socket.remoteAddress;
                 const userAgent = request.headers['user-agent'];
                 let targetId = undefined;
                 if (request.params.id) {
@@ -44,17 +46,27 @@ let AuditLogInterceptor = class AuditLogInterceptor {
                 }
                 const sanitizedBody = request.body ? { ...request.body } : undefined;
                 if (sanitizedBody) {
-                    const keysToRedact = ['password', 'confirmPassword', 'oldPassword', 'newPassword', 'confirmNewPassword', 'token'];
+                    const keysToRedact = [
+                        'password',
+                        'confirmPassword',
+                        'oldPassword',
+                        'newPassword',
+                        'confirmNewPassword',
+                        'token',
+                    ];
                     for (const key of keysToRedact) {
                         if (sanitizedBody[key])
                             sanitizedBody[key] = '***REDACTED***';
                     }
                 }
-                this.auditLogService.log({
+                this.auditLogService
+                    .log({
                     actorId: user?.id,
                     targetId: targetId,
                     action,
-                    ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || null),
+                    ipAddress: Array.isArray(ipAddress)
+                        ? ipAddress[0]
+                        : ipAddress || null,
                     userAgent,
                     details: {
                         body: sanitizedBody,
@@ -62,7 +74,8 @@ let AuditLogInterceptor = class AuditLogInterceptor {
                         query: request.query,
                         ...request.auditDetails,
                     },
-                }).catch((err) => console.error('Failed to save audit log in interceptor:', err));
+                })
+                    .catch((err) => console.error('Failed to save audit log in interceptor:', err));
             },
         }));
     }

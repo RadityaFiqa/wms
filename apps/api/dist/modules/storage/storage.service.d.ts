@@ -23,6 +23,9 @@ export declare class StorageService implements OnModuleInit {
         stockOpnameId: number | null;
     }>;
     deleteFile(id: number): Promise<void>;
+    uploadBuffer(buffer: Buffer, filePath: string, mimeType: string): Promise<string>;
     getFilePublicUrl(filePath: string): string;
     getFilePrivateUrl(filePath: string, expiresSeconds?: number): Promise<string>;
+    getFileBuffer(filePath: string): Promise<Buffer>;
+    deleteFileByKey(key: string): Promise<void>;
 }

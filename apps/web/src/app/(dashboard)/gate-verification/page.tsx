@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useGateOperations } from '@/hooks/useGate';
-import { useAuthStore } from '@/store/auth';
-import Link from 'next/link';
+import React, { useState } from "react";
+import { useGateOperations } from "@/hooks/useGate";
+import { useAuthStore } from "@/store/auth";
+import { useDebounce } from "@/hooks/useDebounce";
+import Link from "next/link";
 import {
   ShieldCheck,
   Search,
@@ -14,38 +15,42 @@ import {
   Calendar,
   Info,
   Clock,
-} from 'lucide-react';
+} from "lucide-react";
 
 const getProductDetails = (item: any) => {
-  if (!item) return { sku: '-', name: '-', uom: '-' };
+  if (!item) return { sku: "-", name: "-", uom: "-" };
 
   const sku = item.sku || item.inventory?.sku || item.product?.sku;
   const name = item.name || item.inventory?.name || item.product?.name;
   const uom = item.uom || item.inventory?.uom || item.product?.uom;
 
   if (!sku || !name || !uom) {
-    console.warn('Warning: Product details mapping failed or incomplete for item:', item);
+    console.warn(
+      "Warning: Product details mapping failed or incomplete for item:",
+      item,
+    );
   }
 
   return {
-    sku: sku || '-',
-    name: name || '-',
-    uom: uom || '-',
+    sku: sku || "-",
+    name: name || "-",
+    uom: uom || "-",
   };
 };
 
 export default function GateVerificationListPage() {
-  const [search, setSearch] = useState('');
-  const [cardType, setCardType] = useState('');
-  const [status, setStatus] = useState('PENDING,PARTIAL');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+  const [cardType, setCardType] = useState("");
+  const [status, setStatus] = useState("PENDING,PARTIAL");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
 
   const { activeWarehouse } = useAuthStore();
   // Fetch gate operations with status and date filter for verification queue
   const { data, isLoading, error } = useGateOperations({
-    search,
+    search: debouncedSearch || undefined,
     cardType: cardType || undefined,
     status: status || undefined,
     startDate: startDate || undefined,
@@ -55,7 +60,7 @@ export default function GateVerificationListPage() {
   });
 
   const getCardTypeBadge = (type: string) => {
-    return type === 'IN' ? (
+    return type === "IN" ? (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-150">
         📥 GATE IN
       </span>
@@ -68,25 +73,25 @@ export default function GateVerificationListPage() {
 
   const getStatusBadge = (statusValue: string) => {
     switch (statusValue) {
-      case 'PENDING':
+      case "PENDING":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
             Pending
           </span>
         );
-      case 'PARTIAL':
+      case "PARTIAL":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
             Partial
           </span>
         );
-      case 'COMPLETED':
+      case "COMPLETED":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             Completed
           </span>
         );
-      case 'CANCELED':
+      case "CANCELED":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
             Canceled
@@ -105,9 +110,12 @@ export default function GateVerificationListPage() {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <ShieldCheck className="h-12 w-12 text-slate-350 mx-auto animate-pulse" />
-        <h3 className="text-lg font-bold text-slate-800">Gudang Aktif Belum Dipilih</h3>
+        <h3 className="text-lg font-bold text-slate-800">
+          Gudang Aktif Belum Dipilih
+        </h3>
         <p className="text-sm text-slate-505 max-w-md mx-auto">
-          Silakan pilih gudang aktif terlebih dahulu di panel navigasi atas untuk melihat antrean verifikasi gerbang.
+          Silakan pilih gudang aktif terlebih dahulu di panel navigasi atas
+          untuk melihat antrean verifikasi gerbang.
         </p>
       </div>
     );
@@ -122,7 +130,8 @@ export default function GateVerificationListPage() {
           Verifikasi Gate
         </h1>
         <p className="text-slate-500 mt-1">
-          Lakukan audit dan verifikasi logistik untuk kendaraan masuk/keluar di {activeWarehouse.name}.
+          Lakukan audit dan verifikasi logistik untuk kendaraan masuk/keluar di{" "}
+          {activeWarehouse.name}.
         </p>
       </div>
 
@@ -133,13 +142,13 @@ export default function GateVerificationListPage() {
             <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Cari Nomor GO, Driver, Plat Nomor di Antrean..."
+              placeholder="Cari Nomor GO, Driver, Plat Nomor, atau Dokumen Referensi..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-905 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition duration-200 text-sm"
+              className="w-full bg-slate-55 border border-slate-200 text-slate-905 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition duration-200 text-sm"
             />
           </div>
 
@@ -170,7 +179,9 @@ export default function GateVerificationListPage() {
                 }}
                 className="bg-transparent border-none text-sm text-slate-600 focus:outline-none py-1.5 cursor-pointer font-medium"
               >
-                <option value="PENDING,PARTIAL">Antrean (Pending/Partial)</option>
+                <option value="PENDING,PARTIAL">
+                  Antrean (Pending/Partial)
+                </option>
                 <option value="PENDING">Pending</option>
                 <option value="PARTIAL">Partial</option>
                 <option value="COMPLETED">Completed</option>
@@ -181,7 +192,9 @@ export default function GateVerificationListPage() {
 
             <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
               <Calendar className="h-4 w-4 text-slate-400" />
-              <span className="text-xs text-slate-400 font-bold uppercase">Mulai:</span>
+              <span className="text-xs text-slate-400 font-bold uppercase">
+                Mulai:
+              </span>
               <input
                 type="date"
                 value={startDate}
@@ -195,7 +208,9 @@ export default function GateVerificationListPage() {
 
             <div className="flex items-center space-x-2 border border-slate-200 rounded-lg px-3 bg-slate-50">
               <Calendar className="h-4 w-4 text-slate-400" />
-              <span className="text-xs text-slate-400 font-bold uppercase">Selesai:</span>
+              <span className="text-xs text-slate-400 font-bold uppercase">
+                Selesai:
+              </span>
               <input
                 type="date"
                 value={endDate}
@@ -214,9 +229,25 @@ export default function GateVerificationListPage() {
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
-            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              className="animate-spin h-8 w-8 text-blue-500"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
           </div>
         ) : error ? (
@@ -227,8 +258,12 @@ export default function GateVerificationListPage() {
         ) : !data || data.items.length === 0 ? (
           <div className="p-16 text-center text-slate-400">
             <Clock className="h-12 w-12 mx-auto text-slate-355 mb-4 animate-bounce" />
-            <p className="text-base font-semibold text-slate-700">Antrean Verifikasi Kosong</p>
-            <p className="text-sm text-slate-450 mt-1">Seluruh data operasi gerbang telah diverifikasi dan diaudit.</p>
+            <p className="text-base font-semibold text-slate-700">
+              Antrean Verifikasi Kosong
+            </p>
+            <p className="text-sm text-slate-450 mt-1">
+              Seluruh data operasi gerbang telah diverifikasi dan diaudit.
+            </p>
           </div>
         ) : (
           <>
@@ -239,6 +274,7 @@ export default function GateVerificationListPage() {
                     <th className="px-6 py-4">No. Operasi</th>
                     <th className="px-6 py-4">Waktu</th>
                     <th className="px-6 py-4">Tipe Kartu</th>
+                    <th className="px-6 py-4">Dokumen Referensi</th>
                     <th className="px-6 py-4">Driver</th>
                     <th className="px-6 py-4">Plat Nomor</th>
                     <th className="px-6 py-4">Status</th>
@@ -262,7 +298,9 @@ export default function GateVerificationListPage() {
             {data.totalPages > 1 && (
               <div className="px-6 py-4 border-t border-slate-150 flex items-center justify-between">
                 <span className="text-xs text-slate-500">
-                  Halaman <strong>{page}</strong> dari <strong>{data.totalPages}</strong> ({data.total} total antrean)
+                  Halaman <strong>{page}</strong> dari{" "}
+                  <strong>{data.totalPages}</strong> ({data.total} total
+                  antrean)
                 </span>
                 <div className="flex gap-2">
                   <button
@@ -273,7 +311,9 @@ export default function GateVerificationListPage() {
                     <ChevronLeft className="h-4.5 w-4.5" />
                   </button>
                   <button
-                    onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+                    onClick={() =>
+                      setPage((p) => Math.min(data.totalPages, p + 1))
+                    }
                     disabled={page === data.totalPages}
                     className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition cursor-pointer"
                   >
@@ -301,43 +341,29 @@ function GateVerificationRow({
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Map products to verify table rows
-  const productRows = item.products?.map((gp: any) => {
-    const verifiedProduct = item.verification?.products?.find((vp: any) => vp.productId === gp.productId);
-    const prodDetails = getProductDetails(gp);
-    return {
-      productId: gp.productId,
-      sku: prodDetails.sku,
-      name: prodDetails.name,
-      uom: prodDetails.uom,
-      qtyGate: gp.quantity,
-      qtyVerify: verifiedProduct ? verifiedProduct.quantity : null,
-    };
-  }) || [];
-
-  const addedProducts = item.verification?.products?.filter(
-    (vp: any) => !item.products?.some((gp: any) => gp.productId === vp.productId)
-  ) || [];
-
-  const extraRows = addedProducts.map((vp: any) => {
-    const prodDetails = getProductDetails(vp);
-    return {
-      productId: vp.productId,
-      sku: prodDetails.sku,
-      name: prodDetails.name,
-      uom: prodDetails.uom,
-      qtyGate: 0,
-      qtyVerify: vp.quantity,
-    };
-  });
-
-  const allRows = [...productRows, ...extraRows];
+  const productRows =
+    item.products?.map((gp: any) => {
+      const docItem = item.documentReference?.items?.find(
+        (di: any) => di.inventoryId === gp.productId,
+      );
+      const erpQty = docItem ? (docItem.productQty || docItem.quantity) : 0;
+      const prodDetails = getProductDetails(gp);
+      return {
+        productId: gp.productId,
+        sku: prodDetails.sku,
+        name: prodDetails.name,
+        uom: prodDetails.uom,
+        qtyCargo: gp.quantity,
+        qtyErp: erpQty,
+      };
+    }) || [];
 
   return (
     <>
       <tr
         onClick={() => setIsExpanded(!isExpanded)}
         className={`hover:bg-slate-50/70 border-b border-slate-100 transition cursor-pointer select-none ${
-          isExpanded ? 'bg-slate-50/40' : ''
+          isExpanded ? "bg-slate-50/40" : ""
         }`}
       >
         <td className="px-6 py-4 font-bold text-slate-900 tracking-tight flex items-center space-x-2">
@@ -354,69 +380,84 @@ function GateVerificationRow({
           <div className="flex items-center space-x-1.5 text-slate-550 text-xs">
             <Calendar className="h-3.5 w-3.5" />
             <span>
-              {new Date(item.createdAt).toLocaleString('id-ID', {
-                dateStyle: 'medium',
-                timeStyle: 'short',
+              {new Date(item.createdAt).toLocaleString("id-ID", {
+                dateStyle: "medium",
+                timeStyle: "short",
               })}
             </span>
           </div>
         </td>
-        <td className="px-6 py-4">
-          {getCardTypeBadge(item.cardType)}
+         <td className="px-6 py-4">{getCardTypeBadge(item.cardType)}</td>
+        <td className="px-6 py-4 font-mono text-xs font-semibold">
+          {item.documentReference?.documentNumber ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-250">
+              {item.documentReference.documentNumber}
+            </span>
+          ) : (
+            <span className="text-slate-400">-</span>
+          )}
         </td>
-        <td className="px-6 py-4 font-semibold text-slate-800">
+        <td className="px-6 py-4 font-semibold text-slate-800 font-bold">
           {item.driverName}
         </td>
         <td className="px-6 py-4 font-mono font-bold text-xs text-slate-900">
           {item.licensePlate}
         </td>
-        <td className="px-6 py-4">
-          {getStatusBadge(item.status)}
-        </td>
-        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+        <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
+        <td
+          className="px-6 py-4 text-center"
+          onClick={(e) => e.stopPropagation()}
+        >
           <Link
             href={`/gate-verification/${item.uuid}`}
             className="inline-flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition cursor-pointer"
           >
             <ShieldCheck className="h-4 w-4 mr-1.5" />
-            {item.status === 'COMPLETED' || item.status === 'CANCELED' ? 'Detail' : 'Verifikasi'}
+            {item.status === "COMPLETED" || item.status === "CANCELED"
+              ? "Detail"
+              : "Verifikasi"}
           </Link>
         </td>
       </tr>
       {isExpanded && (
         <tr>
-          <td colSpan={7} className="bg-slate-50/50 px-12 py-4 border-b border-slate-200">
+          <td
+            colSpan={8}
+            className="bg-slate-50/50 px-12 py-4 border-b border-slate-200"
+          >
             <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden max-w-3xl">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-2">Nama Produk</th>
-                    <th className="px-4 py-2 text-right">Qty Gate</th>
-                    <th className="px-4 py-2 text-right">Qty Realisasi ERP</th>
+                    <th className="px-4 py-2 text-right">ERP Qty</th>
+                    <th className="px-4 py-2 text-right">Cargo Qty</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-105 text-xs text-slate-700">
-                  {allRows.length === 0 ? (
+                  {productRows.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-4 py-4 text-center text-slate-400 italic">
+                      <td
+                        colSpan={3}
+                        className="px-4 py-4 text-center text-slate-400 italic"
+                      >
                         Tidak ada barang logistik yang dicatat
                       </td>
                     </tr>
                   ) : (
-                    allRows.map((r, idx) => (
+                    productRows.map((r: any, idx: number) => (
                       <tr key={idx} className="hover:bg-slate-50/30 transition">
                         <td className="px-4 py-2.5 font-bold">
-                          {r.name} <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">SKU: {r.sku}</span>
+                          {r.name}{" "}
+                          <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">
+                            SKU: {r.sku}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-right font-black text-slate-500">
-                          {r.qtyGate.toLocaleString('id-ID')} {r.uom}
+                          {r.qtyErp.toLocaleString("id-ID")} {r.uom}
                         </td>
                         <td className="px-4 py-2.5 text-right font-black text-blue-700 bg-blue-50/5">
-                          {r.qtyVerify !== null ? (
-                            <span>{r.qtyVerify.toLocaleString('id-ID')} {r.uom}</span>
-                          ) : (
-                            <span className="text-slate-350 italic font-normal">0 {r.uom}</span>
-                          )}
+                          {r.qtyCargo.toLocaleString("id-ID")} {r.uom}
                         </td>
                       </tr>
                     ))

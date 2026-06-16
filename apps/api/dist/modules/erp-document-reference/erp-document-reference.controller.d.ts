@@ -4,7 +4,7 @@ export declare class ErpDocumentReferenceController {
     private readonly service;
     private readonly warehouseContext;
     constructor(service: ErpDocumentReferenceService, warehouseContext: WarehouseContextService);
-    findAll(search?: string, page?: string, limit?: string, type?: 'IN' | 'OUT', state?: string, startDate?: string, endDate?: string, refFax?: string): Promise<{
+    findAll(search?: string, page?: string, limit?: string, type?: 'IN' | 'OUT', state?: string, startDate?: string, endDate?: string, refFax?: string, gateOperationUuid?: string): Promise<{
         data: any[];
         meta: {
             total: number;

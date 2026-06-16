@@ -112,7 +112,9 @@ let OdooController = class OdooController {
     async testConnection(uuid, req) {
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         const userAgent = req.headers['user-agent'];
-        const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
+        const ipStr = Array.isArray(ipAddress)
+            ? ipAddress[0]
+            : ipAddress || undefined;
         return this.authService.testConnectionByUuid(uuid, req.user?.id, ipStr, userAgent);
     }
     async deactivate(uuid) {

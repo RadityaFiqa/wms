@@ -82,7 +82,8 @@ let UserService = class UserService {
             if (data.roleId === 1) {
                 throw new common_1.ForbiddenException('Anda tidak dapat membuat akun Super Admin');
             }
-            if (!data.warehouseId || !allowedWarehouseIds.includes(data.warehouseId)) {
+            if (!data.warehouseId ||
+                !allowedWarehouseIds.includes(data.warehouseId)) {
                 throw new common_1.ForbiddenException('Anda hanya dapat membuat user untuk warehouse yang ditugaskan kepada Anda');
             }
         }
@@ -139,13 +140,15 @@ let UserService = class UserService {
             if (user.roleId === 1) {
                 throw new common_1.ForbiddenException('Anda tidak dapat mengubah akun Super Admin');
             }
-            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+            if (!user.warehouseId ||
+                !allowedWarehouseIds.includes(user.warehouseId)) {
                 throw new common_1.ForbiddenException('Anda tidak dapat mengubah user di luar warehouse Anda');
             }
             if (data.roleId === 1) {
                 throw new common_1.ForbiddenException('Anda tidak dapat mengubah role menjadi Super Admin');
             }
-            if (!data.warehouseId || !allowedWarehouseIds.includes(data.warehouseId)) {
+            if (!data.warehouseId ||
+                !allowedWarehouseIds.includes(data.warehouseId)) {
                 throw new common_1.ForbiddenException('Anda hanya dapat menugaskan user ke warehouse yang ditugaskan kepada Anda');
             }
         }
@@ -212,7 +215,8 @@ let UserService = class UserService {
             if (user.roleId === 1) {
                 throw new common_1.ForbiddenException('Anda tidak dapat mengubah status akun Super Admin');
             }
-            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+            if (!user.warehouseId ||
+                !allowedWarehouseIds.includes(user.warehouseId)) {
                 throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk mengubah status user di luar warehouse Anda');
             }
         }
@@ -242,7 +246,8 @@ let UserService = class UserService {
             if (user.roleId === 1) {
                 throw new common_1.ForbiddenException('Anda tidak dapat mereset password akun Super Admin');
             }
-            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+            if (!user.warehouseId ||
+                !allowedWarehouseIds.includes(user.warehouseId)) {
                 throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk mereset password user di luar warehouse Anda');
             }
         }
@@ -260,7 +265,9 @@ let UserService = class UserService {
             data: { isRevoked: true },
         });
         await this.emailService.sendWelcomeEmail(user.email, user.name, newTempPassword);
-        return { message: 'Password berhasil direset. Password baru telah dikirimkan ke email user.' };
+        return {
+            message: 'Password berhasil direset. Password baru telah dikirimkan ke email user.',
+        };
     }
     async findAll(query, currentUser) {
         const page = Number(query.page) || 1;
@@ -270,7 +277,7 @@ let UserService = class UserService {
         if (query.roleId) {
             where.roleId = Number(query.roleId);
         }
-        if (query.isActive !== "") {
+        if (query.isActive !== '') {
             where.isActive = String(query.isActive) === 'true';
         }
         console.log(`isActive`, where);
@@ -283,7 +290,9 @@ let UserService = class UserService {
         const { isSuperAdmin, allowedWarehouseIds } = await this.getWarehouseAdminScope(currentUser);
         if (!isSuperAdmin) {
             where.warehouseId = { in: allowedWarehouseIds };
-            where.roleId = where.roleId ? { equals: where.roleId, not: 1 } : { not: 1 };
+            where.roleId = where.roleId
+                ? { equals: where.roleId, not: 1 }
+                : { not: 1 };
         }
         const [total, data] = await Promise.all([
             this.prisma.user.count({ where }),
@@ -346,7 +355,8 @@ let UserService = class UserService {
             if (user.roleId === 1) {
                 throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk melihat akun Super Admin');
             }
-            if (!user.warehouseId || !allowedWarehouseIds.includes(user.warehouseId)) {
+            if (!user.warehouseId ||
+                !allowedWarehouseIds.includes(user.warehouseId)) {
                 throw new common_1.ForbiddenException('Anda tidak memiliki akses untuk melihat user di luar warehouse Anda');
             }
         }

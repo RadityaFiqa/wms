@@ -46,7 +46,7 @@ let PrismaService = class PrismaService extends client_1.PrismaClient {
                             'updateMany',
                             'delete',
                             'deleteMany',
-                            'upsert'
+                            'upsert',
                         ];
                         if (op === 'findUnique' || op === 'findUniqueOrThrow') {
                             const targetOp = op === 'findUnique' ? 'findFirst' : 'findFirstOrThrow';
@@ -71,7 +71,8 @@ let PrismaService = class PrismaService extends client_1.PrismaClient {
                         else if (op === 'create') {
                             if (['Inventory', 'OdooAccount', 'User'].includes(model)) {
                                 currentArgs.data = currentArgs.data || {};
-                                if (currentArgs.data.warehouseId === undefined || currentArgs.data.warehouseId === null) {
+                                if (currentArgs.data.warehouseId === undefined ||
+                                    currentArgs.data.warehouseId === null) {
                                     currentArgs.data.warehouseId = warehouseId;
                                 }
                             }
@@ -80,18 +81,20 @@ let PrismaService = class PrismaService extends client_1.PrismaClient {
                             currentArgs.create = currentArgs.create || {};
                             currentArgs.update = currentArgs.update || {};
                             if (['Inventory', 'OdooAccount', 'User'].includes(model)) {
-                                if (currentArgs.create.warehouseId === undefined || currentArgs.create.warehouseId === null) {
+                                if (currentArgs.create.warehouseId === undefined ||
+                                    currentArgs.create.warehouseId === null) {
                                     currentArgs.create.warehouseId = warehouseId;
                                 }
-                                if (currentArgs.update.warehouseId === undefined || currentArgs.update.warehouseId === null) {
+                                if (currentArgs.update.warehouseId === undefined ||
+                                    currentArgs.update.warehouseId === null) {
                                     currentArgs.update.warehouseId = warehouseId;
                                 }
                             }
                         }
                         return query(currentArgs);
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
         return extendedClient;
     }

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, X, FileText, Loader2, Image as ImageIcon } from 'lucide-react';
-import { useGate } from '@/hooks/useGate';
-import { toast } from 'sonner';
+import React, { useState, useEffect, useCallback } from "react";
+import { Upload, X, FileText, Loader2, Image as ImageIcon } from "lucide-react";
+import { useGate } from "@/hooks/useGate";
+import { toast } from "sonner";
 
 interface Attachment {
   filePath: string;
@@ -22,14 +22,14 @@ export function AttachmentUploader({
   value,
   onChange,
   initialAttachments = [],
-  label = 'Unggah Lampiran/Foto Bukti',
-  accept = 'image/*,application/pdf',
+  label = "Unggah Lampiran/Foto Bukti",
+  accept = "image/*,application/pdf",
   disabled = false,
 }: AttachmentUploaderProps) {
   const { uploadFile } = useGate();
   const [isUploading, setIsUploading] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
-  
+
   // Local list to store attachment details (including url and filename) for display
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
@@ -40,28 +40,34 @@ export function AttachmentUploader({
     }
   }, [initialAttachments]);
 
-  const processFile = useCallback(async (file: File) => {
-    if (disabled) return;
-    setIsUploading(true);
-    const toastId = toast.loading(`Mengunggah ${file.name}...`);
-    try {
-      const response = await uploadFile(file);
-      const newAttachment: Attachment = {
-        filePath: response.filePath,
-        url: response.url,
-        fileName: response.fileName,
-      };
-      
-      const updatedAttachments = [...attachments, newAttachment];
-      setAttachments(updatedAttachments);
-      onChange(updatedAttachments.map((a) => a.filePath));
-      toast.success(`${file.name} berhasil diunggah.`, { id: toastId });
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || `Gagal mengunggah ${file.name}.`, { id: toastId });
-    } finally {
-      setIsUploading(false);
-    }
-  }, [uploadFile, attachments, onChange, disabled]);
+  const processFile = useCallback(
+    async (file: File) => {
+      if (disabled) return;
+      setIsUploading(true);
+      const toastId = toast.loading(`Mengunggah ${file.name}...`);
+      try {
+        const response = await uploadFile(file);
+        const newAttachment: Attachment = {
+          filePath: response.filePath,
+          url: response.url,
+          fileName: response.fileName,
+        };
+
+        const updatedAttachments = [...attachments, newAttachment];
+        setAttachments(updatedAttachments);
+        onChange(updatedAttachments.map((a) => a.filePath));
+        toast.success(`${file.name} berhasil diunggah.`, { id: toastId });
+      } catch (err: any) {
+        toast.error(
+          err.response?.data?.message || `Gagal mengunggah ${file.name}.`,
+          { id: toastId },
+        );
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [uploadFile, attachments, onChange, disabled],
+  );
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (disabled) return;
@@ -71,16 +77,16 @@ export function AttachmentUploader({
       await processFile(files[i]);
     }
     // Reset input
-    e.target.value = '';
+    e.target.value = "";
   };
 
   const handleDrag = (e: React.DragEvent) => {
     if (disabled) return;
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+    if (e.type === "dragenter" || e.type === "dragover") {
       setIsDragActive(true);
-    } else if (e.type === 'dragleave') {
+    } else if (e.type === "dragleave") {
       setIsDragActive(false);
     }
   };
@@ -90,7 +96,7 @@ export function AttachmentUploader({
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
- 
+
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
       for (let i = 0; i < files.length; i++) {
@@ -101,20 +107,26 @@ export function AttachmentUploader({
 
   const handleRemove = (filePathToRemove: string) => {
     if (disabled) return;
-    const updatedAttachments = attachments.filter((a) => a.filePath !== filePathToRemove);
+    const updatedAttachments = attachments.filter(
+      (a) => a.filePath !== filePathToRemove,
+    );
     setAttachments(updatedAttachments);
     onChange(updatedAttachments.map((a) => a.filePath));
-    toast.success('Lampiran dihapus.');
+    toast.success("Lampiran dihapus.");
   };
 
   const isImage = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext || '');
+    const ext = fileName.split(".").pop()?.toLowerCase();
+    return ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext || "");
   };
 
   return (
     <div className="space-y-4">
-      {label && <label className="block text-sm font-semibold text-slate-700">{label}</label>}
+      {label && (
+        <label className="block text-sm font-semibold text-slate-700">
+          {label}
+        </label>
+      )}
 
       {/* Drag & Drop Area */}
       {!disabled && (
@@ -125,8 +137,8 @@ export function AttachmentUploader({
           onDrop={handleDrop}
           className={`relative border-2 border-dashed rounded-xl p-6 text-center transition min-h-[140px] flex flex-col items-center justify-center bg-slate-50/50 ${
             isDragActive
-              ? 'border-blue-500 bg-blue-50/20'
-              : 'border-slate-200 hover:border-blue-400'
+              ? "border-blue-500 bg-blue-50/20"
+              : "border-slate-200 hover:border-blue-400"
           }`}
         >
           <input
@@ -137,11 +149,15 @@ export function AttachmentUploader({
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             disabled={isUploading}
           />
-          
+
           <div className="space-y-2 pointer-events-none flex flex-col items-center">
-            <div className={`h-10 w-10 rounded-lg flex items-center justify-center border transition ${
-              isDragActive ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-blue-50 border-blue-100 text-blue-500'
-            }`}>
+            <div
+              className={`h-10 w-10 rounded-lg flex items-center justify-center border transition ${
+                isDragActive
+                  ? "bg-blue-100 border-blue-200 text-blue-600"
+                  : "bg-blue-50 border-blue-100 text-blue-500"
+              }`}
+            >
               {isUploading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
@@ -150,9 +166,13 @@ export function AttachmentUploader({
             </div>
             <div>
               <p className="text-xs font-bold text-slate-700">
-                {isUploading ? 'Sedang mengunggah...' : 'Pilih file atau seret ke sini'}
+                {isUploading
+                  ? "Sedang mengunggah..."
+                  : "Pilih file atau seret ke sini"}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">PNG, JPG, JPEG, atau PDF maks 5MB per file</p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                PNG, JPG, JPEG, atau PDF maks 5MB per file
+              </p>
             </div>
           </div>
         </div>

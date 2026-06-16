@@ -47,7 +47,7 @@ let OdooClient = class OdooClient {
             const response = await axios_1.default.post(url, formParams.toString(), {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
-                    'Cookie': cookieHeader,
+                    Cookie: cookieHeader,
                     'User-Agent': 'Bulog-WMS/1.0',
                 },
                 maxRedirects: 0,
@@ -64,7 +64,8 @@ let OdooClient = class OdooClient {
                 }
             }
             const location = response.headers['location'] || '';
-            if (location.includes('error=') || (!sessionId && !cookieHeader.includes('session_id='))) {
+            if (location.includes('error=') ||
+                (!sessionId && !cookieHeader.includes('session_id='))) {
                 throw new Error('Kredensial Odoo salah atau akses ditolak.');
             }
             if (!sessionId) {
@@ -87,6 +88,32 @@ let OdooClient = class OdooClient {
         const { csrfToken, cookies } = await this.getLoginPage(baseUrl);
         return this.login(baseUrl, { csrfToken, login: username, pass }, cookies);
     }
+    async getSessionInfo(baseUrl, sessionId) {
+        const url = `${baseUrl.replace(/\/$/, '')}/web/session/info`;
+        const payload = {
+            id: Math.floor(Math.random() * 1000000),
+            jsonrpc: '2.0',
+            method: 'call',
+            params: {},
+        };
+        try {
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    Cookie: `session_id=${sessionId}`,
+                    'User-Agent': 'Bulog-WMS/1.0',
+                },
+                timeout: 15000,
+            });
+            if (response.data.error) {
+                throw new Error(`Odoo Session Info Error: ${JSON.stringify(response.data.error)}`);
+            }
+            return response.data.result;
+        }
+        catch (err) {
+            throw new Error(`Gagal memanggil Session Info Odoo: ${err.message}`);
+        }
+    }
     async call(baseUrl, sessionId, payloadParams) {
         const url = `${baseUrl.replace(/\/$/, '')}/web/dataset/call_kw/${payloadParams.model}/${payloadParams.method}`;
         const payload = {
@@ -104,7 +131,7 @@ let OdooClient = class OdooClient {
             const response = await axios_1.default.post(url, payload, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'Cookie': `session_id=${sessionId}`,
+                    Cookie: `session_id=${sessionId}`,
                     'User-Agent': 'Bulog-WMS/1.0',
                 },
                 timeout: 30000,

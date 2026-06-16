@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import PDFDocument from 'pdfkit';
 
@@ -30,50 +34,14 @@ export class ReportsService {
       throw new BadRequestException('Start date tidak boleh setelah End date.');
     }
 
-    // 1. Get products (Inventory) matching filters
-    const productWhere: any = {};
-    if (query.productId) {
-      productWhere.uuid = query.productId;
-    }
-
-    const products = await this.prisma.inventory.findMany({
-      where: productWhere,
-      include: {
-        quants: {
-          where: {
-            location: { warehouseId },
-          },
-        },
-      },
-    });
-
-    // 2. Fetch all daily transactions (ERP receipts/deliveries and Gate Operations) from the startDate until TODAY
-    // We walk backward from today to reconstruct opening/closing stock correctly
     const today = new Date();
     today.setHours(23, 59, 59, 999);
 
-    // Fetch ERP Document Reference items
-    const erpItems = await this.prisma.documentReferenceItem.findMany({
-      where: {
-        documentReference: {
-          warehouseId,
-          state: 'done', // completed ERP documents
-          dateDone: {
-            gte: start,
-            lte: today,
-          },
-        },
-      },
-      include: {
-        documentReference: true,
-      },
-    });
-
-    // Fetch Gate Operations and their products
+    // 1. Fetch COMPLETED or VERIFIED Gate Operations from start date until TODAY
     const gateOps = await this.prisma.gateOperation.findMany({
       where: {
         warehouseId,
-        status: { notIn: ['CANCELED', 'REJECTED'] },
+        status: { in: ['COMPLETED', 'VERIFIED'] },
         verification: {
           verifiedAt: {
             gte: start,
@@ -83,30 +51,52 @@ export class ReportsService {
       },
       include: {
         products: true,
-        verification: {
-          include: {
-            references: true,
+        documentReference: true,
+        verification: true,
+      },
+    });
+
+    // 2. Identify products that had movement within the selected period
+    const movedProductIdsSet = new Set<number>();
+    const dateRangeStart = new Date(query.startDate);
+    dateRangeStart.setHours(0, 0, 0, 0);
+    const dateRangeEnd = new Date(query.endDate);
+    dateRangeEnd.setHours(23, 59, 59, 999);
+
+    for (const op of gateOps) {
+      const verifiedAt = op.verification?.verifiedAt;
+      if (verifiedAt && verifiedAt >= dateRangeStart && verifiedAt <= dateRangeEnd) {
+        for (const p of op.products) {
+          movedProductIdsSet.add(p.inventoryId);
+        }
+      }
+    }
+    const movedProductIds = Array.from(movedProductIdsSet);
+
+    if (movedProductIds.length === 0) {
+      return [];
+    }
+
+    // 3. Fetch details for products with movement
+    const products = await this.prisma.inventory.findMany({
+      where: {
+        id: { in: movedProductIds },
+        ...(query.productId ? { uuid: query.productId } : {}),
+      },
+      include: {
+        quants: {
+          where: {
+            location: { warehouseId },
           },
         },
       },
     });
 
-    // Filter unreconciled gate operations in memory
-    const unreconciledGateOps = gateOps.filter((op) => {
-      const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-      const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
-      if (hasPoRef || hasSoRef) return false;
-
-      const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
-      if (hasErpAssignments) return false;
-
-      return true;
-    });
-
-    // 3. Load existing snapshots
+    // 4. Load snapshots
     const snapshots = await this.prisma.dailyStockSnapshot.findMany({
       where: {
         warehouseId,
+        inventoryId: { in: movedProductIds },
         date: {
           gte: start,
           lte: today,
@@ -114,61 +104,68 @@ export class ReportsService {
       },
     });
 
-    // 4. Run walk-backward reconstructor for each product
     const reportRows: any[] = [];
     const datesList = this.generateDatesList(start, end);
-
-    // We also need to compute days from end to today for backward chain
     const backwardDates = this.generateDatesList(start, today).reverse();
 
     for (const prod of products) {
-      // erpStock is sum of quants
       const erpStock = prod.quants.reduce((sum, q) => sum + q.quantity, 0);
-      
-      // We will trace the stock level backward from today's current stock
       let currentStockTracker = erpStock;
 
-      // Group product transactions by Date (YYYY-MM-DD)
-      const transactionsByDate = new Map<string, { incoming: number; outgoing: number }>();
-      
-      // Populate ERP transactions
-      for (const item of erpItems.filter((i) => i.inventoryId === prod.id)) {
-        const dateStr = this.formatDateString(item.documentReference.dateDone!);
-        const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
-        if (item.documentReference.pickingTypeCode === 'incoming') {
-          current.incoming += item.quantity;
+      const transactionsByDate = new Map<
+        string,
+        { incoming: number; outgoing: number; list: any[] }
+      >();
+
+      for (const op of gateOps) {
+        const opProd = op.products.find((p) => p.inventoryId === prod.id);
+        if (!opProd) continue;
+
+        const dateStr = this.formatDateString(op.verification!.verifiedAt!);
+        const current = transactionsByDate.get(dateStr) || {
+          incoming: 0,
+          outgoing: 0,
+          list: [],
+        };
+
+        if (op.cardType === 'IN') {
+          current.incoming += opProd.quantity;
         } else {
-          current.outgoing += item.quantity;
+          current.outgoing += opProd.quantity;
         }
+
+        current.list.push({
+          opNumber: op.opNumber,
+          driverName: op.driverName,
+          licensePlate: op.licensePlate,
+          cardType: op.cardType,
+          quantity: opProd.quantity,
+          referenceDocument: op.documentReference?.documentNumber || '-',
+        });
+
         transactionsByDate.set(dateStr, current);
       }
 
-      // Populate unreconciled gate operations
-      for (const op of unreconciledGateOps) {
-        const dateStr = this.formatDateString(op.verification!.verifiedAt!);
-        const opProd = op.products.find((p) => p.inventoryId === prod.id);
-        if (opProd) {
-          const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
-          if (op.cardType === 'IN') {
-            current.incoming += opProd.quantity;
-          } else {
-            current.outgoing += opProd.quantity;
-          }
-          transactionsByDate.set(dateStr, current);
-        }
-      }
-
-      // Map date to calculated opening/closing stock for this product
-      const productDailyMetrics = new Map<string, { opening: number; incoming: number; outgoing: number; closing: number }>();
+      const productDailyMetrics = new Map<
+        string,
+        { opening: number; incoming: number; outgoing: number; closing: number; list: any[] }
+      >();
 
       const todayStr = this.formatDateString(new Date());
 
       for (const dDate of backwardDates) {
         const dStr = this.formatDateString(dDate);
-        const txs = transactionsByDate.get(dStr) || { incoming: 0, outgoing: 0 };
+        const txs = transactionsByDate.get(dStr) || {
+          incoming: 0,
+          outgoing: 0,
+          list: [],
+        };
 
         let closing = 0;
-        const snap = snapshots.find((s) => s.inventoryId === prod.id && this.formatDateString(s.date) === dStr);
+        const snap = snapshots.find(
+          (s) =>
+            s.inventoryId === prod.id && this.formatDateString(s.date) === dStr,
+        );
 
         if (dStr === todayStr) {
           closing = currentStockTracker;
@@ -176,18 +173,16 @@ export class ReportsService {
           closing = snap.closingStock;
         } else {
           closing = currentStockTracker;
-          
-          // Cache snapshot for past dates to preserve history
-          await this.prisma.dailyStockSnapshot.create({
-            data: {
-              date: dDate,
-              warehouseId,
-              inventoryId: prod.id,
-              closingStock: closing,
-            },
-          }).catch((err) => {
-            // Ignore unique constraint/race condition errors
-          });
+          await this.prisma.dailyStockSnapshot
+            .create({
+              data: {
+                date: dDate,
+                warehouseId,
+                inventoryId: prod.id,
+                closingStock: closing,
+              },
+            })
+            .catch(() => {});
         }
 
         const opening = closing - txs.incoming + txs.outgoing;
@@ -196,21 +191,20 @@ export class ReportsService {
           incoming: txs.incoming,
           outgoing: txs.outgoing,
           closing,
+          list: txs.list,
         });
 
-        // Set the tracker for the next iteration (yesterday) to this day's opening stock
         currentStockTracker = opening;
       }
 
-      // Now populate final report rows for the requested date range
       for (const dDate of datesList) {
         const dStr = this.formatDateString(dDate);
-        const metrics = productDailyMetrics.get(dStr) || {
-          opening: currentStockTracker,
-          incoming: 0,
-          outgoing: 0,
-          closing: currentStockTracker,
-        };
+        const metrics = productDailyMetrics.get(dStr);
+        if (!metrics) continue;
+
+        if (metrics.incoming === 0 && metrics.outgoing === 0) {
+          continue;
+        }
 
         reportRows.push({
           date: dStr,
@@ -224,11 +218,11 @@ export class ReportsService {
           incoming: metrics.incoming,
           outgoing: metrics.outgoing,
           closingStock: metrics.closing,
+          transactions: metrics.list,
         });
       }
     }
 
-    // Sort report rows by date desc, then product name asc
     return reportRows.sort((a, b) => {
       const dateCmp = b.date.localeCompare(a.date);
       if (dateCmp !== 0) return dateCmp;
@@ -280,7 +274,10 @@ export class ReportsService {
 
     const erpTransactions = erpItems.map((item) => ({
       documentNumber: item.documentReference.documentNumber,
-      partnerName: item.documentReference.partnerName || item.documentReference.purchaseName || 'Tanpa Partner',
+      partnerName:
+        item.documentReference.partnerName ||
+        item.documentReference.purchaseName ||
+        'Tanpa Partner',
       pickingTypeCode: item.documentReference.pickingTypeCode, // incoming / outgoing
       quantity: item.quantity,
       scheduledDate: item.documentReference.scheduledDate,
@@ -320,11 +317,18 @@ export class ReportsService {
 
     const unreconciledGateOps = gateOps
       .filter((op) => {
-        const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-        const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
+        const hasPoRef =
+          op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
+        const hasSoRef =
+          op.cardType === 'OUT' &&
+          op.soReferences &&
+          op.soReferences.length > 0;
         if (hasPoRef || hasSoRef) return false;
 
-        const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
+        const hasErpAssignments =
+          op.verification &&
+          op.verification.references &&
+          op.verification.references.length > 0;
         if (hasErpAssignments) return false;
 
         return true;
@@ -413,19 +417,33 @@ export class ReportsService {
       doc.on('error', (err) => reject(err));
 
       const drawHeader = () => {
-        doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold').text('LAPORAN MUTASI PERSSEDIAAN HARIAN', 20, 20, { align: 'center', width: 555 });
-        doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text(`Gudang: ${warehouseName}  |  Periode: ${query.startDate} s/d ${query.endDate}`, 20, 34, { align: 'center', width: 555 });
-        
+        doc
+          .fillColor('#1e293b')
+          .fontSize(11)
+          .font('Helvetica-Bold')
+          .text('LAPORAN MUTASI PERSSEDIAAN HARIAN', 20, 20, {
+            align: 'center',
+            width: 555,
+          });
+        doc
+          .fontSize(7.5)
+          .font('Helvetica')
+          .fillColor('#64748b')
+          .text(
+            `Gudang: ${warehouseName}  |  Periode: ${query.startDate} s/d ${query.endDate}`,
+            20,
+            34,
+            { align: 'center', width: 555 },
+          );
+
         doc.moveTo(20, 48).lineTo(575, 48).lineWidth(0.5).stroke('#475569');
 
         // Table Header
         doc.fillColor('#475569').fontSize(7.2).font('Helvetica-Bold');
-        doc.text('Tanggal', 25, 54, { width: 65 });
-        doc.text('Produk (SKU / Nama)', 95, 54, { width: 195 });
-        doc.text('Stok Awal', 295, 54, { width: 60, align: 'right' });
-        doc.text('Masuk', 360, 54, { width: 65, align: 'right' });
-        doc.text('Keluar', 430, 54, { width: 65, align: 'right' });
-        doc.text('Stok Akhir', 500, 54, { width: 65, align: 'right' });
+        doc.text('Tanggal', 25, 54, { width: 85 });
+        doc.text('Produk (SKU / Nama)', 125, 54, { width: 220 });
+        doc.text('Masuk', 360, 54, { width: 90, align: 'right' });
+        doc.text('Keluar', 470, 54, { width: 90, align: 'right' });
         doc.font('Helvetica');
 
         doc.moveTo(20, 66).lineTo(575, 66).lineWidth(0.5).stroke('#475569');
@@ -441,23 +459,34 @@ export class ReportsService {
         }
 
         doc.fillColor('#334155').fontSize(6.8).font('Helvetica');
-        doc.text(row.date, 25, currentY + 4, { width: 65 });
+        doc.text(row.date, 25, currentY + 4, { width: 85 });
         doc.fillColor('#1e293b').font('Helvetica-Bold');
-        doc.text(`${row.product.name}`, 95, currentY + 4, { width: 195, ellipsis: true });
-        
-        doc.fillColor('#475569').font('Helvetica');
-        doc.text(row.openingStock.toLocaleString('id-ID'), 295, currentY + 4, { width: 60, align: 'right' });
-        
-        doc.fillColor('#16a34a'); // green for incoming
-        doc.text(row.incoming > 0 ? `+${row.incoming.toLocaleString('id-ID')}` : '0', 360, currentY + 4, { width: 65, align: 'right' });
-        
-        doc.fillColor('#dc2626'); // red for outgoing
-        doc.text(row.outgoing > 0 ? `-${row.outgoing.toLocaleString('id-ID')}` : '0', 430, currentY + 4, { width: 65, align: 'right' });
-        
-        doc.fillColor('#1e293b').font('Helvetica-Bold');
-        doc.text(row.closingStock.toLocaleString('id-ID'), 500, currentY + 4, { width: 65, align: 'right' });
+        doc.text(`${row.product.name}`, 125, currentY + 4, {
+          width: 220,
+          ellipsis: true,
+        });
 
-        doc.moveTo(20, currentY + 16).lineTo(575, currentY + 16).lineWidth(0.15).stroke('#e2e8f0');
+        doc.fillColor('#16a34a'); // green for incoming
+        doc.text(
+          row.incoming > 0 ? `+${row.incoming.toLocaleString('id-ID')}` : '0',
+          360,
+          currentY + 4,
+          { width: 90, align: 'right' },
+        );
+
+        doc.fillColor('#dc2626'); // red for outgoing
+        doc.text(
+          row.outgoing > 0 ? `-${row.outgoing.toLocaleString('id-ID')}` : '0',
+          470,
+          currentY + 4,
+          { width: 90, align: 'right' },
+        );
+
+        doc
+          .moveTo(20, currentY + 16)
+          .lineTo(575, currentY + 16)
+          .lineWidth(0.15)
+          .stroke('#e2e8f0');
         currentY += 16;
       }
 
@@ -480,11 +509,12 @@ export class ReportsService {
 
     // CSV Header
     let csv = '\ufeff'; // Add UTF-8 BOM so Excel opens it with correct encoding
-    csv += 'Tanggal,SKU,Nama Produk,UOM,Stok Awal,Masuk (Incoming),Keluar (Outgoing),Stok Akhir\n';
+    csv +=
+      'Tanggal,SKU,Nama Produk,UOM,Masuk (Incoming),Keluar (Outgoing)\n';
 
     for (const r of rows) {
       const sanitizedName = r.product.name.replace(/"/g, '""');
-      csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.uom},${r.openingStock},${r.incoming},${r.outgoing},${r.closingStock}\n`;
+      csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.uom},${r.incoming},${r.outgoing}\n`;
     }
 
     return csv;

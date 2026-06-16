@@ -24,16 +24,22 @@ export class StorageService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const endpoint = this.configService.get<string>('MINIO_ENDPOINT') || 'localhost';
+    const endpoint =
+      this.configService.get<string>('MINIO_ENDPOINT') || 'localhost';
     const port = this.configService.get<number>('MINIO_PORT') || 9000;
-    const accessKey = this.configService.get<string>('MINIO_ACCESS_KEY') || 'minioadmin';
-    const secretKey = this.configService.get<string>('MINIO_SECRET_KEY') || 'minioadmin';
+    const accessKey =
+      this.configService.get<string>('MINIO_ACCESS_KEY') || 'minioadmin';
+    const secretKey =
+      this.configService.get<string>('MINIO_SECRET_KEY') || 'minioadmin';
     const useSSL = this.configService.get<string>('MINIO_USE_SSL') === 'true';
 
-    this.bucketName = this.configService.get<string>('MINIO_BUCKET') || 'wms-bucket';
+    this.bucketName =
+      this.configService.get<string>('MINIO_BUCKET') || 'wms-bucket';
 
     this.s3Client = new S3Client({
-      endpoint: useSSL ? `https://${endpoint}:${port}` : `http://${endpoint}:${port}`,
+      endpoint: useSSL
+        ? `https://${endpoint}:${port}`
+        : `http://${endpoint}:${port}`,
       credentials: {
         accessKeyId: accessKey,
         secretAccessKey: secretKey,
@@ -46,12 +52,18 @@ export class StorageService implements OnModuleInit {
   async onModuleInit() {
     try {
       // Check if bucket exists
-      await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }));
+      await this.s3Client.send(
+        new HeadBucketCommand({ Bucket: this.bucketName }),
+      );
       this.logger.log(`Bucket "${this.bucketName}" already exists.`);
     } catch (err: any) {
       if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
-        this.logger.log(`Bucket "${this.bucketName}" not found. Creating it...`);
-        await this.s3Client.send(new CreateBucketCommand({ Bucket: this.bucketName }));
+        this.logger.log(
+          `Bucket "${this.bucketName}" not found. Creating it...`,
+        );
+        await this.s3Client.send(
+          new CreateBucketCommand({ Bucket: this.bucketName }),
+        );
         this.logger.log(`Bucket "${this.bucketName}" created successfully.`);
 
         // Apply public read policy so browser can load images directly
@@ -73,9 +85,14 @@ export class StorageService implements OnModuleInit {
             Policy: JSON.stringify(policy),
           }),
         );
-        this.logger.log(`Public read policy applied to bucket "${this.bucketName}".`);
+        this.logger.log(
+          `Public read policy applied to bucket "${this.bucketName}".`,
+        );
       } else {
-        this.logger.error(`Error checking/creating bucket: ${err.message}`, err.stack);
+        this.logger.error(
+          `Error checking/creating bucket: ${err.message}`,
+          err.stack,
+        );
       }
     }
   }
@@ -83,7 +100,11 @@ export class StorageService implements OnModuleInit {
   /**
    * Upload a file to MinIO and save metadata in the database.
    */
-  async uploadFile(file: Express.Multer.File, folder: string, uploadedById: number) {
+  async uploadFile(
+    file: Express.Multer.File,
+    folder: string,
+    uploadedById: number,
+  ) {
     const ext = path.extname(file.originalname);
     const originalName = file.originalname;
     const mimeType = file.mimetype;
@@ -148,21 +169,69 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
+   * Upload a raw buffer to MinIO.
+   */
+  async uploadBuffer(buffer: Buffer, filePath: string, mimeType: string) {
+    await this.s3Client.send(
+      new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: filePath,
+        Body: buffer,
+        ContentType: mimeType,
+      }),
+    );
+    return this.getFilePublicUrl(filePath);
+  }
+
+  /**
    * Generates public read URL of a file path.
    */
   getFilePublicUrl(filePath: string): string {
-    const publicUrl = this.configService.get<string>('MINIO_PUBLIC_URL') || 'http://localhost:9000';
+    const publicUrl =
+      this.configService.get<string>('MINIO_PUBLIC_URL') ||
+      'http://localhost:9000';
     return `${publicUrl}/${this.bucketName}/${filePath}`;
   }
 
   /**
    * Generates private pre-signed URL of a file path.
    */
-  async getFilePrivateUrl(filePath: string, expiresSeconds = 3600): Promise<string> {
+  async getFilePrivateUrl(
+    filePath: string,
+    expiresSeconds = 3600,
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: filePath,
     });
     return getSignedUrl(this.s3Client, command, { expiresIn: expiresSeconds });
+  }
+
+  /**
+   * Get raw file buffer from MinIO.
+   */
+  async getFileBuffer(filePath: string): Promise<Buffer> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: filePath,
+    });
+    const response = await this.s3Client.send(command);
+    if (!response.Body) {
+      throw new Error(`File buffer untuk ${filePath} kosong.`);
+    }
+    const bytes = await response.Body.transformToByteArray();
+    return Buffer.from(bytes);
+  }
+
+  /**
+   * Delete a file from MinIO by key directly.
+   */
+  async deleteFileByKey(key: string): Promise<void> {
+    await this.s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      }),
+    );
   }
 }

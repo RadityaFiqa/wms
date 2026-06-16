@@ -1,20 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import Select from 'react-select';
-import { useProducts } from '@/hooks/useInventory';
-import { useDebounce } from '@/hooks/useDebounce';
-import { globalSelectStyles } from '@/lib/react-select';
+import React, { useState, useEffect } from "react";
+import Select from "react-select";
+import { useProducts } from "@/hooks/useInventory";
+import { useDebounce } from "@/hooks/useDebounce";
+import { globalSelectStyles } from "@/lib/react-select";
 
 interface ProductSelectorProps {
   value: number;
   onChange: (productId: number, product?: any) => void;
   error?: string;
+  onlyAvailable?: boolean;
 }
 
-export function ProductSelector({ value, onChange, error }: ProductSelectorProps) {
-  const [inputValue, setInputValue] = useState('');
+export function ProductSelector({
+  value,
+  onChange,
+  error,
+  onlyAvailable,
+}: ProductSelectorProps) {
+  const [inputValue, setInputValue] = useState("");
   const debouncedSearch = useDebounce(inputValue, 300);
-  
-  const { products, isLoading } = useProducts({ search: debouncedSearch || undefined });
+
+  const { products, isLoading } = useProducts({
+    search: debouncedSearch || undefined,
+    selectedId: value || undefined,
+    onlyAvailable,
+  });
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   // Cache selected product details to ensure it stays in options list even when search changes
@@ -29,11 +39,11 @@ export function ProductSelector({ value, onChange, error }: ProductSelectorProps
 
   // Combine cached product and search results
   const optionsMap = new Map();
-  
+
   if (selectedProduct) {
     optionsMap.set(selectedProduct.id, {
       value: selectedProduct.id,
-      label: `[${selectedProduct.sku}] ${selectedProduct.name} (${selectedProduct.uom || 'Unit'})`,
+      label: `[${selectedProduct.sku}] ${selectedProduct.name} (${selectedProduct.uom || "Unit"})`,
       product: selectedProduct,
     });
   }
@@ -41,7 +51,7 @@ export function ProductSelector({ value, onChange, error }: ProductSelectorProps
   (products || []).forEach((p: any) => {
     optionsMap.set(p.id, {
       value: p.id,
-      label: `${p.name} (${p.uom || 'Unit'})`,
+      label: `${p.name} (${p.uom || "Unit"})`,
       product: p,
     });
   });
@@ -63,7 +73,9 @@ export function ProductSelector({ value, onChange, error }: ProductSelectorProps
         placeholder="Ketik SKU atau nama barang..."
         isClearable
         isSearchable
-        noOptionsMessage={() => (isLoading ? 'Memuat...' : 'Produk tidak ditemukan')}
+        noOptionsMessage={() =>
+          isLoading ? "Memuat..." : "Produk tidak ditemukan"
+        }
         className="text-sm"
         classNamePrefix="react-select"
         styles={globalSelectStyles}

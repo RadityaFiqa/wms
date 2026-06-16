@@ -29,7 +29,7 @@ let ErpDocumentReferenceController = class ErpDocumentReferenceController {
         this.service = service;
         this.warehouseContext = warehouseContext;
     }
-    async findAll(search, page, limit, type, state, startDate, endDate, refFax) {
+    async findAll(search, page, limit, type, state, startDate, endDate, refFax, gateOperationUuid) {
         const warehouseId = this.warehouseContext.getWarehouseId();
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
@@ -43,6 +43,7 @@ let ErpDocumentReferenceController = class ErpDocumentReferenceController {
             startDate,
             endDate,
             refFax,
+            gateOperationUuid,
         });
     }
     async findUniquePartners() {
@@ -98,8 +99,9 @@ __decorate([
     __param(5, (0, common_1.Query)('startDate')),
     __param(6, (0, common_1.Query)('endDate')),
     __param(7, (0, common_1.Query)('refFax')),
+    __param(8, (0, common_1.Query)('gateOperationUuid')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ErpDocumentReferenceController.prototype, "findAll", null);
 __decorate([

@@ -243,7 +243,10 @@ let StockOpnameService = class StockOpnameService {
                 const locMap = new Map();
                 for (const q of prod.quants) {
                     const loc = q.location;
-                    const current = locMap.get(loc.id) || { name: loc.displayName, qty: 0 };
+                    const current = locMap.get(loc.id) || {
+                        name: loc.displayName,
+                        qty: 0,
+                    };
                     current.qty += q.quantity;
                     locMap.set(loc.id, current);
                 }
@@ -380,8 +383,19 @@ let StockOpnameService = class StockOpnameService {
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', (err) => reject(err));
             const drawHeader = () => {
-                doc.fillColor('#1e293b').fontSize(12).font('Helvetica-Bold').text('LEMBAR PERHITUNGAN FISIK (COUNTING SHEET)', 20, 20, { align: 'center', width: 555 });
-                doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Tanggal Draf: ${op.createdAt.toLocaleDateString('id-ID')}`, 20, 36, { align: 'center', width: 555 });
+                doc
+                    .fillColor('#1e293b')
+                    .fontSize(12)
+                    .font('Helvetica-Bold')
+                    .text('LEMBAR PERHITUNGAN FISIK (COUNTING SHEET)', 20, 20, {
+                    align: 'center',
+                    width: 555,
+                });
+                doc
+                    .fontSize(8)
+                    .font('Helvetica')
+                    .fillColor('#64748b')
+                    .text(`No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Tanggal Draf: ${op.createdAt.toLocaleDateString('id-ID')}`, 20, 36, { align: 'center', width: 555 });
                 doc.moveTo(20, 52).lineTo(575, 52).lineWidth(0.5).stroke('#475569');
                 doc.fillColor('#475569').fontSize(7.5).font('Helvetica-Bold');
                 doc.text('Produk (Nama & SKU)', 25, 60, { width: 230 });
@@ -400,19 +414,35 @@ let StockOpnameService = class StockOpnameService {
                     currentY = drawHeader();
                 }
                 doc.fillColor('#1e293b').fontSize(7).font('Helvetica-Bold');
-                doc.text(`${item.productName}`, 25, currentY + 3, { width: 230, ellipsis: true });
+                doc.text(`${item.productName}`, 25, currentY + 3, {
+                    width: 230,
+                    ellipsis: true,
+                });
                 doc.fillColor('#64748b').fontSize(6).font('Helvetica');
                 doc.text(`SKU: ${item.productSku} | UOM: ${item.productUom || 'Unit'}`, 25, currentY + 12, { width: 230 });
                 let stackY = currentY;
                 for (let i = 0; i < item.stacks.length; i++) {
                     const st = item.stacks[i];
                     doc.fillColor('#334155').fontSize(7).font('Helvetica');
-                    doc.text(st.locationName, 265, stackY + 3, { width: 140, ellipsis: true });
-                    doc.text(st.erpQty.toLocaleString('id-ID'), 415, stackY + 3, { width: 70, align: 'right' });
-                    doc.rect(500, stackY + 1, 60, 11).lineWidth(0.4).stroke('#cbd5e1');
+                    doc.text(st.locationName, 265, stackY + 3, {
+                        width: 140,
+                        ellipsis: true,
+                    });
+                    doc.text(st.erpQty.toLocaleString('id-ID'), 415, stackY + 3, {
+                        width: 70,
+                        align: 'right',
+                    });
+                    doc
+                        .rect(500, stackY + 1, 60, 11)
+                        .lineWidth(0.4)
+                        .stroke('#cbd5e1');
                     stackY += 15;
                 }
-                doc.moveTo(20, currentY + rowHeight).lineTo(575, currentY + rowHeight).lineWidth(0.2).stroke('#e2e8f0');
+                doc
+                    .moveTo(20, currentY + rowHeight)
+                    .lineTo(575, currentY + rowHeight)
+                    .lineWidth(0.2)
+                    .stroke('#e2e8f0');
                 currentY += rowHeight;
             }
             doc.end();
@@ -443,8 +473,19 @@ let StockOpnameService = class StockOpnameService {
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', (err) => reject(err));
             const drawHeader = () => {
-                doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold').text('LAPORAN HASIL STOCK OPNAME (STOCK COUNTING REPORT)', 20, 20, { align: 'center', width: 555 });
-                doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text(`No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Selesai: ${op.completionDate?.toLocaleString('id-ID')}`, 20, 34, { align: 'center', width: 555 });
+                doc
+                    .fillColor('#1e293b')
+                    .fontSize(11)
+                    .font('Helvetica-Bold')
+                    .text('LAPORAN HASIL STOCK OPNAME (STOCK COUNTING REPORT)', 20, 20, {
+                    align: 'center',
+                    width: 555,
+                });
+                doc
+                    .fontSize(7.5)
+                    .font('Helvetica')
+                    .fillColor('#64748b')
+                    .text(`No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Selesai: ${op.completionDate?.toLocaleString('id-ID')}`, 20, 34, { align: 'center', width: 555 });
                 doc.moveTo(20, 48).lineTo(575, 48).lineWidth(0.5).stroke('#475569');
                 doc.fillColor('#475569').fontSize(7).font('Helvetica-Bold');
                 doc.text('Produk (Nama & SKU)', 25, 54, { width: 175 });
@@ -465,11 +506,17 @@ let StockOpnameService = class StockOpnameService {
                     currentY = drawHeader();
                 }
                 doc.fillColor('#1e293b').fontSize(6.8).font('Helvetica-Bold');
-                doc.text(item.productName, 25, currentY + 3, { width: 175, ellipsis: true });
+                doc.text(item.productName, 25, currentY + 3, {
+                    width: 175,
+                    ellipsis: true,
+                });
                 doc.fillColor('#64748b').fontSize(5.8).font('Helvetica');
                 doc.text(`SKU: ${item.productSku} | UOM: ${item.productUom || 'Unit'}`, 25, currentY + 11, { width: 175 });
                 doc.fillColor('#1e293b').fontSize(6.5).font('Helvetica-Bold');
-                doc.text(item.erpStock.toLocaleString('id-ID'), 320, currentY + 3, { width: 55, align: 'right' });
+                doc.text(item.erpStock.toLocaleString('id-ID'), 320, currentY + 3, {
+                    width: 55,
+                    align: 'right',
+                });
                 doc.text(item.realtimeStock.toLocaleString('id-ID'), 380, currentY + 3, { width: 60, align: 'right' });
                 let actualSum = 0;
                 let hasActual = false;
@@ -482,30 +529,57 @@ let StockOpnameService = class StockOpnameService {
                 doc.text(hasActual ? actualSum.toLocaleString('id-ID') : '-', 445, currentY + 3, { width: 60, align: 'right' });
                 if (item.difference !== null) {
                     const diffText = item.difference > 0 ? `+${item.difference}` : `${item.difference}`;
-                    const diffColor = item.difference < 0 ? '#b91c1c' : item.difference > 0 ? '#15803d' : '#1e293b';
-                    doc.fillColor(diffColor).text(diffText, 510, currentY + 3, { width: 60, align: 'right' });
+                    const diffColor = item.difference < 0
+                        ? '#b91c1c'
+                        : item.difference > 0
+                            ? '#15803d'
+                            : '#1e293b';
+                    doc
+                        .fillColor(diffColor)
+                        .text(diffText, 510, currentY + 3, { width: 60, align: 'right' });
                 }
                 else {
-                    doc.fillColor('#64748b').text('-', 510, currentY + 3, { width: 60, align: 'right' });
+                    doc
+                        .fillColor('#64748b')
+                        .text('-', 510, currentY + 3, { width: 60, align: 'right' });
                 }
                 let stackY = currentY;
                 for (let i = 0; i < item.stacks.length; i++) {
                     const st = item.stacks[i];
                     doc.fillColor('#475569').fontSize(6.2).font('Helvetica');
-                    doc.text(st.locationName, 205, stackY + 3, { width: 110, ellipsis: true });
-                    doc.text(st.erpQty.toLocaleString('id-ID'), 320, stackY + 3, { width: 55, align: 'right', fill: false });
+                    doc.text(st.locationName, 205, stackY + 3, {
+                        width: 110,
+                        ellipsis: true,
+                    });
+                    doc.text(st.erpQty.toLocaleString('id-ID'), 320, stackY + 3, {
+                        width: 55,
+                        align: 'right',
+                        fill: false,
+                    });
                     doc.text(st.actualQty !== null ? st.actualQty.toLocaleString('id-ID') : '-', 445, stackY + 3, { width: 60, align: 'right' });
                     if (st.variance !== null) {
                         const varText = st.variance > 0 ? `+${st.variance}` : `${st.variance}`;
-                        const varColor = st.variance < 0 ? '#b91c1c' : st.variance > 0 ? '#15803d' : '#475569';
-                        doc.fillColor(varColor).text(varText, 510, stackY + 3, { width: 60, align: 'right' });
+                        const varColor = st.variance < 0
+                            ? '#b91c1c'
+                            : st.variance > 0
+                                ? '#15803d'
+                                : '#475569';
+                        doc
+                            .fillColor(varColor)
+                            .text(varText, 510, stackY + 3, { width: 60, align: 'right' });
                     }
                     else {
-                        doc.fillColor('#64748b').text('-', 510, stackY + 3, { width: 60, align: 'right' });
+                        doc
+                            .fillColor('#64748b')
+                            .text('-', 510, stackY + 3, { width: 60, align: 'right' });
                     }
                     stackY += 13;
                 }
-                doc.moveTo(20, currentY + rowHeight).lineTo(575, currentY + rowHeight).lineWidth(0.2).stroke('#cbd5e1');
+                doc
+                    .moveTo(20, currentY + rowHeight)
+                    .lineTo(575, currentY + rowHeight)
+                    .lineWidth(0.2)
+                    .stroke('#cbd5e1');
                 currentY += rowHeight;
             }
             if (currentY + 80 > 800) {
@@ -515,10 +589,19 @@ let StockOpnameService = class StockOpnameService {
             currentY += 25;
             doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica-Bold');
             doc.text('Dibuat Oleh,', 50, currentY, { width: 150, align: 'center' });
-            doc.text('Disetujui Oleh,', 375, currentY, { width: 150, align: 'center' });
+            doc.text('Disetujui Oleh,', 375, currentY, {
+                width: 150,
+                align: 'center',
+            });
             currentY += 45;
-            doc.text(`( ${op.createdBy.name} )`, 50, currentY, { width: 150, align: 'center' });
-            doc.text('( Kepala Gudang / Supervisor )', 375, currentY, { width: 150, align: 'center' });
+            doc.text(`( ${op.createdBy.name} )`, 50, currentY, {
+                width: 150,
+                align: 'center',
+            });
+            doc.text('( Kepala Gudang / Supervisor )', 375, currentY, {
+                width: 150,
+                align: 'center',
+            });
             doc.end();
         });
     }

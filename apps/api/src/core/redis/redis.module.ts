@@ -27,7 +27,10 @@ export class RedisModule implements OnModuleDestroy {
       try {
         await this.redisClient.disconnect();
       } catch (err) {
-        console.error('Failed to disconnect Redis client on module destroy:', err);
+        console.error(
+          'Failed to disconnect Redis client on module destroy:',
+          err,
+        );
       }
     }
   }

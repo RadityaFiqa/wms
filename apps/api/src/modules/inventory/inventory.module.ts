@@ -14,15 +14,7 @@ import { OdooModule } from '../odoo/odoo.module';
     ReconciliationController,
     StockOpnameController,
   ],
-  providers: [
-    InventoryService,
-    ReconciliationService,
-    StockOpnameService,
-  ],
-  exports: [
-    InventoryService,
-    ReconciliationService,
-    StockOpnameService,
-  ],
+  providers: [InventoryService, ReconciliationService, StockOpnameService],
+  exports: [InventoryService, ReconciliationService, StockOpnameService],
 })
 export class InventoryModule {}

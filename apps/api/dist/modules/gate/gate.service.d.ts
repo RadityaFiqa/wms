@@ -1,12 +1,14 @@
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 import { StorageService } from '../storage/storage.service';
+import { ConfigService } from '@nestjs/config';
 import type { CreateGateOperationInput, CreateGateVerificationInput, AssignReferencesInput } from '@bulog-wms/schema';
 export declare class GateService {
     private readonly prisma;
     private readonly warehouseContext;
     private readonly storageService;
-    constructor(prisma: PrismaService, warehouseContext: WarehouseContextService, storageService: StorageService);
+    private readonly configService;
+    constructor(prisma: PrismaService, warehouseContext: WarehouseContextService, storageService: StorageService, configService: ConfigService);
     private getStartAndEndOfToday;
     private generateOpNumber;
     createGateOperation(createdByUserId: number, body: CreateGateOperationInput): Promise<any>;

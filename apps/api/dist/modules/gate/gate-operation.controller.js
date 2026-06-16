@@ -52,7 +52,8 @@ let GateOperationController = class GateOperationController {
     }
     async addCargoItem(uuid, req, body) {
         const user = req.user;
-        if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
+        if (user.role?.name !== 'SUPER_ADMIN' &&
+            user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Hanya Admin yang dapat menambah barang muatan.');
         }
         const result = await this.service.addCargoItem(uuid, body);
@@ -71,7 +72,8 @@ let GateOperationController = class GateOperationController {
     }
     async updateCargoItem(cargoUuid, req, body) {
         const user = req.user;
-        if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
+        if (user.role?.name !== 'SUPER_ADMIN' &&
+            user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Hanya Admin yang dapat mengubah barang muatan.');
         }
         const result = await this.service.updateCargoItem(cargoUuid, body);
@@ -90,7 +92,8 @@ let GateOperationController = class GateOperationController {
     }
     async deleteCargoItem(cargoUuid, req) {
         const user = req.user;
-        if (user.role?.name !== 'SUPER_ADMIN' && user.role?.name !== 'WAREHOUSE_ADMIN') {
+        if (user.role?.name !== 'SUPER_ADMIN' &&
+            user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Hanya Admin yang dapat menghapus barang muatan.');
         }
         const result = await this.service.deleteCargoItem(cargoUuid);

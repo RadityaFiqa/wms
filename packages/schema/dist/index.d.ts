@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 export declare const LoginSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
@@ -227,7 +227,7 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
 export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
 export declare const CreateGateVerificationSchema: z.ZodObject<{
     status: z.ZodEnum<["PENDING", "PARTIAL", "COMPLETED", "CANCELED"]>;
-    notes: z.ZodString;
+    notes: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
     attachmentPaths: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     products: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         productId: z.ZodNumber;
@@ -250,7 +250,6 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
     documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELED";
-    notes: string;
     attachmentPaths: string[];
     products: {
         productId: number;
@@ -260,10 +259,11 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
     }[];
     poReferences: string[];
     soReferences: string[];
+    notes?: string | null | undefined;
     documentReferenceId?: number | null | undefined;
 }, {
     status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELED";
-    notes: string;
+    notes?: string | null | undefined;
     attachmentPaths?: string[] | undefined;
     products?: {
         productId: number;
@@ -309,6 +309,7 @@ export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     type: z.ZodOptional<z.ZodEnum<["IN", "OUT"]>>;
     state: z.ZodOptional<z.ZodString>;
     refFax: z.ZodOptional<z.ZodString>;
+    gateOperationUuid: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     type?: "IN" | "OUT" | undefined;
     search?: string | undefined;
@@ -316,6 +317,7 @@ export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     limit?: number | undefined;
     state?: string | undefined;
     refFax?: string | undefined;
+    gateOperationUuid?: string | undefined;
 }, {
     type?: "IN" | "OUT" | undefined;
     search?: string | undefined;
@@ -323,6 +325,7 @@ export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     limit?: number | undefined;
     state?: string | undefined;
     refFax?: string | undefined;
+    gateOperationUuid?: string | undefined;
 }>;
 export type ErpDocumentReferenceQueryInput = z.infer<typeof ErpDocumentReferenceQuerySchema>;
 export declare const CreateWarehouseSchema: z.ZodObject<{
@@ -380,4 +383,176 @@ export declare const UpdateWarehouseSchema: z.ZodObject<{
     odooReference?: string | null | undefined;
 }>;
 export type UpdateWarehouseInput = z.infer<typeof UpdateWarehouseSchema>;
+export declare const CreateDocumentCategorySchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isActive: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    isActive: boolean;
+    description?: string | null | undefined;
+}, {
+    name: string;
+    isActive?: boolean | undefined;
+    description?: string | null | undefined;
+}>;
+export type CreateDocumentCategoryInput = z.infer<typeof CreateDocumentCategorySchema>;
+export declare const UpdateDocumentCategorySchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isActive: z.ZodBoolean;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    isActive: boolean;
+    description?: string | null | undefined;
+}, {
+    name: string;
+    isActive: boolean;
+    description?: string | null | undefined;
+}>;
+export type UpdateDocumentCategoryInput = z.infer<typeof UpdateDocumentCategorySchema>;
+export declare const CreateSignatureTemplateSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    pageNumber: z.ZodNumber;
+    posX: z.ZodNumber;
+    posY: z.ZodNumber;
+    width: z.ZodNumber;
+    height: z.ZodNumber;
+    qrPosX: z.ZodNumber;
+    qrPosY: z.ZodNumber;
+    qrWidth: z.ZodNumber;
+    qrHeight: z.ZodNumber;
+    isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    isActive: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    isActive: boolean;
+    pageNumber: number;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    qrPosX: number;
+    qrPosY: number;
+    qrWidth: number;
+    qrHeight: number;
+    isDefault: boolean;
+    description?: string | null | undefined;
+}, {
+    name: string;
+    pageNumber: number;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    qrPosX: number;
+    qrPosY: number;
+    qrWidth: number;
+    qrHeight: number;
+    isActive?: boolean | undefined;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+}>;
+export type CreateSignatureTemplateInput = z.infer<typeof CreateSignatureTemplateSchema>;
+export declare const UpdateSignatureTemplateSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    pageNumber: z.ZodNumber;
+    posX: z.ZodNumber;
+    posY: z.ZodNumber;
+    width: z.ZodNumber;
+    height: z.ZodNumber;
+    qrPosX: z.ZodNumber;
+    qrPosY: z.ZodNumber;
+    qrWidth: z.ZodNumber;
+    qrHeight: z.ZodNumber;
+    isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+} & {
+    isActive: z.ZodBoolean;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    isActive: boolean;
+    pageNumber: number;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    qrPosX: number;
+    qrPosY: number;
+    qrWidth: number;
+    qrHeight: number;
+    isDefault: boolean;
+    description?: string | null | undefined;
+}, {
+    name: string;
+    isActive: boolean;
+    pageNumber: number;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    qrPosX: number;
+    qrPosY: number;
+    qrWidth: number;
+    qrHeight: number;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+}>;
+export type UpdateSignatureTemplateInput = z.infer<typeof UpdateSignatureTemplateSchema>;
+export declare const CreateManualDocumentSchema: z.ZodObject<{
+    title: z.ZodString;
+    categoryId: z.ZodUnion<[z.ZodNumber, z.ZodString]>;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    fileUrl: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+    categoryId: string | number;
+    fileUrl: string;
+    description?: string | null | undefined;
+}, {
+    title: string;
+    categoryId: string | number;
+    fileUrl: string;
+    description?: string | null | undefined;
+}>;
+export type CreateManualDocumentInput = z.infer<typeof CreateManualDocumentSchema>;
+export declare const SignDocumentSchema: z.ZodObject<{
+    templateId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+    categoryId: z.ZodUnion<[z.ZodNumber, z.ZodString]>;
+    pageNumber: z.ZodNumber;
+    posX: z.ZodNumber;
+    posY: z.ZodNumber;
+    width: z.ZodNumber;
+    height: z.ZodNumber;
+    qrPosX: z.ZodNumber;
+    qrPosY: z.ZodNumber;
+    qrWidth: z.ZodNumber;
+    qrHeight: z.ZodNumber;
+}, "strip", z.ZodTypeAny, {
+    pageNumber: number;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    qrPosX: number;
+    qrPosY: number;
+    qrWidth: number;
+    qrHeight: number;
+    categoryId: string | number;
+    templateId?: number | null | undefined;
+}, {
+    pageNumber: number;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    qrPosX: number;
+    qrPosY: number;
+    qrWidth: number;
+    qrHeight: number;
+    categoryId: string | number;
+    templateId?: number | null | undefined;
+}>;
+export type SignDocumentInput = z.infer<typeof SignDocumentSchema>;
 //# sourceMappingURL=index.d.ts.map

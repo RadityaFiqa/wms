@@ -27,6 +27,17 @@ let ReconciliationService = class ReconciliationService {
                 },
             },
         });
+        const relatedGateProducts = await this.prisma.gateOperationProduct.findMany({
+            where: {
+                gateOperation: {
+                    warehouseId,
+                },
+            },
+            select: {
+                inventoryId: true,
+            },
+        });
+        const relatedProductIds = new Set(relatedGateProducts.map((p) => p.inventoryId));
         const activeGateOperations = await this.prisma.gateOperation.findMany({
             where: {
                 warehouseId,
@@ -48,7 +59,9 @@ let ReconciliationService = class ReconciliationService {
             const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
             if (hasPoRef || hasSoRef)
                 return false;
-            const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
+            const hasErpAssignments = op.verification &&
+                op.verification.references &&
+                op.verification.references.length > 0;
             if (hasErpAssignments)
                 return false;
             return true;
@@ -58,7 +71,10 @@ let ReconciliationService = class ReconciliationService {
             const isOut = op.cardType === 'OUT';
             for (const opProd of op.products) {
                 const invId = opProd.inventoryId;
-                const current = pendingQuantitiesMap.get(invId) || { incoming: 0, outgoing: 0 };
+                const current = pendingQuantitiesMap.get(invId) || {
+                    incoming: 0,
+                    outgoing: 0,
+                };
                 if (isOut) {
                     current.outgoing += opProd.quantity;
                 }
@@ -69,11 +85,15 @@ let ReconciliationService = class ReconciliationService {
             }
         }
         const reconciliationRows = inventories.map((inv) => {
-            const pending = pendingQuantitiesMap.get(inv.id) || { incoming: 0, outgoing: 0 };
+            const pending = pendingQuantitiesMap.get(inv.id) || {
+                incoming: 0,
+                outgoing: 0,
+            };
             const erpStock = inv.quants.reduce((sum, q) => sum + q.quantity, 0);
             const pendingGateQty = pending.outgoing - pending.incoming;
             const expectedStock = erpStock - pendingGateQty;
             return {
+                productId: inv.id,
                 product: {
                     uuid: inv.uuid,
                     sku: inv.sku,
@@ -88,7 +108,8 @@ let ReconciliationService = class ReconciliationService {
             };
         });
         return reconciliationRows
-            .filter((row) => row.erpStock > 0 || row.pendingIncoming > 0 || row.pendingOutgoing > 0)
+            .filter((row) => row.erpStock > 0 ||
+            relatedProductIds.has(row.productId))
             .sort((a, b) => a.product.name.localeCompare(b.product.name));
     }
     async getReconciliationDetail(warehouseId, inventoryUuid) {
@@ -146,10 +167,14 @@ let ReconciliationService = class ReconciliationService {
         const pendingGateOperations = activeGateOperations
             .filter((op) => {
             const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-            const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
+            const hasSoRef = op.cardType === 'OUT' &&
+                op.soReferences &&
+                op.soReferences.length > 0;
             if (hasPoRef || hasSoRef)
                 return false;
-            const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
+            const hasErpAssignments = op.verification &&
+                op.verification.references &&
+                op.verification.references.length > 0;
             if (hasErpAssignments)
                 return false;
             return true;

@@ -1,6 +1,6 @@
-import React from 'react';
-import CreatableSelect from 'react-select/creatable';
-import { globalSelectStyles } from '@/lib/react-select';
+import React from "react";
+import CreatableSelect from "react-select/creatable";
+import { globalSelectStyles } from "@/lib/react-select";
 
 interface ERPReferenceSelectorProps {
   value: string[];
@@ -8,7 +8,11 @@ interface ERPReferenceSelectorProps {
   placeholder: string;
 }
 
-export function ERPReferenceSelector({ value, onChange, placeholder }: ERPReferenceSelectorProps) {
+export function ERPReferenceSelector({
+  value,
+  onChange,
+  placeholder,
+}: ERPReferenceSelectorProps) {
   const options = (value || []).map((v) => ({ value: v, label: v }));
 
   return (

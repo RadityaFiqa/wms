@@ -34,14 +34,18 @@ let AuthController = class AuthController {
         const user = await this.authService.validateUser(body.email, body.password);
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         const userAgent = req.headers['user-agent'];
-        const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
+        const ipStr = Array.isArray(ipAddress)
+            ? ipAddress[0]
+            : ipAddress || undefined;
         if (!user) {
-            await this.auditLogService.log({
+            await this.auditLogService
+                .log({
                 action: 'LOGIN_FAILED',
                 ipAddress: ipStr,
                 userAgent,
                 details: { email: body.email },
-            }).catch((e) => console.error('Failed to log LOGIN_FAILED audit log:', e));
+            })
+                .catch((e) => console.error('Failed to log LOGIN_FAILED audit log:', e));
             throw new common_1.UnauthorizedException('Email atau password salah');
         }
         const result = await this.authService.login(user, ipStr, userAgent);
@@ -51,12 +55,14 @@ let AuthController = class AuthController {
             sameSite: 'lax',
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
-        await this.auditLogService.log({
+        await this.auditLogService
+            .log({
             actorId: user.id,
             action: 'LOGIN_SUCCESS',
             ipAddress: ipStr,
             userAgent,
-        }).catch((e) => console.error('Failed to log LOGIN_SUCCESS audit log:', e));
+        })
+            .catch((e) => console.error('Failed to log LOGIN_SUCCESS audit log:', e));
         return {
             accessToken: result.accessToken,
             user: result.user,
@@ -69,7 +75,9 @@ let AuthController = class AuthController {
         }
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         const userAgent = req.headers['user-agent'];
-        const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
+        const ipStr = Array.isArray(ipAddress)
+            ? ipAddress[0]
+            : ipAddress || undefined;
         const result = await this.authService.refresh(refreshToken, ipStr, userAgent);
         res.cookie('refresh_token', result.refreshToken, {
             httpOnly: true,
@@ -86,18 +94,25 @@ let AuthController = class AuthController {
         const refreshToken = req.cookies?.['refresh_token'];
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         const userAgent = req.headers['user-agent'];
-        const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
+        const ipStr = Array.isArray(ipAddress)
+            ? ipAddress[0]
+            : ipAddress || undefined;
         if (refreshToken) {
-            this.authService.logout(refreshToken, req.user.id).then(async (session) => {
+            this.authService
+                .logout(refreshToken, req.user.id)
+                .then(async (session) => {
                 if (session) {
-                    await this.auditLogService.log({
+                    await this.auditLogService
+                        .log({
                         actorId: req.user.id,
                         action: 'LOGOUT_SUCCESS',
                         ipAddress: ipStr,
                         userAgent,
-                    }).catch((e) => console.error('Failed to log LOGOUT_SUCCESS audit log:', e));
+                    })
+                        .catch((e) => console.error('Failed to log LOGOUT_SUCCESS audit log:', e));
                 }
-            }).catch((e) => {
+            })
+                .catch((e) => {
                 console.error('Error during async logout processing:', e);
             });
             res.clearCookie('refresh_token');
@@ -128,7 +143,9 @@ let AuthController = class AuthController {
                 action: rp.permission.action,
                 subject: rp.permission.subject,
             })),
-            warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
+            warehouse: user.warehouse
+                ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+                : null,
             accessibleWarehouses: await this.authService.getAccessibleWarehouses(user.id, user.role.name),
         };
     }

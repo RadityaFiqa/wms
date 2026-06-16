@@ -1,6 +1,6 @@
-import useSWR from 'swr';
-import { api } from '@/lib/axios';
-import { API_ROUTES } from '@/lib/api-routes';
+import useSWR from "swr";
+import { api } from "@/lib/axios";
+import { API_ROUTES } from "@/lib/api-routes";
 
 export function useAuditLog(query?: {
   search?: string;
@@ -9,12 +9,12 @@ export function useAuditLog(query?: {
   limit?: number;
 }) {
   const queryString = query
-    ? `?page=${query.page || 1}&limit=${query.limit || 10}&search=${query.search || ''}&action=${query.action || ''}`
-    : '';
+    ? `?page=${query.page || 1}&limit=${query.limit || 10}&search=${query.search || ""}&action=${query.action || ""}`
+    : "";
 
   const { data, error, isLoading, mutate } = useSWR(
     `${API_ROUTES.auditLog.list}${queryString}`,
-    (url) => api.get(url).then((res) => res.data)
+    (url) => api.get(url).then((res) => res.data),
   );
 
   return {

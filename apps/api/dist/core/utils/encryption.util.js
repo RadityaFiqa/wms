@@ -39,7 +39,8 @@ const crypto = __importStar(require("crypto"));
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 function getKeyBuffer() {
-    const secret = process.env.ODOO_ENCRYPTION_KEY || 'bulog-wms-odoo-secret-encryption-key-fallback';
+    const secret = process.env.ODOO_ENCRYPTION_KEY ||
+        'bulog-wms-odoo-secret-encryption-key-fallback';
     return crypto.createHash('sha256').update(secret).digest();
 }
 function encrypt(text) {

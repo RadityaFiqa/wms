@@ -14,22 +14,60 @@ export class EmailProcessor extends WorkerHost {
     this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_PORT || '1025'),
-      auth: process.env.SMTP_USER ? {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      } : undefined,
+      auth: process.env.SMTP_USER
+        ? {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          }
+        : undefined,
       secure: process.env.SMTP_SECURE === 'true',
     });
   }
 
-  private renderTemplate(templateName: string, context: Record<string, any>): string {
+  private renderTemplate(
+    templateName: string,
+    context: Record<string, any>,
+  ): string {
     // Try resolving in multiple possible locations due to difference in rootDirs between tsc compiler and nest-cli asset copy.
     const possiblePaths = [
       path.join(__dirname, 'templates', `${templateName}.hbs`),
-      path.join(__dirname, '..', '..', 'modules', 'email', 'templates', `${templateName}.hbs`),
-      path.join(__dirname, '..', '..', '..', 'modules', 'email', 'templates', `${templateName}.hbs`),
-      path.join(process.cwd(), 'src', 'modules', 'email', 'templates', `${templateName}.hbs`),
-      path.join(process.cwd(), 'apps', 'api', 'src', 'modules', 'email', 'templates', `${templateName}.hbs`),
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        'modules',
+        'email',
+        'templates',
+        `${templateName}.hbs`,
+      ),
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'modules',
+        'email',
+        'templates',
+        `${templateName}.hbs`,
+      ),
+      path.join(
+        process.cwd(),
+        'src',
+        'modules',
+        'email',
+        'templates',
+        `${templateName}.hbs`,
+      ),
+      path.join(
+        process.cwd(),
+        'apps',
+        'api',
+        'src',
+        'modules',
+        'email',
+        'templates',
+        `${templateName}.hbs`,
+      ),
     ];
 
     let templatePath = '';
@@ -41,7 +79,9 @@ export class EmailProcessor extends WorkerHost {
     }
 
     if (!templatePath) {
-      throw new Error(`Template file for ${templateName} not found. Searched in: ${possiblePaths.join(', ')}`);
+      throw new Error(
+        `Template file for ${templateName} not found. Searched in: ${possiblePaths.join(', ')}`,
+      );
     }
 
     const templateSource = fs.readFileSync(templatePath, 'utf8');

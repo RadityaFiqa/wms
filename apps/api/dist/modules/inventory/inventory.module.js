@@ -26,16 +26,8 @@ exports.InventoryModule = InventoryModule = __decorate([
             reconciliation_controller_1.ReconciliationController,
             stock_opname_controller_1.StockOpnameController,
         ],
-        providers: [
-            inventory_service_1.InventoryService,
-            reconciliation_service_1.ReconciliationService,
-            stock_opname_service_1.StockOpnameService,
-        ],
-        exports: [
-            inventory_service_1.InventoryService,
-            reconciliation_service_1.ReconciliationService,
-            stock_opname_service_1.StockOpnameService,
-        ],
+        providers: [inventory_service_1.InventoryService, reconciliation_service_1.ReconciliationService, stock_opname_service_1.StockOpnameService],
+        exports: [inventory_service_1.InventoryService, reconciliation_service_1.ReconciliationService, stock_opname_service_1.StockOpnameService],
     })
 ], InventoryModule);
 //# sourceMappingURL=inventory.module.js.map

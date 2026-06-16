@@ -11,7 +11,7 @@ async function bootstrap() {
 
   // Security
   app.use(helmet());
-  
+
   // Configure CORS to allow cookies to be transmitted between frontend and backend
   app.enableCors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3001',

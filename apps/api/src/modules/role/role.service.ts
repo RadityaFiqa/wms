@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
 @Injectable()
@@ -41,7 +45,11 @@ export class RoleService {
     return role;
   }
 
-  async create(data: { name: string; description?: string | null; permissionIds?: number[] }) {
+  async create(data: {
+    name: string;
+    description?: string | null;
+    permissionIds?: number[];
+  }) {
     const existing = await this.prisma.role.findUnique({
       where: { name: data.name },
     });
@@ -69,7 +77,10 @@ export class RoleService {
     return this.findByUuid(role.uuid);
   }
 
-  async update(uuid: string, data: { description?: string | null; permissionIds?: number[] }) {
+  async update(
+    uuid: string,
+    data: { description?: string | null; permissionIds?: number[] },
+  ) {
     const role = await this.prisma.role.findUnique({
       where: { uuid },
     });

@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
-import type { CreateWarehouseInput, UpdateWarehouseInput } from '@bulog-wms/schema';
+import type {
+  CreateWarehouseInput,
+  UpdateWarehouseInput,
+} from '@bulog-wms/schema';
 
 @Injectable()
 export class WarehouseService {
@@ -11,7 +18,9 @@ export class WarehouseService {
       where: { code: data.code },
     });
     if (existing) {
-      throw new BadRequestException('Kode gudang (warehouse code) sudah digunakan.');
+      throw new BadRequestException(
+        'Kode gudang (warehouse code) sudah digunakan.',
+      );
     }
 
     return this.prisma.warehouse.create({
@@ -99,7 +108,9 @@ export class WarehouseService {
         where: { code: data.code },
       });
       if (existing) {
-        throw new BadRequestException('Kode gudang (warehouse code) sudah digunakan.');
+        throw new BadRequestException(
+          'Kode gudang (warehouse code) sudah digunakan.',
+        );
       }
     }
 
@@ -112,7 +123,8 @@ export class WarehouseService {
         capacity: data.capacity,
         type: data.type || null,
         address: data.address || null,
-        isActive: data.isActive !== undefined ? data.isActive : warehouse.isActive,
+        isActive:
+          data.isActive !== undefined ? data.isActive : warehouse.isActive,
         odooReference: data.odooReference || null,
       },
     });

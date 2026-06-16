@@ -55,10 +55,12 @@ let EmailProcessor = class EmailProcessor extends bullmq_1.WorkerHost {
         this.transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST || 'localhost',
             port: parseInt(process.env.SMTP_PORT || '1025'),
-            auth: process.env.SMTP_USER ? {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            } : undefined,
+            auth: process.env.SMTP_USER
+                ? {
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS,
+                }
+                : undefined,
             secure: process.env.SMTP_SECURE === 'true',
         });
     }

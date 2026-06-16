@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useWarehouse } from '@/hooks/useWarehouse';
-import { useAuthStore } from '@/store/auth';
-import { useDebounce } from '@/hooks/useDebounce';
-import { toast } from 'sonner';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useWarehouse } from "@/hooks/useWarehouse";
+import { useAuthStore } from "@/store/auth";
+import { useDebounce } from "@/hooks/useDebounce";
+import { toast } from "sonner";
 import {
   Warehouse,
   Plus,
@@ -21,7 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
-} from 'lucide-react';
+} from "lucide-react";
 
 export default function WarehouseManagementPage() {
   const router = useRouter();
@@ -29,15 +29,15 @@ export default function WarehouseManagementPage() {
 
   // Route guard: only Super Admin can access this page
   useEffect(() => {
-    if (user && user.role !== 'SUPER_ADMIN') {
-      router.push('/');
-      toast.error('Anda tidak memiliki akses ke halaman Manajemen Gudang.');
+    if (user && user.role !== "SUPER_ADMIN") {
+      router.push("/");
+      toast.error("Anda tidak memiliki akses ke halaman Manajemen Gudang.");
     }
   }, [user, router]);
 
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 400);
 
   // Fetch paginated warehouses
@@ -59,13 +59,13 @@ export default function WarehouseManagementPage() {
   const [editingWarehouse, setEditingWarehouse] = useState<any>(null);
 
   // Form Fields
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [location, setLocation] = useState('');
-  const [address, setAddress] = useState('');
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [location, setLocation] = useState("");
+  const [address, setAddress] = useState("");
   const [capacity, setCapacity] = useState<number>(0);
-  const [type, setType] = useState('');
-  const [odooReference, setOdooReference] = useState('');
+  const [type, setType] = useState("");
+  const [odooReference, setOdooReference] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -77,13 +77,13 @@ export default function WarehouseManagementPage() {
 
   const openCreateModal = () => {
     setEditingWarehouse(null);
-    setCode('');
-    setName('');
-    setLocation('');
-    setAddress('');
+    setCode("");
+    setName("");
+    setLocation("");
+    setAddress("");
     setCapacity(0);
-    setType('');
-    setOdooReference('');
+    setType("");
+    setOdooReference("");
     setIsActive(true);
     setFormErrors({});
     setIsModalOpen(true);
@@ -94,10 +94,10 @@ export default function WarehouseManagementPage() {
     setCode(wh.code);
     setName(wh.name);
     setLocation(wh.location);
-    setAddress(wh.address || '');
+    setAddress(wh.address || "");
     setCapacity(wh.capacity);
-    setType(wh.type || '');
-    setOdooReference(wh.odooReference || '');
+    setType(wh.type || "");
+    setOdooReference(wh.odooReference || "");
     setIsActive(wh.isActive);
     setFormErrors({});
     setIsModalOpen(true);
@@ -105,16 +105,16 @@ export default function WarehouseManagementPage() {
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
-    if (!code.trim()) errors.code = 'Kode gudang wajib diisi';
-    else if (code.trim().length < 2) errors.code = 'Kode minimal 2 karakter';
-    
-    if (!name.trim()) errors.name = 'Nama gudang wajib diisi';
-    else if (name.trim().length < 3) errors.name = 'Nama minimal 3 karakter';
-    
-    if (!location.trim()) errors.location = 'Lokasi (Kota/Daerah) wajib diisi';
-    
+    if (!code.trim()) errors.code = "Kode gudang wajib diisi";
+    else if (code.trim().length < 2) errors.code = "Kode minimal 2 karakter";
+
+    if (!name.trim()) errors.name = "Nama gudang wajib diisi";
+    else if (name.trim().length < 3) errors.name = "Nama minimal 3 karakter";
+
+    if (!location.trim()) errors.location = "Lokasi (Kota/Daerah) wajib diisi";
+
     if (isNaN(capacity) || capacity < 0) {
-      errors.capacity = 'Kapasitas harus berupa angka non-negatif';
+      errors.capacity = "Kapasitas harus berupa angka non-negatif";
     }
 
     setFormErrors(errors);
@@ -127,7 +127,9 @@ export default function WarehouseManagementPage() {
 
     setIsSaving(true);
     const toastId = toast.loading(
-      editingWarehouse ? 'Memperbarui data gudang...' : 'Membuat gudang baru...'
+      editingWarehouse
+        ? "Memperbarui data gudang..."
+        : "Membuat gudang baru...",
     );
 
     const payload = {
@@ -144,15 +146,15 @@ export default function WarehouseManagementPage() {
     try {
       if (editingWarehouse) {
         await updateWarehouse(editingWarehouse.uuid, payload);
-        toast.success('Gudang berhasil diperbarui!', { id: toastId });
+        toast.success("Gudang berhasil diperbarui!", { id: toastId });
       } else {
         await createWarehouse(payload);
-        toast.success('Gudang berhasil ditambahkan!', { id: toastId });
+        toast.success("Gudang berhasil ditambahkan!", { id: toastId });
       }
       setIsModalOpen(false);
       refresh();
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Gagal menyimpan data gudang.';
+      const msg = err.response?.data?.message || "Gagal menyimpan data gudang.";
       toast.error(msg, { id: toastId });
     } finally {
       setIsSaving(false);
@@ -160,8 +162,10 @@ export default function WarehouseManagementPage() {
   };
 
   const handleToggleActive = async (wh: any) => {
-    const actionText = wh.isActive ? 'menonaktifkan' : 'mengaktifkan';
-    const confirmAction = confirm(`Apakah Anda yakin ingin ${actionText} gudang ${wh.name}?`);
+    const actionText = wh.isActive ? "menonaktifkan" : "mengaktifkan";
+    const confirmAction = confirm(
+      `Apakah Anda yakin ingin ${actionText} gudang ${wh.name}?`,
+    );
     if (!confirmAction) return;
 
     const toastId = toast.loading(`Sedang ${actionText} gudang...`);
@@ -176,10 +180,14 @@ export default function WarehouseManagementPage() {
         odooReference: wh.odooReference,
         isActive: !wh.isActive,
       });
-      toast.success(`Gudang berhasil ${wh.isActive ? 'dinonaktifkan' : 'diaktifkan'}!`, { id: toastId });
+      toast.success(
+        `Gudang berhasil ${wh.isActive ? "dinonaktifkan" : "diaktifkan"}!`,
+        { id: toastId },
+      );
       refresh();
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Gagal mengubah status gudang.';
+      const msg =
+        err.response?.data?.message || "Gagal mengubah status gudang.";
       toast.error(msg, { id: toastId });
     }
   };
@@ -187,13 +195,16 @@ export default function WarehouseManagementPage() {
   // Stats summaries (calculated locally or fallbacks)
   const items = warehousesData?.data || [];
   const meta = warehousesData?.meta || { total: 0, totalPages: 1 };
-  
+
   // Quick stats calculations for visual cards
   const totalCount = meta.total || items.length;
-  const activeCount = items.filter((w: any) => w.isActive).length; 
-  const totalCapacity = items.reduce((sum: number, w: any) => sum + w.capacity, 0);
+  const activeCount = items.filter((w: any) => w.isActive).length;
+  const totalCapacity = items.reduce(
+    (sum: number, w: any) => sum + w.capacity,
+    0,
+  );
 
-  if (user?.role !== 'SUPER_ADMIN') {
+  if (user?.role !== "SUPER_ADMIN") {
     return null; // Don't render anything while redirecting
   }
 
@@ -207,7 +218,8 @@ export default function WarehouseManagementPage() {
             Manajemen Gudang
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-            Kelola, tambah, perbarui, dan kontrol status aktif setiap unit gudang BULOG.
+            Kelola, tambah, perbarui, dan kontrol status aktif setiap unit
+            gudang BULOG.
           </p>
         </div>
         <button
@@ -226,8 +238,12 @@ export default function WarehouseManagementPage() {
             <Warehouse className="h-6 w-6" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Gudang</span>
-            <strong className="text-2xl font-black text-slate-850 dark:text-slate-100">{totalCount}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Total Gudang
+            </span>
+            <strong className="text-2xl font-black text-slate-850 dark:text-slate-100">
+              {totalCount}
+            </strong>
           </div>
         </div>
 
@@ -236,8 +252,12 @@ export default function WarehouseManagementPage() {
             <Activity className="h-6 w-6" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Gudang Aktif</span>
-            <strong className="text-2xl font-black text-slate-850 dark:text-slate-100">{activeCount}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Gudang Aktif
+            </span>
+            <strong className="text-2xl font-black text-slate-850 dark:text-slate-100">
+              {activeCount}
+            </strong>
           </div>
         </div>
 
@@ -246,9 +266,11 @@ export default function WarehouseManagementPage() {
             <Layers className="h-6 w-6" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Kapasitas Terpantau</span>
+            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Kapasitas Terpantau
+            </span>
             <strong className="text-2xl font-black text-slate-850 dark:text-slate-100">
-              {totalCapacity.toLocaleString('id-ID')} Tons
+              {totalCapacity.toLocaleString("id-ID")} Tons
             </strong>
           </div>
         </div>
@@ -288,19 +310,38 @@ export default function WarehouseManagementPage() {
               {isLoading ? (
                 Array.from({ length: limit }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-14"></div></td>
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-44"></div></td>
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16"></div></td>
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-36"></div></td>
-                    <td className="px-6 py-4 text-right"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12 ml-auto"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-20 mx-auto"></div></td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-14"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-44"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-36"></div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12 ml-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-20 mx-auto"></div>
+                    </td>
                   </tr>
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold">
+                  <td
+                    colSpan={8}
+                    className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold"
+                  >
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <Warehouse className="h-12 w-12 text-slate-300 dark:text-slate-700" />
                       <span>Tidak ada data gudang ditemukan.</span>
@@ -309,7 +350,10 @@ export default function WarehouseManagementPage() {
                 </tr>
               ) : (
                 items.map((wh: any) => (
-                  <tr key={wh.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition">
+                  <tr
+                    key={wh.id}
+                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition"
+                  >
                     <td className="px-6 py-4 font-mono font-bold text-slate-850 dark:text-slate-200">
                       {wh.code}
                     </td>
@@ -322,21 +366,30 @@ export default function WarehouseManagementPage() {
                           {wh.type}
                         </span>
                       ) : (
-                        <span className="text-slate-400 dark:text-slate-650">-</span>
+                        <span className="text-slate-400 dark:text-slate-650">
+                          -
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 space-y-0.5">
-                      <div className="font-semibold text-slate-700 dark:text-slate-300">{wh.location}</div>
-                      <div className="text-[10px] text-slate-450 dark:text-slate-450 truncate max-w-[200px]" title={wh.address || ''}>
-                        {wh.address || '-'}
+                      <div className="font-semibold text-slate-700 dark:text-slate-300">
+                        {wh.location}
+                      </div>
+                      <div
+                        className="text-[10px] text-slate-450 dark:text-slate-450 truncate max-w-[200px]"
+                        title={wh.address || ""}
+                      >
+                        {wh.address || "-"}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right font-bold text-slate-850 dark:text-slate-100">
-                      {wh.capacity.toLocaleString('id-ID')}
-                      <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 ml-1">Tons</span>
+                      {wh.capacity.toLocaleString("id-ID")}
+                      <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 ml-1">
+                        Tons
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-center font-mono font-semibold text-slate-600 dark:text-slate-400">
-                      {wh.odooReference || '-'}
+                      {wh.odooReference || "-"}
                     </td>
                     <td className="px-6 py-4 text-center">
                       {wh.isActive ? (
@@ -364,12 +417,20 @@ export default function WarehouseManagementPage() {
                           onClick={() => handleToggleActive(wh)}
                           className={`p-1.5 border rounded-lg transition cursor-pointer ${
                             wh.isActive
-                              ? 'border-rose-200 bg-rose-50/20 hover:bg-rose-50 text-rose-600 dark:border-rose-900/40 dark:hover:bg-rose-950/20'
-                              : 'border-emerald-200 bg-emerald-50/20 hover:bg-emerald-50 text-emerald-600 dark:border-emerald-900/40 dark:hover:bg-emerald-950/20'
+                              ? "border-rose-200 bg-rose-50/20 hover:bg-rose-50 text-rose-600 dark:border-rose-900/40 dark:hover:bg-rose-950/20"
+                              : "border-emerald-200 bg-emerald-50/20 hover:bg-emerald-50 text-emerald-600 dark:border-emerald-900/40 dark:hover:bg-emerald-950/20"
                           }`}
-                          title={wh.isActive ? 'Nonaktifkan Gudang' : 'Aktifkan Gudang'}
+                          title={
+                            wh.isActive
+                              ? "Nonaktifkan Gudang"
+                              : "Aktifkan Gudang"
+                          }
                         >
-                          {wh.isActive ? <XCircle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
+                          {wh.isActive ? (
+                            <XCircle className="h-4 w-4" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </td>
@@ -424,7 +485,7 @@ export default function WarehouseManagementPage() {
             <div className="p-6 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-850 dark:text-slate-100">
-                  {editingWarehouse ? 'Edit Data Gudang' : 'Tambah Gudang Baru'}
+                  {editingWarehouse ? "Edit Data Gudang" : "Tambah Gudang Baru"}
                 </h3>
                 <p className="text-xs text-slate-450 dark:text-slate-400 font-medium mt-0.5">
                   Isi informasi detail spesifikasi unit gudang di bawah ini.
@@ -441,7 +502,6 @@ export default function WarehouseManagementPage() {
 
             <form onSubmit={handleSave}>
               <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto text-xs font-semibold text-slate-700 dark:text-slate-300">
-                
                 {/* Warehouse Code */}
                 <div className="space-y-1">
                   <label className="block uppercase tracking-wider text-[10px] text-slate-450 dark:text-slate-500 font-bold">
@@ -455,7 +515,11 @@ export default function WarehouseManagementPage() {
                     onChange={(e) => setCode(e.target.value.toUpperCase())}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 dark:focus:bg-slate-850 disabled:bg-slate-100 dark:disabled:bg-slate-800/40 disabled:text-slate-500 disabled:cursor-not-allowed transition font-bold"
                   />
-                  {formErrors.code && <p className="text-rose-500 text-[10px] font-bold mt-1">{formErrors.code}</p>}
+                  {formErrors.code && (
+                    <p className="text-rose-500 text-[10px] font-bold mt-1">
+                      {formErrors.code}
+                    </p>
+                  )}
                 </div>
 
                 {/* Warehouse Name */}
@@ -470,7 +534,11 @@ export default function WarehouseManagementPage() {
                     onChange={(e) => setName(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 dark:focus:bg-slate-850 transition"
                   />
-                  {formErrors.name && <p className="text-rose-500 text-[10px] font-bold mt-1">{formErrors.name}</p>}
+                  {formErrors.name && (
+                    <p className="text-rose-500 text-[10px] font-bold mt-1">
+                      {formErrors.name}
+                    </p>
+                  )}
                 </div>
 
                 {/* Warehouse Location (City/Area) */}
@@ -485,24 +553,35 @@ export default function WarehouseManagementPage() {
                     onChange={(e) => setLocation(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 dark:focus:bg-slate-850 transition"
                   />
-                  {formErrors.location && <p className="text-rose-500 text-[10px] font-bold mt-1">{formErrors.location}</p>}
+                  {formErrors.location && (
+                    <p className="text-rose-500 text-[10px] font-bold mt-1">
+                      {formErrors.location}
+                    </p>
+                  )}
                 </div>
 
                 {/* Capacity */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="block uppercase tracking-wider text-[10px] text-slate-450 dark:text-slate-500 font-bold">
-                      Kapasitas Maksimal (Tons) <span className="text-red-500">*</span>
+                      Kapasitas Maksimal (Tons){" "}
+                      <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="number"
                       placeholder="0"
                       min="0"
-                      value={capacity === 0 ? '' : capacity}
-                      onChange={(e) => setCapacity(parseFloat(e.target.value) || 0)}
+                      value={capacity === 0 ? "" : capacity}
+                      onChange={(e) =>
+                        setCapacity(parseFloat(e.target.value) || 0)
+                      }
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 dark:focus:bg-slate-850 transition"
                     />
-                    {formErrors.capacity && <p className="text-rose-500 text-[10px] font-bold mt-1">{formErrors.capacity}</p>}
+                    {formErrors.capacity && (
+                      <p className="text-rose-500 text-[10px] font-bold mt-1">
+                        {formErrors.capacity}
+                      </p>
+                    )}
                   </div>
 
                   {/* Type */}
@@ -558,7 +637,10 @@ export default function WarehouseManagementPage() {
                       onChange={(e) => setIsActive(e.target.checked)}
                       className="h-4.5 w-4.5 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
-                    <label htmlFor="isActive" className="text-xs font-bold text-slate-805 dark:text-slate-200 cursor-pointer">
+                    <label
+                      htmlFor="isActive"
+                      className="text-xs font-bold text-slate-805 dark:text-slate-200 cursor-pointer"
+                    >
                       Gudang Aktif (Dapat diakses untuk transaksi operasional)
                     </label>
                   </div>
@@ -580,7 +662,7 @@ export default function WarehouseManagementPage() {
                   disabled={isSaving}
                   className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow-md transition disabled:opacity-40 cursor-pointer"
                 >
-                  {isSaving ? 'Menyimpan...' : 'Simpan Data'}
+                  {isSaving ? "Menyimpan..." : "Simpan Data"}
                 </button>
               </div>
             </form>

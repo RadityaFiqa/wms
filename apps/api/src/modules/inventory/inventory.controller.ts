@@ -39,7 +39,9 @@ export class InventoryController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.findAll(warehouseId, {
       search,
@@ -49,11 +51,21 @@ export class InventoryController {
   }
 
   @Get('products')
-  @CheckPolicies((ability) => ability.can('read', 'GateOperation') || ability.can('read', 'Inventory'))
-  async findAllProducts(@Query('search') search?: string) {
+  @CheckPolicies(
+    (ability) =>
+      ability.can('read', 'GateOperation') || ability.can('read', 'Inventory'),
+  )
+  async findAllProducts(
+    @Query('search') search?: string,
+    @Query('selectedId') selectedId?: string,
+    @Query('onlyAvailable') onlyAvailable?: string,
+    @Query('limit') limit?: string,
+  ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     const where: any = {
       warehouseId,
@@ -68,10 +80,41 @@ export class InventoryController {
         },
       ];
     }
-    return this.prisma.inventory.findMany({
+
+    if (onlyAvailable === 'true') {
+      where.quants = {
+        some: {
+          availableQuantity: {
+            gt: 0,
+          },
+        },
+      };
+    }
+
+    const take = limit ? parseInt(limit, 10) : 20;
+
+    const products = await this.prisma.inventory.findMany({
       where,
       orderBy: { name: 'asc' },
+      take,
     });
+
+    if (selectedId) {
+      const selId = parseInt(selectedId, 10);
+      if (!isNaN(selId) && !products.some((p) => p.id === selId)) {
+        const selectedProduct = await this.prisma.inventory.findFirst({
+          where: {
+            id: selId,
+            warehouseId,
+          },
+        });
+        if (selectedProduct) {
+          products.unshift(selectedProduct);
+        }
+      }
+    }
+
+    return products;
   }
 
   @Get('sync/status')
@@ -79,7 +122,9 @@ export class InventoryController {
   async getSyncStatus() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const account = await this.prismaFindAccountByWarehouseId(warehouseId);
@@ -104,16 +149,17 @@ export class InventoryController {
 
   @Get('export/pdf')
   @CheckPolicies((ability) => ability.can('read', 'Inventory'))
-  async exportPdf(
-    @Res() res: any,
-    @Query('search') search?: string,
-  ) {
+  async exportPdf(@Res() res: any, @Query('search') search?: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
-    const pdfBuffer = await this.service.generatePdfReport(warehouseId, { search });
+    const pdfBuffer = await this.service.generatePdfReport(warehouseId, {
+      search,
+    });
 
     res.set({
       'Content-Type': 'application/pdf',
@@ -129,7 +175,9 @@ export class InventoryController {
   async findAllLocations() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.prisma.location.findMany({
       where: { warehouseId },
@@ -142,7 +190,9 @@ export class InventoryController {
   async findDetail(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.findDetail(warehouseId, uuid);
   }
@@ -153,7 +203,9 @@ export class InventoryController {
   async sync(@Req() req: any) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const triggeredBy = req.user?.email || 'System';

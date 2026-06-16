@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { CreateGateOperationSchema } from '@bulog-wms/schema';
-import { useGate } from '@/hooks/useGate';
-import { toast } from 'sonner';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { CreateGateOperationSchema } from "@bulog-wms/schema";
+import { useGate } from "@/hooks/useGate";
+import { toast } from "sonner";
 import {
   Truck,
   ArrowLeft,
@@ -15,44 +15,48 @@ import {
   Save,
   Loader2,
   Boxes,
-} from 'lucide-react';
-import CreatableSelect from 'react-select/creatable';
-import { globalSelectStyles } from '@/lib/react-select';
-import { useErpPartners } from '@/hooks/useErpDocuments';
-import { AttachmentUploader } from '@/components/AttachmentUploader';
-import { AddCargoItemDrawer } from '@/components/AddCargoItemDrawer';
-import { DocumentReferenceSelector } from '@/components/DocumentReferenceSelector';
+  Edit,
+} from "lucide-react";
+import CreatableSelect from "react-select/creatable";
+import { globalSelectStyles } from "@/lib/react-select";
+import { useErpPartners } from "@/hooks/useErpDocuments";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
+import { DocumentReferenceSelector } from "@/components/DocumentReferenceSelector";
 
 export default function CreateGateOperationPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // Drawer open state and edit state
   const [isAddCargoOpen, setIsAddCargoOpen] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
 
   const { createGateOperation } = useGate();
-  const { partners: erpPartners, isLoading: isLoadingPartners } = useErpPartners();
+  const { partners: erpPartners, isLoading: isLoadingPartners } =
+    useErpPartners();
 
-  const [historySuggestions, setHistorySuggestions] = useState<{ licensePlate: string; driverName: string; driverPhone: string }[]>([]);
+  const [historySuggestions, setHistorySuggestions] = useState<
+    { licensePlate: string; driverName: string; driverPhone: string }[]
+  >([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const handlePartnerChange = async (partnerName: string | null) => {
-    setValue('clientPartner', partnerName);
+    setValue("clientPartner", partnerName);
     if (!partnerName) {
       setHistorySuggestions([]);
       return;
     }
-    
+
     setIsLoadingHistory(true);
     try {
-      const { api } = await import('@/lib/axios');
+      const { api } = await import("@/lib/axios");
       const res = await api.get(`/gate-operations/client-history`, {
-        params: { clientPartner: partnerName }
+        params: { clientPartner: partnerName },
       });
       setHistorySuggestions(res.data || []);
     } catch (err) {
-      console.error('Failed to load client history:', err);
+      console.error("Failed to load client history:", err);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -68,52 +72,71 @@ export default function CreateGateOperationPage() {
   } = useForm({
     resolver: zodResolver(CreateGateOperationSchema),
     defaultValues: {
-      cardType: 'IN',
+      cardType: "IN",
       documentReferenceId: null as number | null,
-      driverName: '',
-      licensePlate: '',
+      driverName: "",
+      licensePlate: "",
       clientPartner: null as string | null,
-      driverPhone: '',
-      notes: '',
+      driverPhone: "",
+      notes: "",
       attachmentPaths: [] as string[],
-      products: [] as { productId: number; quantity: number; quantId?: number | null; locationId?: number | null }[],
+      products: [] as {
+        productId: number;
+        quantity: number;
+        quantId?: number | null;
+        locationId?: number | null;
+      }[],
     },
   });
 
   const { fields, append, remove, update } = useFieldArray({
     control,
-    name: 'products',
+    name: "products",
   });
 
-  const watchCardType = watch('cardType');
-  const watchAttachmentPaths = watch('attachmentPaths');
+  const watchCardType = watch("cardType");
+  const watchAttachmentPaths = watch("attachmentPaths");
 
-  const [productDetailsMap, setProductDetailsMap] = useState<Record<string, { name: string; sku: string; uom?: string; uuid?: string; quantLabel?: string | null; locLabel?: string | null }>>({});
+  const [productDetailsMap, setProductDetailsMap] = useState<
+    Record<
+      string,
+      {
+        name: string;
+        sku: string;
+        uom?: string;
+        uuid?: string;
+        quantLabel?: string | null;
+        locLabel?: string | null;
+      }
+    >
+  >({});
 
   const handleDocRefChange = async (docRef: any) => {
     if (!docRef) {
-      setValue('documentReferenceId', null);
-      setValue('products', []);
+      setValue("documentReferenceId", null);
+      setValue("products", []);
       setProductDetailsMap({});
       return;
     }
 
-    setValue('documentReferenceId', docRef.id);
+    setValue("documentReferenceId", docRef.id);
 
     if (docRef.driver) {
-      setValue('driverName', docRef.driver);
+      setValue("driverName", docRef.driver);
     }
     if (docRef.plateNumber) {
-      setValue('licensePlate', docRef.plateNumber);
+      setValue("licensePlate", docRef.plateNumber);
     }
     if (docRef.partnerName) {
-      setValue('clientPartner', docRef.partnerName);
+      setValue("clientPartner", docRef.partnerName);
       handlePartnerChange(docRef.partnerName);
     }
 
-    const toastId = toast.loading('Memuat item barang dari dokumen referensi ERP...');
+    const toastId = toast.loading(
+      "Memuat item barang dari dokumen referensi ERP...",
+    );
     try {
-      const { api } = await import('@/lib/axios');
+      const { api } = await import("@/lib/axios");
       const res = await api.get(`/erp-document-references/${docRef.uuid}`);
       const fullDoc = res.data;
       if (fullDoc && fullDoc.items && fullDoc.items.length > 0) {
@@ -124,15 +147,15 @@ export default function CreateGateOperationPage() {
           locationId: null,
         }));
 
-        setValue('products', newProducts);
+        setValue("products", newProducts);
 
         const newMap: Record<string, any> = {};
         fullDoc.items.forEach((item: any) => {
           const itemKey = `${item.inventoryId}-null-null`;
           newMap[itemKey] = {
-            name: item.inventoryName || item.productName || '-',
-            sku: item.inventorySku || '-',
-            uom: item.inventoryUom || item.uom || '-',
+            name: item.inventoryName || item.productName || "-",
+            sku: item.inventorySku || "-",
+            uom: item.inventoryUom || item.uom || "-",
             uuid: item.inventoryUuid,
             quantLabel: null,
             locLabel: null,
@@ -140,12 +163,17 @@ export default function CreateGateOperationPage() {
         });
 
         setProductDetailsMap(newMap);
-        toast.success(`Berhasil memuat ${fullDoc.items.length} item barang dari dokumen ERP.`, { id: toastId });
+        toast.success(
+          `Berhasil memuat ${fullDoc.items.length} item barang dari dokumen ERP.`,
+          { id: toastId },
+        );
       } else {
-        toast.error('Dokumen ERP tidak memiliki item barang.', { id: toastId });
+        toast.error("Dokumen ERP tidak memiliki item barang.", { id: toastId });
       }
     } catch (err: any) {
-      toast.error('Gagal mengambil item barang dari dokumen ERP.', { id: toastId });
+      toast.error("Gagal mengambil item barang dari dokumen ERP.", {
+        id: toastId,
+      });
     }
   };
 
@@ -164,7 +192,7 @@ export default function CreateGateOperationPage() {
         locationId: data.locationId || null,
       });
 
-      const itemKey = `${data.productId}-${data.quantId || 'null'}-${data.locationId || 'null'}`;
+      const itemKey = `${data.productId}-${data.quantId || "null"}-${data.locationId || "null"}`;
       setProductDetailsMap((prev) => ({
         ...prev,
         [itemKey]: {
@@ -177,7 +205,7 @@ export default function CreateGateOperationPage() {
         },
       }));
 
-      toast.success('Pilihan lokasi dan tumpukan berhasil disimpan.');
+      toast.success("Pilihan lokasi dan tumpukan berhasil disimpan.");
       setEditIndex(null);
       return;
     }
@@ -186,14 +214,16 @@ export default function CreateGateOperationPage() {
       (f) =>
         f.productId === data.productId &&
         (f as any).quantId === (data.quantId || null) &&
-        (f as any).locationId === (data.locationId || null)
+        (f as any).locationId === (data.locationId || null),
     );
     if (isAlreadyAdded) {
-      toast.error('Barang dengan tumpukan dan lokasi yang sama sudah ada dalam daftar.');
+      toast.error(
+        "Barang dengan tumpukan dan lokasi yang sama sudah ada dalam daftar.",
+      );
       return;
     }
 
-    const itemKey = `${data.productId}-${data.quantId || 'null'}-${data.locationId || 'null'}`;
+    const itemKey = `${data.productId}-${data.quantId || "null"}-${data.locationId || "null"}`;
 
     append({
       productId: data.productId,
@@ -214,43 +244,50 @@ export default function CreateGateOperationPage() {
       },
     }));
 
-    toast.success('Barang ditambahkan ke daftar.');
+    toast.success("Barang ditambahkan ke daftar.");
   };
 
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
-    const toastId = toast.loading('Menyimpan data gerbang...');
+    const toastId = toast.loading("Menyimpan data gerbang...");
     try {
       const payload = {
         ...data,
         products: data.products.filter((p: any) => p.productId > 0),
       };
       const result = await createGateOperation(payload);
-      toast.success('Data kendaraan masuk/keluar berhasil dicatat.', { id: toastId });
+      toast.success("Data kendaraan masuk/keluar berhasil dicatat.", {
+        id: toastId,
+      });
       router.push(`/gate-operations/${result.uuid}`);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Gagal menyimpan data.', { id: toastId });
+      toast.error(err.response?.data?.message || "Gagal menyimpan data.", {
+        id: toastId,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const editData = editIndex !== null ? {
-    productId: fields[editIndex].productId,
-    quantity: fields[editIndex].quantity,
-    locationId: (fields[editIndex] as any).locationId,
-    quantId: (fields[editIndex] as any).quantId,
-    ...(() => {
-      const itemKey = `${fields[editIndex].productId}-${(fields[editIndex] as any).quantId || 'null'}-${(fields[editIndex] as any).locationId || 'null'}`;
-      const details = productDetailsMap[itemKey];
-      return {
-        name: details?.name || '',
-        sku: details?.sku || '',
-        uom: details?.uom || 'Unit',
-        uuid: details?.uuid,
-      };
-    })()
-  } : null;
+  const editData =
+    editIndex !== null
+      ? {
+          productId: fields[editIndex].productId,
+          quantity: fields[editIndex].quantity,
+          locationId: (fields[editIndex] as any).locationId,
+          quantId: (fields[editIndex] as any).quantId,
+          ...(() => {
+            const itemKey = `${fields[editIndex].productId}-${(fields[editIndex] as any).quantId || "null"}-${(fields[editIndex] as any).locationId || "null"}`;
+            const details = productDetailsMap[itemKey];
+            return {
+              name: details?.name || "",
+              sku: details?.sku || "",
+              uom: details?.uom || "Unit",
+              uuid: details?.uuid,
+            };
+          })(),
+        }
+      : null;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -258,7 +295,7 @@ export default function CreateGateOperationPage() {
       <div className="flex items-center space-x-4">
         <button
           type="button"
-          onClick={() => router.push('/gate-operations')}
+          onClick={() => router.push("/gate-operations")}
           className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition cursor-pointer"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -291,7 +328,9 @@ export default function CreateGateOperationPage() {
             />
 
             <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] text-slate-500 leading-normal">
-              ⚠️ <strong>Perhatian</strong>: Pastikan Anda mengambil foto plat nomor dan kondisi muatan kendaraan dengan jelas sebagai bukti validasi audit logistik.
+              ⚠️ <strong>Perhatian</strong>: Pastikan Anda mengambil foto plat
+              nomor dan kondisi muatan kendaraan dengan jelas sebagai bukti
+              validasi audit logistik.
             </div>
           </div>
           {/* Main Info Card */}
@@ -308,11 +347,11 @@ export default function CreateGateOperationPage() {
               <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
-                  onClick={() => setValue('cardType', 'IN')}
+                  onClick={() => setValue("cardType", "IN")}
                   className={`p-4 border-2 rounded-xl text-center flex flex-col items-center justify-center transition cursor-pointer ${
-                    watchCardType === 'IN'
-                      ? 'border-blue-500 bg-blue-50/50 text-blue-700 font-bold'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                    watchCardType === "IN"
+                      ? "border-blue-500 bg-blue-50/50 text-blue-700 font-bold"
+                      : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
                   }`}
                 >
                   <span className="text-2xl mb-1">📥</span>
@@ -320,11 +359,11 @@ export default function CreateGateOperationPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setValue('cardType', 'OUT')}
+                  onClick={() => setValue("cardType", "OUT")}
                   className={`p-4 border-2 rounded-xl text-center flex flex-col items-center justify-center transition cursor-pointer ${
-                    watchCardType === 'OUT'
-                      ? 'border-purple-500 bg-purple-50/50 text-purple-700 font-bold'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                    watchCardType === "OUT"
+                      ? "border-purple-500 bg-purple-50/50 text-purple-700 font-bold"
+                      : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
                   }`}
                 >
                   <span className="text-2xl mb-1">📤</span>
@@ -344,7 +383,7 @@ export default function CreateGateOperationPage() {
                 render={({ field }) => (
                   <DocumentReferenceSelector
                     value={field.value ?? null}
-                    cardType={watchCardType as 'IN' | 'OUT'}
+                    cardType={watchCardType as "IN" | "OUT"}
                     onChange={handleDocRefChange}
                     error={errors.documentReferenceId?.message}
                   />
@@ -361,8 +400,13 @@ export default function CreateGateOperationPage() {
                 control={control}
                 name="clientPartner"
                 render={({ field }) => {
-                  const partnerOptions = (erpPartners || []).map((p) => ({ value: p, label: p }));
-                  const currentValue = field.value ? { value: field.value, label: field.value } : null;
+                  const partnerOptions = (erpPartners || []).map((p) => ({
+                    value: p,
+                    label: p,
+                  }));
+                  const currentValue = field.value
+                    ? { value: field.value, label: field.value }
+                    : null;
 
                   return (
                     <CreatableSelect
@@ -380,8 +424,12 @@ export default function CreateGateOperationPage() {
                       }}
                       options={partnerOptions}
                       isLoading={isLoadingPartners}
-                      formatCreateLabel={(inputValue) => `Tambah partner "${inputValue}"`}
-                      noOptionsMessage={() => "Ketik nama partner baru atau pilih dari daftar"}
+                      formatCreateLabel={(inputValue) =>
+                        `Tambah partner "${inputValue}"`
+                      }
+                      noOptionsMessage={() =>
+                        "Ketik nama partner baru atau pilih dari daftar"
+                      }
                       styles={globalSelectStyles}
                       className="text-sm"
                       classNamePrefix="react-select"
@@ -390,7 +438,9 @@ export default function CreateGateOperationPage() {
                 }}
               />
               {errors.clientPartner && (
-                <p className="text-xs text-red-500 mt-1">{(errors.clientPartner as any).message}</p>
+                <p className="text-xs text-red-500 mt-1">
+                  {(errors.clientPartner as any).message}
+                </p>
               )}
             </div>
 
@@ -402,11 +452,13 @@ export default function CreateGateOperationPage() {
                 <input
                   type="text"
                   placeholder="Contoh: B 1234 ABC"
-                  {...register('licensePlate')}
+                  {...register("licensePlate")}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-mono uppercase font-bold"
                 />
                 {errors.licensePlate && (
-                  <p className="text-xs text-red-500 mt-1">{errors.licensePlate.message}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.licensePlate.message}
+                  </p>
                 )}
               </div>
 
@@ -417,11 +469,13 @@ export default function CreateGateOperationPage() {
                 <input
                   type="text"
                   placeholder="Masukkan nama lengkap driver"
-                  {...register('driverName')}
+                  {...register("driverName")}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-semibold"
                 />
                 {errors.driverName && (
-                  <p className="text-xs text-red-500 mt-1">{errors.driverName.message}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.driverName.message}
+                  </p>
                 )}
               </div>
 
@@ -432,37 +486,43 @@ export default function CreateGateOperationPage() {
                 <input
                   type="text"
                   placeholder="Masukkan nomor telepon driver"
-                  {...register('driverPhone')}
+                  {...register("driverPhone")}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-semibold"
                 />
                 {errors.driverPhone && (
-                  <p className="text-xs text-red-500 mt-1">{(errors.driverPhone as any).message}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {(errors.driverPhone as any).message}
+                  </p>
                 )}
               </div>
 
               {historySuggestions.length > 0 && (
                 <div className="col-span-1 sm:col-span-2">
-                  <label className="block text-xs font-bold text-blue-600 mb-2">
-                    💡 Pilih Saran Driver & Kendaraan Terakhir untuk Partner Ini:
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Pilih Saran Driver & Plat Nomor (Riwayat)
                   </label>
-                  <div className="flex flex-wrap gap-2">
+                  <select
+                    onChange={(e) => {
+                      const idx = e.target.value;
+                      if (idx !== "") {
+                        const sug = historySuggestions[parseInt(idx, 10)];
+                        setValue("driverName", sug.driverName);
+                        setValue("licensePlate", sug.licensePlate);
+                        setValue("driverPhone", sug.driverPhone || "");
+                        toast.success(`Mengisi driver: ${sug.driverName}`);
+                      }
+                    }}
+                    value=""
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-semibold cursor-pointer"
+                  >
+                    <option value="">-- Pilih dari riwayat --</option>
                     {historySuggestions.map((sug, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setValue('driverName', sug.driverName);
-                          setValue('licensePlate', sug.licensePlate);
-                          setValue('driverPhone', sug.driverPhone || '');
-                          toast.success(`Mengisi driver: ${sug.driverName}`);
-                        }}
-                        className="text-xs bg-slate-50 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 text-slate-700 border border-slate-200 p-2.5 rounded-xl font-medium transition cursor-pointer flex flex-col items-start gap-1 shrink-0"
-                      >
-                        <span className="font-bold">{sug.driverName}</span>
-                        <span className="text-[10px] text-slate-500 font-mono font-bold">Plat: {sug.licensePlate} {sug.driverPhone ? `• Tlp: ${sug.driverPhone}` : ''}</span>
-                      </button>
+                      <option key={idx} value={idx}>
+                        {sug.driverName} - {sug.licensePlate}{" "}
+                        {sug.driverPhone ? `(${sug.driverPhone})` : ""}
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
               )}
             </div>
@@ -474,11 +534,13 @@ export default function CreateGateOperationPage() {
               <textarea
                 rows={3}
                 placeholder="Masukkan keterangan logistik, alasan masuk, atau rincian muatan..."
-                {...register('notes')}
+                {...register("notes")}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 transition text-sm font-medium"
               />
               {errors.notes && (
-                <p className="text-xs text-red-500 mt-1">{errors.notes.message}</p>
+                <p className="text-xs text-red-500 mt-1">
+                  {errors.notes.message}
+                </p>
               )}
             </div>
           </div>
@@ -495,7 +557,7 @@ export default function CreateGateOperationPage() {
                 Catat barang/komoditas yang dibawa oleh kendaraan.
               </p>
             </div>
-            
+
             <button
               type="button"
               onClick={() => setIsAddCargoOpen(true)}
@@ -520,21 +582,37 @@ export default function CreateGateOperationPage() {
                 <tbody className="divide-y divide-slate-105 text-xs text-slate-755">
                   {fields.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">
-                        Belum ada barang yang ditambahkan. Silakan klik "Tambah Barang Muatan" di atas.
+                      <td
+                        colSpan={3}
+                        className="px-4 py-8 text-center text-slate-400 italic"
+                      >
+                        Belum ada barang yang ditambahkan. Silakan klik "Tambah
+                        Barang Muatan" di atas.
                       </td>
                     </tr>
                   ) : (
                     fields.map((field, index) => {
-                      const itemKey = `${field.productId}-${(field as any).quantId || 'null'}-${(field as any).locationId || 'null'}`;
-                      const productInfo = productDetailsMap[itemKey] || { name: '-', sku: '-', uom: '-' };
+                      const itemKey = `${field.productId}-${(field as any).quantId || "null"}-${(field as any).locationId || "null"}`;
+                      const productInfo = productDetailsMap[itemKey] || {
+                        name: "-",
+                        sku: "-",
+                        uom: "-",
+                      };
                       return (
-                        <tr key={field.id} className="hover:bg-slate-50/30 transition">
+                        <tr
+                          key={field.id}
+                          className="hover:bg-slate-50/30 transition"
+                        >
                           <td className="px-4 py-3">
-                            <div className="font-bold text-slate-800">{productInfo.name}</div>
+                            <div className="font-bold text-slate-800">
+                              {productInfo.name}
+                            </div>
                             <div className="flex flex-wrap gap-2 items-center mt-1">
-                              <span className="text-[10px] text-slate-400 font-mono">SKU: {productInfo.sku}</span>
-                              {(!productInfo.locLabel || !productInfo.quantLabel) ? (
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                SKU: {productInfo.sku}
+                              </span>
+                              {!productInfo.locLabel ||
+                              !productInfo.quantLabel ? (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -572,17 +650,31 @@ export default function CreateGateOperationPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
-                            {field.quantity} {productInfo.uom || 'Unit'}
+                            {field.quantity} {productInfo.uom || "Unit"}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => remove(index)}
-                              className="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer"
-                              title="Hapus Barang"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditIndex(index);
+                                  setIsAddCargoOpen(true);
+                                }}
+                                className="inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                                title="Edit Barang"
+                              >
+                                <Edit className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => remove(index)}
+                                className="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 transition cursor-pointer flex items-center justify-center"
+                                title="Hapus Barang"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -598,13 +690,13 @@ export default function CreateGateOperationPage() {
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
           <button
             type="button"
-            onClick={() => router.push('/gate-operations')}
+            onClick={() => router.push("/gate-operations")}
             disabled={isSubmitting}
             className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-6 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer"
           >
             Batal
           </button>
-          
+
           <button
             type="submit"
             disabled={isSubmitting}
@@ -631,7 +723,7 @@ export default function CreateGateOperationPage() {
           setIsAddCargoOpen(false);
           setEditIndex(null);
         }}
-        cardType={watchCardType as 'IN' | 'OUT'}
+        cardType={watchCardType as "IN" | "OUT"}
         onAdd={handleAddCargo}
         editData={editData}
       />

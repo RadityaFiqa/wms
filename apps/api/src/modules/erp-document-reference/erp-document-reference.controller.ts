@@ -39,10 +39,13 @@ export class ErpDocumentReferenceController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('refFax') refFax?: string,
+    @Query('gateOperationUuid') gateOperationUuid?: string,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.findAll(warehouseId, {
       search,
@@ -53,6 +56,7 @@ export class ErpDocumentReferenceController {
       startDate,
       endDate,
       refFax,
+      gateOperationUuid,
     });
   }
 
@@ -61,7 +65,9 @@ export class ErpDocumentReferenceController {
   async findUniquePartners() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.findUniquePartners(warehouseId);
   }
@@ -71,7 +77,9 @@ export class ErpDocumentReferenceController {
   async findOne(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.findOne(warehouseId, uuid);
   }
@@ -81,7 +89,9 @@ export class ErpDocumentReferenceController {
   async getSyncStatus() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getSyncStatus(warehouseId);
   }
@@ -92,7 +102,9 @@ export class ErpDocumentReferenceController {
   async sync(@Req() req: any) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const triggeredBy = req.user?.email || 'System';
@@ -102,16 +114,17 @@ export class ErpDocumentReferenceController {
   @Post(':id/force-sync')
   @CheckPolicies((ability) => ability.can('update', 'Inventory'))
   @AuditLogAction('ERP_DOCUMENT_FORCE_SYNC')
-  async forceSync(
-    @Param('id') idOrUuid: string,
-    @Req() req: any,
-  ) {
+  async forceSync(@Param('id') idOrUuid: string, @Req() req: any) {
     if (req.user?.role?.name !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Akses ditolak. Hanya Super Admin yang dapat mensinkronkan paksa dokumen ERP.');
+      throw new ForbiddenException(
+        'Akses ditolak. Hanya Super Admin yang dapat mensinkronkan paksa dokumen ERP.',
+      );
     }
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const triggeredBy = req.user?.email || 'System';

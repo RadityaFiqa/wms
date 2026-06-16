@@ -30,6 +30,7 @@ const gate_module_1 = require("./modules/gate/gate.module");
 const erp_document_reference_module_1 = require("./modules/erp-document-reference/erp-document-reference.module");
 const warehouse_module_1 = require("./modules/warehouse/warehouse.module");
 const reports_module_1 = require("./modules/reports/reports.module");
+const digital_signature_module_1 = require("./modules/digital-signature/digital-signature.module");
 const core_1 = require("@nestjs/core");
 const warehouse_interceptor_1 = require("./core/warehouse-context/warehouse.interceptor");
 let AppModule = class AppModule {
@@ -66,6 +67,7 @@ exports.AppModule = AppModule = __decorate([
             erp_document_reference_module_1.ErpDocumentReferenceModule,
             warehouse_module_1.WarehouseModule,
             reports_module_1.ReportsModule,
+            digital_signature_module_1.DigitalSignatureModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [

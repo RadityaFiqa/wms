@@ -38,6 +38,7 @@ export declare class ErpDocumentReferenceService {
         startDate?: string;
         endDate?: string;
         refFax?: string;
+        gateOperationUuid?: string;
     }): Promise<{
         data: any[];
         meta: {

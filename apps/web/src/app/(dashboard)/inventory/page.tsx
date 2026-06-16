@@ -1,10 +1,14 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useInventory, useInventoryDetail, useInventorySyncStatus } from '@/hooks/useInventory';
-import { useDebounce } from '@/hooks/useDebounce';
-import { useAuthStore } from '@/store/auth';
-import { toast } from 'sonner';
+import React, { useState } from "react";
+import {
+  useInventory,
+  useInventoryDetail,
+  useInventorySyncStatus,
+} from "@/hooks/useInventory";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useAuthStore } from "@/store/auth";
+import { toast } from "sonner";
 import {
   Search,
   RefreshCw,
@@ -20,43 +24,50 @@ import {
   CheckCircle2,
   Clock,
   UserCheck,
-} from 'lucide-react';
+} from "lucide-react";
 
 export default function InventoryPage() {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const { activeWarehouse } = useAuthStore();
-  
+
   // Custom hook for paginated stock data and PDF generation
-  const { inventoryData, isLoading, refresh, syncInventory, exportPdf } = useInventory({
-    search: debouncedSearch,
-    page,
-    limit,
-  });
+  const { inventoryData, isLoading, refresh, syncInventory, exportPdf } =
+    useInventory({
+      search: debouncedSearch,
+      page,
+      limit,
+    });
 
   // Sync status hook
   const { statusData, refreshStatus } = useInventorySyncStatus();
 
   const handleSync = async () => {
     if (!activeWarehouse) {
-      toast.error('Silakan pilih gudang aktif terlebih dahulu.');
+      toast.error("Silakan pilih gudang aktif terlebih dahulu.");
       return;
     }
 
     setIsSyncing(true);
-    const toastId = toast.loading('Mensinkronisasi data persediaan dari ERP Odoo...');
+    const toastId = toast.loading(
+      "Mensinkronisasi data persediaan dari ERP Odoo...",
+    );
     try {
       const res = await syncInventory();
-      toast.success(`Sinkronisasi sukses! Berhasil sinkron ${res.syncedCount} baris stok.`, { id: toastId });
+      toast.success(
+        `Sinkronisasi sukses! Berhasil sinkron ${res.syncedCount} baris stok.`,
+        { id: toastId },
+      );
       refresh();
       // Auto refresh the sync status after completion
       refreshStatus();
     } catch (error: any) {
-      const msg = error.response?.data?.message || 'Gagal sinkronisasi data dari Odoo.';
+      const msg =
+        error.response?.data?.message || "Gagal sinkronisasi data dari Odoo.";
       toast.error(msg, { id: toastId });
       refreshStatus();
     } finally {
@@ -66,35 +77,35 @@ export default function InventoryPage() {
 
   const handleExportPdf = async () => {
     if (!activeWarehouse) {
-      toast.error('Gudang aktif tidak terdeteksi.');
+      toast.error("Gudang aktif tidak terdeteksi.");
       return;
     }
 
-    const toastId = toast.loading('Membuat berkas laporan PDF...');
+    const toastId = toast.loading("Membuat berkas laporan PDF...");
     try {
       await exportPdf(debouncedSearch);
-      toast.success('Laporan PDF berhasil diunduh.', { id: toastId });
+      toast.success("Laporan PDF berhasil diunduh.", { id: toastId });
     } catch (e: any) {
-      toast.error('Gagal mengekspor laporan ke PDF.', { id: toastId });
+      toast.error("Gagal mengekspor laporan ke PDF.", { id: toastId });
     }
   };
 
   // Safe localized relative time formatting helper
   const getRelativeTime = (dateStr: string | null) => {
-    if (!dateStr) return 'Belum pernah sinkron';
+    if (!dateStr) return "Belum pernah sinkron";
     const date = new Date(dateStr);
     const diffMs = new Date().getTime() - date.getTime();
     const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'Baru saja';
+    if (diffMin < 1) return "Baru saja";
     if (diffMin < 60) return `${diffMin} menit yang lalu`;
     const diffHours = Math.floor(diffMin / 60);
     if (diffHours < 24) return `${diffHours} jam yang lalu`;
-    return date.toLocaleString('id-ID', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -112,11 +123,14 @@ export default function InventoryPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Status Persediaan</h1>
+          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
+            Status Persediaan
+          </h1>
           <p className="text-slate-500 mt-1 text-sm">
-            Data stok barang termutakhir yang disinkronisasi dari ERP Odoo untuk gudang:{' '}
+            Data stok barang termutakhir yang disinkronisasi dari ERP Odoo untuk
+            gudang:{" "}
             <span className="font-semibold text-blue-600">
-              {activeWarehouse?.name || 'Belum Dipilih'}
+              {activeWarehouse?.name || "Belum Dipilih"}
             </span>
           </p>
         </div>
@@ -133,8 +147,10 @@ export default function InventoryPage() {
             disabled={isSyncing}
             className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-blue-500/10 active:scale-[0.98] transition cursor-pointer text-sm"
           >
-            <RefreshCw className={`h-4.5 w-4.5 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Sinkronisasi...' : 'Sinkronisasi Odoo'}
+            <RefreshCw
+              className={`h-4.5 w-4.5 mr-2 ${isSyncing ? "animate-spin" : ""}`}
+            />
+            {isSyncing ? "Sinkronisasi..." : "Sinkronisasi Odoo"}
           </button>
         </div>
       </div>
@@ -147,7 +163,9 @@ export default function InventoryPage() {
               <Clock className="h-5 w-5 text-slate-400" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-450 uppercase tracking-wider">Sinkronisasi Terakhir</div>
+              <div className="text-xs font-bold text-slate-450 uppercase tracking-wider">
+                Sinkronisasi Terakhir
+              </div>
               <div className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mt-0.5">
                 {getRelativeTime(statusData.lastSyncAt)}
                 {statusData.lastSyncBy && (
@@ -159,22 +177,26 @@ export default function InventoryPage() {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             {statusData.lastSyncCount !== null && (
               <div className="text-right hidden md:block">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Item Disinkronkan</div>
-                <div className="text-xs font-bold text-slate-700 mt-0.5">{statusData.lastSyncCount} data quants</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Item Disinkronkan
+                </div>
+                <div className="text-xs font-bold text-slate-700 mt-0.5">
+                  {statusData.lastSyncCount} data quants
+                </div>
               </div>
             )}
 
             <div className="flex items-center">
-              {statusData.lastSyncStatus === 'SUCCESS' ? (
+              {statusData.lastSyncStatus === "SUCCESS" ? (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
                   <CheckCircle2 className="h-4 w-4 mr-1.5 text-emerald-500" />
                   Sync Sukses
                 </span>
-              ) : statusData.lastSyncStatus === 'FAILED' ? (
+              ) : statusData.lastSyncStatus === "FAILED" ? (
                 <div className="relative group">
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-100 cursor-help">
                     <AlertTriangle className="h-4 w-4 mr-1.5 text-red-500" />
@@ -205,8 +227,12 @@ export default function InventoryPage() {
             <Layers className="h-5.5 w-5.5" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Jenis Produk</span>
-            <strong className="text-lg font-black text-slate-800">{summary.totalProducts.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Jenis Produk
+            </span>
+            <strong className="text-lg font-black text-slate-800">
+              {summary.totalProducts.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
 
@@ -216,8 +242,12 @@ export default function InventoryPage() {
             <MapPin className="h-5.5 w-5.5" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Area Lokasi</span>
-            <strong className="text-lg font-black text-slate-800">{summary.totalLocations.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Area Lokasi
+            </span>
+            <strong className="text-lg font-black text-slate-800">
+              {summary.totalLocations.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
 
@@ -227,8 +257,12 @@ export default function InventoryPage() {
             <Box className="h-5.5 w-5.5" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Kuantitas Stok</span>
-            <strong className="text-lg font-black text-slate-800">{summary.totalQuantity.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Kuantitas Stok
+            </span>
+            <strong className="text-lg font-black text-slate-800">
+              {summary.totalQuantity.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
 
@@ -238,8 +272,12 @@ export default function InventoryPage() {
             <Tag className="h-5.5 w-5.5" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stok Dipesan</span>
-            <strong className="text-lg font-black text-amber-600">{summary.totalReserved.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Stok Dipesan
+            </span>
+            <strong className="text-lg font-black text-amber-600">
+              {summary.totalReserved.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
 
@@ -249,8 +287,12 @@ export default function InventoryPage() {
             <CheckCircle2 className="h-5.5 w-5.5" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stok Tersedia</span>
-            <strong className="text-lg font-black text-emerald-600">{summary.totalAvailable.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Stok Tersedia
+            </span>
+            <strong className="text-lg font-black text-emerald-600">
+              {summary.totalAvailable.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
       </div>
@@ -306,8 +348,12 @@ export default function InventoryPage() {
                 <th className="px-6 py-4 w-[35%]">Nama Produk</th>
                 <th className="px-6 py-4 text-center w-[10%]">UOM</th>
                 <th className="px-6 py-4 text-right w-[12%]">Total Quantity</th>
-                <th className="px-6 py-4 text-right w-[13%]">Total Available</th>
-                <th className="px-6 py-4 text-center w-[10%]">Total Locations</th>
+                <th className="px-6 py-4 text-right w-[13%]">
+                  Total Available
+                </th>
+                <th className="px-6 py-4 text-center w-[10%]">
+                  Total Locations
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
@@ -336,10 +382,16 @@ export default function InventoryPage() {
                 ))
               ) : inventoryData?.data?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-16 text-center text-slate-400 font-medium">
+                  <td
+                    colSpan={6}
+                    className="px-6 py-16 text-center text-slate-400 font-medium"
+                  >
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <Box className="h-10 w-10 text-slate-300" />
-                      <span>Tidak ada data persediaan ditemukan. Silakan klik tombol Sinkronisasi Odoo.</span>
+                      <span>
+                        Tidak ada data persediaan ditemukan. Silakan klik tombol
+                        Sinkronisasi Odoo.
+                      </span>
                     </div>
                   </td>
                 </tr>
@@ -356,7 +408,8 @@ export default function InventoryPage() {
         {inventoryData?.meta && (
           <div className="bg-slate-50 px-4 sm:px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
             <span className="text-xs text-slate-500 font-semibold text-center sm:text-left">
-              Menampilkan {inventoryData.data.length} dari {inventoryData.meta.total} produk
+              Menampilkan {inventoryData.data.length} dari{" "}
+              {inventoryData.meta.total} produk
             </span>
 
             <div className="flex items-center space-x-2">
@@ -409,7 +462,7 @@ function ProductRow({ product }: ProductRowProps) {
       <tr
         onClick={() => setIsExpanded(!isExpanded)}
         className={`hover:bg-slate-50/70 border-b border-slate-100 transition cursor-pointer select-none ${
-          isExpanded ? 'bg-slate-50/40' : ''
+          isExpanded ? "bg-slate-50/40" : ""
         }`}
       >
         <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 flex items-center space-x-2">
@@ -420,21 +473,21 @@ function ProductRow({ product }: ProductRowProps) {
               <ChevronRight className="h-4.5 w-4.5 text-slate-500 shrink-0" />
             )}
           </div>
-          <span className="select-all block truncate font-mono text-xs text-slate-900 dark:text-slate-100">{product.sku}</span>
+          <span className="select-all block truncate font-mono text-xs text-slate-900 dark:text-slate-100">
+            {product.sku}
+          </span>
         </td>
-        <td className="px-6 py-4 font-bold text-slate-800">
-          {product.name}
-        </td>
+        <td className="px-6 py-4 font-bold text-slate-800">{product.name}</td>
         <td className="px-6 py-4 text-center">
           <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-xs border border-blue-100/50">
             {product.uom}
           </span>
         </td>
         <td className="px-6 py-4 text-right font-black text-slate-700">
-          {product.totalQuantity.toLocaleString('id-ID')}
+          {product.totalQuantity.toLocaleString("id-ID")}
         </td>
         <td className="px-6 py-4 text-right font-black text-emerald-600 bg-emerald-50/5">
-          {product.totalAvailable.toLocaleString('id-ID')}
+          {product.totalAvailable.toLocaleString("id-ID")}
         </td>
         <td className="px-6 py-4 text-center">
           <span className="inline-flex items-center px-2.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200/50">
@@ -445,7 +498,10 @@ function ProductRow({ product }: ProductRowProps) {
       </tr>
       {isExpanded && (
         <tr>
-          <td colSpan={6} className="bg-slate-50/50 px-8 py-5 border-b border-slate-200">
+          <td
+            colSpan={6}
+            className="bg-slate-50/50 px-8 py-5 border-b border-slate-200"
+          >
             <ProductDetailSection productUuid={product.uuid} />
           </td>
         </tr>
@@ -463,11 +519,29 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8 space-x-2.5">
-        <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        <svg
+          className="animate-spin h-5 w-5 text-blue-600"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          ></circle>
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
         </svg>
-        <span className="text-xs font-semibold text-slate-500">Memuat rincian lokasi dan tumpukan...</span>
+        <span className="text-xs font-semibold text-slate-500">
+          Memuat rincian lokasi dan tumpukan...
+        </span>
       </div>
     );
   }
@@ -502,22 +576,36 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
         }
 
         return (
-          <div key={loc.locationUuid} className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+          <div
+            key={loc.locationUuid}
+            className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs"
+          >
             {/* Location Level Header */}
             <div className="bg-slate-100/70 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 gap-2">
               <div className="flex items-center space-x-2">
                 <MapPin className="h-4.5 w-4.5 text-blue-500 shrink-0" />
-                <span className="font-bold text-slate-700 text-xs">{loc.locationDisplayName}</span>
+                <span className="font-bold text-slate-700 text-xs">
+                  {loc.locationDisplayName}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-[11px] font-semibold text-slate-500">
                 <span>
-                  Total Qty: <strong className="text-slate-800">{totalQty.toLocaleString('id-ID')}</strong>
+                  Total Qty:{" "}
+                  <strong className="text-slate-800">
+                    {totalQty.toLocaleString("id-ID")}
+                  </strong>
                 </span>
                 <span>
-                  Reserved: <strong className="text-amber-600">{totalReserved.toLocaleString('id-ID')}</strong>
+                  Reserved:{" "}
+                  <strong className="text-amber-600">
+                    {totalReserved.toLocaleString("id-ID")}
+                  </strong>
                 </span>
                 <span>
-                  Available: <strong className="text-emerald-600">{totalAvailable.toLocaleString('id-ID')}</strong>
+                  Available:{" "}
+                  <strong className="text-emerald-600">
+                    {totalAvailable.toLocaleString("id-ID")}
+                  </strong>
                 </span>
                 <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100/40">
                   {loc.quants.length} Tumpukan
@@ -532,17 +620,26 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
                   <tr className="bg-slate-50/30 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-5 py-2.5">Lot / Batch</th>
                     <th className="px-5 py-2.5 text-right">Quantity</th>
-                    <th className="px-5 py-2.5 text-right">Reserved Quantity</th>
-                    <th className="px-5 py-2.5 text-right font-bold text-emerald-600 bg-emerald-50/5">Available Quantity</th>
-                    <th className="px-5 py-2.5 text-right">Secondary Unit Qty</th>
+                    <th className="px-5 py-2.5 text-right">
+                      Reserved Quantity
+                    </th>
+                    <th className="px-5 py-2.5 text-right font-bold text-emerald-600 bg-emerald-50/5">
+                      Available Quantity
+                    </th>
+                    <th className="px-5 py-2.5 text-right">
+                      Secondary Unit Qty
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {loc.quants.map((q: any) => (
-                    <tr key={q.uuid} className="hover:bg-slate-50/20 transition bg-white">
+                    <tr
+                      key={q.uuid}
+                      className="hover:bg-slate-50/20 transition bg-white"
+                    >
                       <td className="px-5 py-3">
                         {/* ACCESSIBILITY & CONTRAST FIX FOR LOT BADGE */}
-                        {q.lotName && q.lotName !== '-' ? (
+                        {q.lotName && q.lotName !== "-" ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-xs">
                             <Tag className="h-3 w-3 mr-1 text-slate-500 dark:text-slate-400 shrink-0" />
                             {q.lotName}
@@ -554,19 +651,30 @@ function ProductDetailSection({ productUuid }: { productUuid: string }) {
                         )}
                       </td>
                       <td className="px-5 py-3 text-right font-bold text-slate-700">
-                        {q.quantity.toLocaleString('id-ID')} <span className="text-slate-400 font-normal text-[10px] ml-0.5">{detailData.product.uom}</span>
+                        {q.quantity.toLocaleString("id-ID")}{" "}
+                        <span className="text-slate-400 font-normal text-[10px] ml-0.5">
+                          {detailData.product.uom}
+                        </span>
                       </td>
                       <td className="px-5 py-3 text-right font-semibold text-amber-600">
-                        {q.reservedQuantity.toLocaleString('id-ID')} <span className="text-slate-400 font-normal text-[10px] ml-0.5">{detailData.product.uom}</span>
+                        {q.reservedQuantity.toLocaleString("id-ID")}{" "}
+                        <span className="text-slate-400 font-normal text-[10px] ml-0.5">
+                          {detailData.product.uom}
+                        </span>
                       </td>
                       <td className="px-5 py-3 text-right font-bold text-emerald-600 bg-emerald-50/5">
-                        {q.availableQuantity.toLocaleString('id-ID')} <span className="text-slate-400 font-normal text-[10px] ml-0.5">{detailData.product.uom}</span>
+                        {q.availableQuantity.toLocaleString("id-ID")}{" "}
+                        <span className="text-slate-400 font-normal text-[10px] ml-0.5">
+                          {detailData.product.uom}
+                        </span>
                       </td>
                       <td className="px-5 py-3 text-right font-semibold text-slate-600">
                         {q.secondaryUnitQty > 0 ? (
                           <span>
-                            {q.secondaryUnitQty.toLocaleString('id-ID')}{' '}
-                            <span className="text-slate-400 font-normal text-[10px] ml-0.5">L/KG</span>
+                            {q.secondaryUnitQty.toLocaleString("id-ID")}{" "}
+                            <span className="text-slate-400 font-normal text-[10px] ml-0.5">
+                              L/KG
+                            </span>
                           </span>
                         ) : (
                           <span className="text-slate-350">-</span>

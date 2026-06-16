@@ -3,6 +3,7 @@ export declare class ReconciliationService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     getReconciliationList(warehouseId: number): Promise<{
+        productId: number;
         product: {
             uuid: string;
             sku: string;

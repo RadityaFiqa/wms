@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../user/user.service';
 import { PrismaService } from '../../core/prisma/prisma.service';
@@ -30,7 +34,7 @@ export class AuthService {
   async login(user: any, ipAddress?: string, userAgent?: string) {
     const payload = { email: user.email, sub: user.id };
     const accessToken = this.jwtService.sign(payload);
-    
+
     // Generate refresh token
     const sessionUuid = crypto.randomUUID();
     const tokenSecret = crypto.randomBytes(32).toString('hex');
@@ -64,8 +68,13 @@ export class AuthService {
           action: rp.permission.action,
           subject: rp.permission.subject,
         })),
-        warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
-        accessibleWarehouses: await this.getAccessibleWarehouses(user.id, user.role.name),
+        warehouse: user.warehouse
+          ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+          : null,
+        accessibleWarehouses: await this.getAccessibleWarehouses(
+          user.id,
+          user.role.name,
+        ),
       },
     };
   }
@@ -96,7 +105,11 @@ export class AuthService {
     if (refreshToken.includes(':')) {
       const [sessionUuid, tokenSecret] = refreshToken.split(':');
       const session = await this.prisma.session.findUnique({
-        where: { uuid: sessionUuid, isRevoked: false, expiresAt: { gt: new Date() } },
+        where: {
+          uuid: sessionUuid,
+          isRevoked: false,
+          expiresAt: { gt: new Date() },
+        },
         include: {
           user: {
             include: {
@@ -153,7 +166,9 @@ export class AuthService {
     }
 
     if (!matchedSession) {
-      throw new UnauthorizedException('Refresh token tidak valid atau kedaluwarsa');
+      throw new UnauthorizedException(
+        'Refresh token tidak valid atau kedaluwarsa',
+      );
     }
 
     // Revoke the used refresh token (rotation)
@@ -166,7 +181,7 @@ export class AuthService {
     const user = matchedSession.user;
     const payload = { email: user.email, sub: user.id };
     const newAccessToken = this.jwtService.sign(payload);
-    
+
     const newSessionUuid = crypto.randomUUID();
     const newTokenSecret = crypto.randomBytes(32).toString('hex');
     const newRefreshToken = `${newSessionUuid}:${newTokenSecret}`;
@@ -199,8 +214,13 @@ export class AuthService {
           action: rp.permission.action,
           subject: rp.permission.subject,
         })),
-        warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
-        accessibleWarehouses: await this.getAccessibleWarehouses(user.id, user.role.name),
+        warehouse: user.warehouse
+          ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+          : null,
+        accessibleWarehouses: await this.getAccessibleWarehouses(
+          user.id,
+          user.role.name,
+        ),
       },
     };
   }
@@ -244,7 +264,10 @@ export class AuthService {
       where: { email },
     });
     if (!user) {
-      return { message: 'Jika email terdaftar, instruksi reset password telah dikirimkan.' };
+      return {
+        message:
+          'Jika email terdaftar, instruksi reset password telah dikirimkan.',
+      };
     }
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -261,9 +284,16 @@ export class AuthService {
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
-    await this.emailService.sendPasswordResetEmail(user.email, user.name, resetLink);
+    await this.emailService.sendPasswordResetEmail(
+      user.email,
+      user.name,
+      resetLink,
+    );
 
-    return { message: 'Jika email terdaftar, instruksi reset password telah dikirimkan.' };
+    return {
+      message:
+        'Jika email terdaftar, instruksi reset password telah dikirimkan.',
+    };
   }
 
   async resetPassword(token: string, pass: string) {
@@ -273,7 +303,9 @@ export class AuthService {
     });
 
     if (!resetToken || resetToken.isUsed || resetToken.expiresAt < new Date()) {
-      throw new BadRequestException('Token reset password tidak valid atau sudah kedaluwarsa');
+      throw new BadRequestException(
+        'Token reset password tidak valid atau sudah kedaluwarsa',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(pass, 10);
@@ -300,7 +332,10 @@ export class AuthService {
     return { message: 'Password berhasil diperbarui. Silakan login kembali.' };
   }
 
-  async changePassword(userId: number, data: { oldPass: string; newPass: string }) {
+  async changePassword(
+    userId: number,
+    data: { oldPass: string; newPass: string },
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -328,6 +363,9 @@ export class AuthService {
       data: { isRevoked: true },
     });
 
-    return { message: 'Password berhasil diubah. Silakan gunakan password baru Anda untuk login berikutnya.' };
+    return {
+      message:
+        'Password berhasil diubah. Silakan gunakan password baru Anda untuk login berikutnya.',
+    };
   }
 }

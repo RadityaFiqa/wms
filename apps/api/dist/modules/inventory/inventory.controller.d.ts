@@ -30,7 +30,7 @@ export declare class InventoryController {
             totalAvailable: number;
         };
     }>;
-    findAllProducts(search?: string): Promise<{
+    findAllProducts(search?: string, selectedId?: string, onlyAvailable?: string, limit?: string): Promise<{
         uuid: string;
         id: number;
         name: string;

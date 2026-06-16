@@ -15,6 +15,7 @@ export declare class OdooClient {
         sessionId: string;
         csrfToken: string;
     }>;
+    getSessionInfo(baseUrl: string, sessionId: string): Promise<any>;
     call(baseUrl: string, sessionId: string, payloadParams: {
         model: string;
         method: string;

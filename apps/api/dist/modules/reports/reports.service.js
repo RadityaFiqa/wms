@@ -32,41 +32,12 @@ let ReportsService = class ReportsService {
         if (start > end) {
             throw new common_1.BadRequestException('Start date tidak boleh setelah End date.');
         }
-        const productWhere = {};
-        if (query.productId) {
-            productWhere.uuid = query.productId;
-        }
-        const products = await this.prisma.inventory.findMany({
-            where: productWhere,
-            include: {
-                quants: {
-                    where: {
-                        location: { warehouseId },
-                    },
-                },
-            },
-        });
         const today = new Date();
         today.setHours(23, 59, 59, 999);
-        const erpItems = await this.prisma.documentReferenceItem.findMany({
-            where: {
-                documentReference: {
-                    warehouseId,
-                    state: 'done',
-                    dateDone: {
-                        gte: start,
-                        lte: today,
-                    },
-                },
-            },
-            include: {
-                documentReference: true,
-            },
-        });
         const gateOps = await this.prisma.gateOperation.findMany({
             where: {
                 warehouseId,
-                status: { notIn: ['CANCELED', 'REJECTED'] },
+                status: { in: ['COMPLETED', 'VERIFIED'] },
                 verification: {
                     verifiedAt: {
                         gte: start,
@@ -76,26 +47,44 @@ let ReportsService = class ReportsService {
             },
             include: {
                 products: true,
-                verification: {
-                    include: {
-                        references: true,
+                documentReference: true,
+                verification: true,
+            },
+        });
+        const movedProductIdsSet = new Set();
+        const dateRangeStart = new Date(query.startDate);
+        dateRangeStart.setHours(0, 0, 0, 0);
+        const dateRangeEnd = new Date(query.endDate);
+        dateRangeEnd.setHours(23, 59, 59, 999);
+        for (const op of gateOps) {
+            const verifiedAt = op.verification?.verifiedAt;
+            if (verifiedAt && verifiedAt >= dateRangeStart && verifiedAt <= dateRangeEnd) {
+                for (const p of op.products) {
+                    movedProductIdsSet.add(p.inventoryId);
+                }
+            }
+        }
+        const movedProductIds = Array.from(movedProductIdsSet);
+        if (movedProductIds.length === 0) {
+            return [];
+        }
+        const products = await this.prisma.inventory.findMany({
+            where: {
+                id: { in: movedProductIds },
+                ...(query.productId ? { uuid: query.productId } : {}),
+            },
+            include: {
+                quants: {
+                    where: {
+                        location: { warehouseId },
                     },
                 },
             },
         });
-        const unreconciledGateOps = gateOps.filter((op) => {
-            const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-            const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
-            if (hasPoRef || hasSoRef)
-                return false;
-            const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
-            if (hasErpAssignments)
-                return false;
-            return true;
-        });
         const snapshots = await this.prisma.dailyStockSnapshot.findMany({
             where: {
                 warehouseId,
+                inventoryId: { in: movedProductIds },
                 date: {
                     gte: start,
                     lte: today,
@@ -109,36 +98,41 @@ let ReportsService = class ReportsService {
             const erpStock = prod.quants.reduce((sum, q) => sum + q.quantity, 0);
             let currentStockTracker = erpStock;
             const transactionsByDate = new Map();
-            for (const item of erpItems.filter((i) => i.inventoryId === prod.id)) {
-                const dateStr = this.formatDateString(item.documentReference.dateDone);
-                const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
-                if (item.documentReference.pickingTypeCode === 'incoming') {
-                    current.incoming += item.quantity;
+            for (const op of gateOps) {
+                const opProd = op.products.find((p) => p.inventoryId === prod.id);
+                if (!opProd)
+                    continue;
+                const dateStr = this.formatDateString(op.verification.verifiedAt);
+                const current = transactionsByDate.get(dateStr) || {
+                    incoming: 0,
+                    outgoing: 0,
+                    list: [],
+                };
+                if (op.cardType === 'IN') {
+                    current.incoming += opProd.quantity;
                 }
                 else {
-                    current.outgoing += item.quantity;
+                    current.outgoing += opProd.quantity;
                 }
+                current.list.push({
+                    opNumber: op.opNumber,
+                    driverName: op.driverName,
+                    licensePlate: op.licensePlate,
+                    cardType: op.cardType,
+                    quantity: opProd.quantity,
+                    referenceDocument: op.documentReference?.documentNumber || '-',
+                });
                 transactionsByDate.set(dateStr, current);
-            }
-            for (const op of unreconciledGateOps) {
-                const dateStr = this.formatDateString(op.verification.verifiedAt);
-                const opProd = op.products.find((p) => p.inventoryId === prod.id);
-                if (opProd) {
-                    const current = transactionsByDate.get(dateStr) || { incoming: 0, outgoing: 0 };
-                    if (op.cardType === 'IN') {
-                        current.incoming += opProd.quantity;
-                    }
-                    else {
-                        current.outgoing += opProd.quantity;
-                    }
-                    transactionsByDate.set(dateStr, current);
-                }
             }
             const productDailyMetrics = new Map();
             const todayStr = this.formatDateString(new Date());
             for (const dDate of backwardDates) {
                 const dStr = this.formatDateString(dDate);
-                const txs = transactionsByDate.get(dStr) || { incoming: 0, outgoing: 0 };
+                const txs = transactionsByDate.get(dStr) || {
+                    incoming: 0,
+                    outgoing: 0,
+                    list: [],
+                };
                 let closing = 0;
                 const snap = snapshots.find((s) => s.inventoryId === prod.id && this.formatDateString(s.date) === dStr);
                 if (dStr === todayStr) {
@@ -149,15 +143,16 @@ let ReportsService = class ReportsService {
                 }
                 else {
                     closing = currentStockTracker;
-                    await this.prisma.dailyStockSnapshot.create({
+                    await this.prisma.dailyStockSnapshot
+                        .create({
                         data: {
                             date: dDate,
                             warehouseId,
                             inventoryId: prod.id,
                             closingStock: closing,
                         },
-                    }).catch((err) => {
-                    });
+                    })
+                        .catch(() => { });
                 }
                 const opening = closing - txs.incoming + txs.outgoing;
                 productDailyMetrics.set(dStr, {
@@ -165,17 +160,18 @@ let ReportsService = class ReportsService {
                     incoming: txs.incoming,
                     outgoing: txs.outgoing,
                     closing,
+                    list: txs.list,
                 });
                 currentStockTracker = opening;
             }
             for (const dDate of datesList) {
                 const dStr = this.formatDateString(dDate);
-                const metrics = productDailyMetrics.get(dStr) || {
-                    opening: currentStockTracker,
-                    incoming: 0,
-                    outgoing: 0,
-                    closing: currentStockTracker,
-                };
+                const metrics = productDailyMetrics.get(dStr);
+                if (!metrics)
+                    continue;
+                if (metrics.incoming === 0 && metrics.outgoing === 0) {
+                    continue;
+                }
                 reportRows.push({
                     date: dStr,
                     product: {
@@ -188,6 +184,7 @@ let ReportsService = class ReportsService {
                     incoming: metrics.incoming,
                     outgoing: metrics.outgoing,
                     closingStock: metrics.closing,
+                    transactions: metrics.list,
                 });
             }
         }
@@ -228,7 +225,9 @@ let ReportsService = class ReportsService {
         });
         const erpTransactions = erpItems.map((item) => ({
             documentNumber: item.documentReference.documentNumber,
-            partnerName: item.documentReference.partnerName || item.documentReference.purchaseName || 'Tanpa Partner',
+            partnerName: item.documentReference.partnerName ||
+                item.documentReference.purchaseName ||
+                'Tanpa Partner',
             pickingTypeCode: item.documentReference.pickingTypeCode,
             quantity: item.quantity,
             scheduledDate: item.documentReference.scheduledDate,
@@ -266,10 +265,14 @@ let ReportsService = class ReportsService {
         const unreconciledGateOps = gateOps
             .filter((op) => {
             const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-            const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
+            const hasSoRef = op.cardType === 'OUT' &&
+                op.soReferences &&
+                op.soReferences.length > 0;
             if (hasPoRef || hasSoRef)
                 return false;
-            const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
+            const hasErpAssignments = op.verification &&
+                op.verification.references &&
+                op.verification.references.length > 0;
             if (hasErpAssignments)
                 return false;
             return true;
@@ -332,16 +335,25 @@ let ReportsService = class ReportsService {
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', (err) => reject(err));
             const drawHeader = () => {
-                doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold').text('LAPORAN MUTASI PERSSEDIAAN HARIAN', 20, 20, { align: 'center', width: 555 });
-                doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text(`Gudang: ${warehouseName}  |  Periode: ${query.startDate} s/d ${query.endDate}`, 20, 34, { align: 'center', width: 555 });
+                doc
+                    .fillColor('#1e293b')
+                    .fontSize(11)
+                    .font('Helvetica-Bold')
+                    .text('LAPORAN MUTASI PERSSEDIAAN HARIAN', 20, 20, {
+                    align: 'center',
+                    width: 555,
+                });
+                doc
+                    .fontSize(7.5)
+                    .font('Helvetica')
+                    .fillColor('#64748b')
+                    .text(`Gudang: ${warehouseName}  |  Periode: ${query.startDate} s/d ${query.endDate}`, 20, 34, { align: 'center', width: 555 });
                 doc.moveTo(20, 48).lineTo(575, 48).lineWidth(0.5).stroke('#475569');
                 doc.fillColor('#475569').fontSize(7.2).font('Helvetica-Bold');
-                doc.text('Tanggal', 25, 54, { width: 65 });
-                doc.text('Produk (SKU / Nama)', 95, 54, { width: 195 });
-                doc.text('Stok Awal', 295, 54, { width: 60, align: 'right' });
-                doc.text('Masuk', 360, 54, { width: 65, align: 'right' });
-                doc.text('Keluar', 430, 54, { width: 65, align: 'right' });
-                doc.text('Stok Akhir', 500, 54, { width: 65, align: 'right' });
+                doc.text('Tanggal', 25, 54, { width: 85 });
+                doc.text('Produk (SKU / Nama)', 125, 54, { width: 220 });
+                doc.text('Masuk', 360, 54, { width: 90, align: 'right' });
+                doc.text('Keluar', 470, 54, { width: 90, align: 'right' });
                 doc.font('Helvetica');
                 doc.moveTo(20, 66).lineTo(575, 66).lineWidth(0.5).stroke('#475569');
                 return 70;
@@ -353,18 +365,21 @@ let ReportsService = class ReportsService {
                     currentY = drawHeader();
                 }
                 doc.fillColor('#334155').fontSize(6.8).font('Helvetica');
-                doc.text(row.date, 25, currentY + 4, { width: 65 });
+                doc.text(row.date, 25, currentY + 4, { width: 85 });
                 doc.fillColor('#1e293b').font('Helvetica-Bold');
-                doc.text(`${row.product.name}`, 95, currentY + 4, { width: 195, ellipsis: true });
-                doc.fillColor('#475569').font('Helvetica');
-                doc.text(row.openingStock.toLocaleString('id-ID'), 295, currentY + 4, { width: 60, align: 'right' });
+                doc.text(`${row.product.name}`, 125, currentY + 4, {
+                    width: 220,
+                    ellipsis: true,
+                });
                 doc.fillColor('#16a34a');
-                doc.text(row.incoming > 0 ? `+${row.incoming.toLocaleString('id-ID')}` : '0', 360, currentY + 4, { width: 65, align: 'right' });
+                doc.text(row.incoming > 0 ? `+${row.incoming.toLocaleString('id-ID')}` : '0', 360, currentY + 4, { width: 90, align: 'right' });
                 doc.fillColor('#dc2626');
-                doc.text(row.outgoing > 0 ? `-${row.outgoing.toLocaleString('id-ID')}` : '0', 430, currentY + 4, { width: 65, align: 'right' });
-                doc.fillColor('#1e293b').font('Helvetica-Bold');
-                doc.text(row.closingStock.toLocaleString('id-ID'), 500, currentY + 4, { width: 65, align: 'right' });
-                doc.moveTo(20, currentY + 16).lineTo(575, currentY + 16).lineWidth(0.15).stroke('#e2e8f0');
+                doc.text(row.outgoing > 0 ? `-${row.outgoing.toLocaleString('id-ID')}` : '0', 470, currentY + 4, { width: 90, align: 'right' });
+                doc
+                    .moveTo(20, currentY + 16)
+                    .lineTo(575, currentY + 16)
+                    .lineWidth(0.15)
+                    .stroke('#e2e8f0');
                 currentY += 16;
             }
             doc.end();
@@ -373,10 +388,11 @@ let ReportsService = class ReportsService {
     async generateCsvReport(warehouseId, query) {
         const rows = await this.getDailyStockMovementReport(warehouseId, query);
         let csv = '\ufeff';
-        csv += 'Tanggal,SKU,Nama Produk,UOM,Stok Awal,Masuk (Incoming),Keluar (Outgoing),Stok Akhir\n';
+        csv +=
+            'Tanggal,SKU,Nama Produk,UOM,Masuk (Incoming),Keluar (Outgoing)\n';
         for (const r of rows) {
             const sanitizedName = r.product.name.replace(/"/g, '""');
-            csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.uom},${r.openingStock},${r.incoming},${r.outgoing},${r.closingStock}\n`;
+            csv += `${r.date},${r.product.sku},"${sanitizedName}",${r.product.uom},${r.incoming},${r.outgoing}\n`;
         }
         return csv;
     }

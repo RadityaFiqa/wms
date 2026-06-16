@@ -1,4 +1,11 @@
-import { Controller, Get, Param, BadRequestException, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  BadRequestException,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ReconciliationService } from './reconciliation.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
@@ -7,7 +14,7 @@ import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 
-@Controller('inventory/reconciliation')
+@Controller('reconciliation')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class ReconciliationController {
@@ -21,7 +28,9 @@ export class ReconciliationController {
   async getList() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getReconciliationList(warehouseId);
   }
@@ -31,7 +40,9 @@ export class ReconciliationController {
   async getDetail(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getReconciliationDetail(warehouseId, uuid);
   }

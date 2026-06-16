@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface UserPayload {
   uuid: string;
@@ -18,7 +18,9 @@ interface AuthState {
   activeWarehouse: { uuid: string; name: string } | null;
   isInitialized: boolean;
   setAuth: (user: UserPayload, token: string) => void;
-  setActiveWarehouse: (warehouse: { uuid: string; name: string } | null) => void;
+  setActiveWarehouse: (
+    warehouse: { uuid: string; name: string } | null,
+  ) => void;
   setInitialized: (initialized: boolean) => void;
   logout: () => void;
   hasPermission: (action: string, subject: string) => boolean;
@@ -35,8 +37,14 @@ export const useAuthStore = create<AuthState>()(
         // Automatically default active warehouse to the first accessible one if none is selected
         const active = get().activeWarehouse;
         let nextActive = active;
-        if (user && user.accessibleWarehouses && user.accessibleWarehouses.length > 0) {
-          const hasActive = active ? user.accessibleWarehouses.some(w => w.uuid === active.uuid) : false;
+        if (
+          user &&
+          user.accessibleWarehouses &&
+          user.accessibleWarehouses.length > 0
+        ) {
+          const hasActive = active
+            ? user.accessibleWarehouses.some((w) => w.uuid === active.uuid)
+            : false;
           if (!hasActive) {
             nextActive = user.accessibleWarehouses[0];
           }
@@ -52,21 +60,25 @@ export const useAuthStore = create<AuthState>()(
       hasPermission: (action, subject) => {
         const user = get().user;
         if (!user) return false;
-        
+
         // Super admin has all permissions
-        if (user.role === 'SUPER_ADMIN') return true;
-        
+        if (user.role === "SUPER_ADMIN") return true;
+
         return user.permissions.some(
-          (p) => 
-            (p.action === 'manage' && p.subject === 'all') || 
+          (p) =>
+            (p.action === "manage" && p.subject === "all") ||
             (p.action === action && p.subject === subject) ||
-            (p.action === 'manage' && p.subject === subject)
+            (p.action === "manage" && p.subject === subject),
         );
       },
     }),
     {
-      name: 'auth-storage',
-      partialize: (state) => ({ user: state.user, token: state.token, activeWarehouse: state.activeWarehouse }),
-    }
-  )
+      name: "auth-storage",
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        activeWarehouse: state.activeWarehouse,
+      }),
+    },
+  ),
 );

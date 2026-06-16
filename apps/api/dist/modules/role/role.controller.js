@@ -29,19 +29,22 @@ let RoleController = class RoleController {
         this.roleService = roleService;
     }
     async findAll(req) {
-        if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+        if (req.user.role?.name !== 'SUPER_ADMIN' &&
+            req.user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat Role.');
         }
         return this.roleService.findAll();
     }
     async findAllPermissions(req) {
-        if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+        if (req.user.role?.name !== 'SUPER_ADMIN' &&
+            req.user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat Permission.');
         }
         return this.roleService.findAllPermissions();
     }
     async findOne(uuid, req) {
-        if (req.user.role?.name !== 'SUPER_ADMIN' && req.user.role?.name !== 'WAREHOUSE_ADMIN') {
+        if (req.user.role?.name !== 'SUPER_ADMIN' &&
+            req.user.role?.name !== 'WAREHOUSE_ADMIN') {
             throw new common_1.ForbiddenException('Akses ditolak. Hanya Super Admin atau Warehouse Admin yang dapat melihat detail Role.');
         }
         return this.roleService.findByUuid(uuid);

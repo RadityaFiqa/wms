@@ -5,6 +5,7 @@ export declare class ReconciliationController {
     private readonly warehouseContext;
     constructor(service: ReconciliationService, warehouseContext: WarehouseContextService);
     getList(): Promise<{
+        productId: number;
         product: {
             uuid: string;
             sku: string;

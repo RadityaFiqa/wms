@@ -104,7 +104,9 @@ let AuthService = class AuthService {
                     action: rp.permission.action,
                     subject: rp.permission.subject,
                 })),
-                warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
+                warehouse: user.warehouse
+                    ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+                    : null,
                 accessibleWarehouses: await this.getAccessibleWarehouses(user.id, user.role.name),
             },
         };
@@ -131,7 +133,11 @@ let AuthService = class AuthService {
         if (refreshToken.includes(':')) {
             const [sessionUuid, tokenSecret] = refreshToken.split(':');
             const session = await this.prisma.session.findUnique({
-                where: { uuid: sessionUuid, isRevoked: false, expiresAt: { gt: new Date() } },
+                where: {
+                    uuid: sessionUuid,
+                    isRevoked: false,
+                    expiresAt: { gt: new Date() },
+                },
                 include: {
                     user: {
                         include: {
@@ -223,7 +229,9 @@ let AuthService = class AuthService {
                     action: rp.permission.action,
                     subject: rp.permission.subject,
                 })),
-                warehouse: user.warehouse ? { uuid: user.warehouse.uuid, name: user.warehouse.name } : null,
+                warehouse: user.warehouse
+                    ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+                    : null,
                 accessibleWarehouses: await this.getAccessibleWarehouses(user.id, user.role.name),
             },
         };
@@ -265,7 +273,9 @@ let AuthService = class AuthService {
             where: { email },
         });
         if (!user) {
-            return { message: 'Jika email terdaftar, instruksi reset password telah dikirimkan.' };
+            return {
+                message: 'Jika email terdaftar, instruksi reset password telah dikirimkan.',
+            };
         }
         const token = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date();
@@ -280,7 +290,9 @@ let AuthService = class AuthService {
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
         const resetLink = `${frontendUrl}/reset-password?token=${token}`;
         await this.emailService.sendPasswordResetEmail(user.email, user.name, resetLink);
-        return { message: 'Jika email terdaftar, instruksi reset password telah dikirimkan.' };
+        return {
+            message: 'Jika email terdaftar, instruksi reset password telah dikirimkan.',
+        };
     }
     async resetPassword(token, pass) {
         const resetToken = await this.prisma.passwordResetToken.findUnique({
@@ -331,7 +343,9 @@ let AuthService = class AuthService {
             where: { userId, isRevoked: false },
             data: { isRevoked: true },
         });
-        return { message: 'Password berhasil diubah. Silakan gunakan password baru Anda untuk login berikutnya.' };
+        return {
+            message: 'Password berhasil diubah. Silakan gunakan password baru Anda untuk login berikutnya.',
+        };
     }
 };
 exports.AuthService = AuthService;

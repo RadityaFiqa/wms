@@ -1,4 +1,4 @@
-import { useOdooAccount } from './useOdooAccount';
+import { useOdooAccount } from "./useOdooAccount";
 
 /**
  * @deprecated Use useOdooAccount instead.

@@ -36,10 +36,14 @@ export class OdooCronService {
             removeOnComplete: true,
           },
         );
-        this.logger.log(`Menambahkan job refresh_session untuk gudang ${account.warehouse.name} ke antrean`);
+        this.logger.log(
+          `Menambahkan job refresh_session untuk gudang ${account.warehouse.name} ke antrean`,
+        );
       }
     } catch (err: any) {
-      this.logger.error(`Gagal melakukan penjadwalan harian refresh session Odoo: ${err.message}`);
+      this.logger.error(
+        `Gagal melakukan penjadwalan harian refresh session Odoo: ${err.message}`,
+      );
     }
   }
 }

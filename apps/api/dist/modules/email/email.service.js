@@ -22,13 +22,25 @@ let EmailService = class EmailService {
         this.emailQueue = emailQueue;
     }
     async sendWelcomeEmail(email, name, tempPassword) {
-        await this.emailQueue.add('sendWelcomeEmail', { email, name, tempPassword });
+        await this.emailQueue.add('sendWelcomeEmail', {
+            email,
+            name,
+            tempPassword,
+        });
     }
     async sendPasswordResetEmail(email, name, resetLink) {
-        await this.emailQueue.add('sendPasswordResetEmail', { email, name, resetLink });
+        await this.emailQueue.add('sendPasswordResetEmail', {
+            email,
+            name,
+            resetLink,
+        });
     }
     async sendAccountStatusEmail(email, name, isActive) {
-        await this.emailQueue.add('sendAccountStatusEmail', { email, name, isActive });
+        await this.emailQueue.add('sendAccountStatusEmail', {
+            email,
+            name,
+            isActive,
+        });
     }
 };
 exports.EmailService = EmailService;

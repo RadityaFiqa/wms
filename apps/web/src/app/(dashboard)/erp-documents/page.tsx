@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { useErpDocuments, useErpSyncStatus } from '@/hooks/useErpDocuments';
-import { useDebounce } from '@/hooks/useDebounce';
-import { useAuthStore } from '@/store/auth';
-import { toast } from 'sonner';
+import React, { useState, useEffect } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useErpDocuments, useErpSyncStatus } from "@/hooks/useErpDocuments";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useAuthStore } from "@/store/auth";
+import { toast } from "sonner";
 import {
   Search,
   RefreshCw,
@@ -24,8 +24,8 @@ import {
   Layers,
   Settings2,
   Calendar,
-} from 'lucide-react';
-import Link from 'next/link';
+} from "lucide-react";
+import Link from "next/link";
 
 export default function ErpDocumentsPage() {
   const router = useRouter();
@@ -35,14 +35,14 @@ export default function ErpDocumentsPage() {
   const { activeWarehouse, user, hasPermission } = useAuthStore();
 
   // 1. Read URL query parameters for filters
-  const page = Number(searchParams.get('page')) || 1;
-  const limit = Number(searchParams.get('limit')) || 10;
-  const search = searchParams.get('search') || '';
-  const type = (searchParams.get('type') || '') as 'IN' | 'OUT' | '';
-  const state = searchParams.get('state') || '';
-  const startDate = searchParams.get('startDate') || '';
-  const endDate = searchParams.get('endDate') || '';
-  const refFax = searchParams.get('refFax') || '';
+  const page = Number(searchParams.get("page")) || 1;
+  const limit = Number(searchParams.get("limit")) || 10;
+  const search = searchParams.get("search") || "";
+  const type = (searchParams.get("type") || "") as "IN" | "OUT" | "";
+  const state = searchParams.get("state") || "";
+  const startDate = searchParams.get("startDate") || "";
+  const endDate = searchParams.get("endDate") || "";
+  const refFax = searchParams.get("refFax") || "";
 
   // Local state for search input (to debounce)
   const [searchInput, setSearchInput] = useState(search);
@@ -58,11 +58,11 @@ export default function ErpDocumentsPage() {
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     if (debouncedSearch) {
-      params.set('search', debouncedSearch);
+      params.set("search", debouncedSearch);
     } else {
-      params.delete('search');
+      params.delete("search");
     }
-    params.set('page', '1');
+    params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
   }, [debouncedSearch]);
 
@@ -70,11 +70,11 @@ export default function ErpDocumentsPage() {
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     if (debouncedRefFax) {
-      params.set('refFax', debouncedRefFax);
+      params.set("refFax", debouncedRefFax);
     } else {
-      params.delete('refFax');
+      params.delete("refFax");
     }
-    params.set('page', '1');
+    params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
   }, [debouncedRefFax]);
 
@@ -89,10 +89,18 @@ export default function ErpDocumentsPage() {
   }, [refFax]);
 
   const { syncStatus, refreshStatus } = useErpSyncStatus();
-  const [lastHandledStatus, setLastHandledStatus] = useState<string | null>(null);
+  const [lastHandledStatus, setLastHandledStatus] = useState<string | null>(
+    null,
+  );
 
   // Fetch ERP documents using SWR hook
-  const { documentsData, isLoading, refresh, syncErpDocuments, forceSyncErpDocument } = useErpDocuments({
+  const {
+    documentsData,
+    isLoading,
+    refresh,
+    syncErpDocuments,
+    forceSyncErpDocument,
+  } = useErpDocuments({
     search: search || undefined,
     page,
     limit,
@@ -103,18 +111,21 @@ export default function ErpDocumentsPage() {
     refFax: refFax || undefined,
   });
 
-  const isSyncActive = isSyncing || syncStatus?.status === 'RUNNING' || syncStatus?.status === 'PENDING';
+  const isSyncActive =
+    isSyncing ||
+    syncStatus?.status === "RUNNING" ||
+    syncStatus?.status === "PENDING";
 
   useEffect(() => {
     if (!syncStatus) return;
 
     const currentStatus = syncStatus.status;
-    if (lastHandledStatus === 'RUNNING' || lastHandledStatus === 'PENDING') {
-      if (currentStatus === 'SUCCESS') {
-        toast.success('Sinkronisasi dokumen ERP dari Odoo selesai!');
+    if (lastHandledStatus === "RUNNING" || lastHandledStatus === "PENDING") {
+      if (currentStatus === "SUCCESS") {
+        toast.success("Sinkronisasi dokumen ERP dari Odoo selesai!");
         refresh(); // Refresh list of documents
-      } else if (currentStatus === 'FAILED') {
-        toast.error('Gagal mensinkronisasi dokumen ERP dari Odoo.');
+      } else if (currentStatus === "FAILED") {
+        toast.error("Gagal mensinkronisasi dokumen ERP dari Odoo.");
       }
     }
     setLastHandledStatus(currentStatus);
@@ -122,22 +133,30 @@ export default function ErpDocumentsPage() {
 
   const handleSync = async () => {
     if (!activeWarehouse) {
-      toast.error('Silakan pilih gudang aktif terlebih dahulu.');
+      toast.error("Silakan pilih gudang aktif terlebih dahulu.");
       return;
     }
 
     setIsSyncing(true);
-    const toastId = toast.loading('Memulai sinkronisasi dokumen ERP dari Odoo...');
+    const toastId = toast.loading(
+      "Memulai sinkronisasi dokumen ERP dari Odoo...",
+    );
     try {
       const res = await syncErpDocuments();
-      if (res.message === 'Sync already in progress') {
-        toast.info('Sinkronisasi dokumen ERP sedang berjalan.', { id: toastId });
+      if (res.message === "Sync already in progress") {
+        toast.info("Sinkronisasi dokumen ERP sedang berjalan.", {
+          id: toastId,
+        });
       } else {
-        toast.success('Proses sinkronisasi telah dimulai di latar belakang.', { id: toastId });
+        toast.success("Proses sinkronisasi telah dimulai di latar belakang.", {
+          id: toastId,
+        });
       }
       refreshStatus();
     } catch (error: any) {
-      const msg = error.response?.data?.message || 'Gagal memulai sinkronisasi dari Odoo.';
+      const msg =
+        error.response?.data?.message ||
+        "Gagal memulai sinkronisasi dari Odoo.";
       toast.error(msg, { id: toastId });
     } finally {
       setIsSyncing(false);
@@ -151,23 +170,23 @@ export default function ErpDocumentsPage() {
     } else {
       params.delete(key);
     }
-    params.set('page', '1'); // reset page to 1
+    params.set("page", "1"); // reset page to 1
     router.push(`${pathname}?${params.toString()}`);
   };
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set('page', String(newPage));
+    params.set("page", String(newPage));
     router.push(`${pathname}?${params.toString()}`);
   };
 
   const formatRelativeTime = (dateStr: string | null) => {
-    if (!dateStr) return 'Belum pernah sync';
+    if (!dateStr) return "Belum pernah sync";
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return 'Baru saja';
+    if (diffMins < 1) return "Baru saja";
     if (diffMins < 60) return `${diffMins} menit yang lalu`;
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours} jam yang lalu`;
@@ -177,30 +196,37 @@ export default function ErpDocumentsPage() {
 
   const getStatusColor = (state: string) => {
     switch (state) {
-      case 'done':
-        return 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/40 dark:text-emerald-455';
-      case 'assigned':
-        return 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-455';
-      case 'confirmed':
-        return 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/20 dark:border-indigo-900/40 dark:text-indigo-455';
-      case 'waiting':
-        return 'bg-amber-50 border-amber-205 text-amber-750 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-amber-455';
-      case 'cancel':
-        return 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-455';
+      case "done":
+        return "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/40 dark:text-emerald-455";
+      case "assigned":
+        return "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-455";
+      case "confirmed":
+        return "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/20 dark:border-indigo-900/40 dark:text-indigo-455";
+      case "waiting":
+        return "bg-amber-50 border-amber-205 text-amber-750 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-amber-455";
+      case "cancel":
+        return "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-455";
       default:
-        return 'bg-slate-50 border-slate-200 text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400';
+        return "bg-slate-50 border-slate-200 text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400";
     }
   };
 
   const getStatusText = (state: string) => {
     switch (state) {
-      case 'done': return 'Done';
-      case 'assigned': return 'Ready / Assigned';
-      case 'confirmed': return 'Confirmed';
-      case 'waiting': return 'Waiting Another';
-      case 'cancel': return 'Canceled';
-      case 'draft': return 'Draft';
-      default: return state;
+      case "done":
+        return "Done";
+      case "assigned":
+        return "Ready / Assigned";
+      case "confirmed":
+        return "Confirmed";
+      case "waiting":
+        return "Waiting Another";
+      case "cancel":
+        return "Canceled";
+      case "draft":
+        return "Draft";
+      default:
+        return state;
     }
   };
 
@@ -222,13 +248,14 @@ export default function ErpDocumentsPage() {
             Dokumen ERP (PO/SO)
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-            Snapshot dokumen purchase order (PO) & sales order (SO) dari Odoo untuk gudang:{' '}
+            Snapshot dokumen purchase order (PO) & sales order (SO) dari Odoo
+            untuk gudang:{" "}
             <span className="font-semibold text-blue-600 dark:text-blue-400">
-              {activeWarehouse?.name || 'Belum Dipilih'}
+              {activeWarehouse?.name || "Belum Dipilih"}
             </span>
           </p>
         </div>
-        {hasPermission('update', 'Inventory') && (
+        {hasPermission("update", "Inventory") && (
           <div className="flex items-center space-x-3">
             <button
               onClick={handleSync}
@@ -242,7 +269,8 @@ export default function ErpDocumentsPage() {
                     Syncing...
                   </span>
                   <span className="text-[10px] font-medium opacity-80 pl-5">
-                    {syncStatus?.processedDocuments || 0} / {syncStatus?.totalDocuments || 0} documents
+                    {syncStatus?.processedDocuments || 0} /{" "}
+                    {syncStatus?.totalDocuments || 0} documents
                   </span>
                 </span>
               ) : (
@@ -263,20 +291,31 @@ export default function ErpDocumentsPage() {
             <Clock className="h-5 w-5 text-slate-400" />
           </div>
           <div>
-            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Pembaruan Terakhir</div>
+            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Pembaruan Terakhir
+            </div>
             <div className="text-sm font-semibold text-slate-805 dark:text-slate-200 flex items-center gap-1.5 mt-0.5">
               <span
-                title={syncStatus?.lastSyncAt || summary.lastSyncTime ? new Date(syncStatus?.lastSyncAt || summary.lastSyncTime!).toLocaleString('id-ID') : 'Tidak tersedia'}
+                title={
+                  syncStatus?.lastSyncAt || summary.lastSyncTime
+                    ? new Date(
+                        syncStatus?.lastSyncAt || summary.lastSyncTime!,
+                      ).toLocaleString("id-ID")
+                    : "Tidak tersedia"
+                }
                 className="cursor-help border-b border-dashed border-slate-350"
               >
-                {formatRelativeTime(syncStatus?.lastSyncAt || summary.lastSyncTime)}
+                {formatRelativeTime(
+                  syncStatus?.lastSyncAt || summary.lastSyncTime,
+                )}
               </span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center">
-          {syncStatus?.status === 'RUNNING' || syncStatus?.status === 'PENDING' ? (
+          {syncStatus?.status === "RUNNING" ||
+          syncStatus?.status === "PENDING" ? (
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-50 border border-blue-105 text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-400">
               <Clock className="h-4 w-4 mr-1.5 text-blue-500 animate-spin" />
               Proses Sinkronisasi Sedang Berjalan...
@@ -302,8 +341,12 @@ export default function ErpDocumentsPage() {
             <Layers className="h-6 w-6" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Dokumen</span>
-            <strong className="text-2xl font-black text-slate-800 dark:text-slate-105">{summary.totalDocuments.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Total Dokumen
+            </span>
+            <strong className="text-2xl font-black text-slate-800 dark:text-slate-105">
+              {summary.totalDocuments.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
 
@@ -313,8 +356,12 @@ export default function ErpDocumentsPage() {
             <ArrowDownLeft className="h-6 w-6" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Dokumen Masuk (PO)</span>
-            <strong className="text-2xl font-black text-slate-800 dark:text-slate-105">{summary.totalIncoming.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Dokumen Masuk (PO)
+            </span>
+            <strong className="text-2xl font-black text-slate-800 dark:text-slate-105">
+              {summary.totalIncoming.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
 
@@ -324,8 +371,12 @@ export default function ErpDocumentsPage() {
             <ArrowUpRight className="h-6 w-6" />
           </div>
           <div>
-            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Dokumen Keluar (SO)</span>
-            <strong className="text-2xl font-black text-slate-800 dark:text-slate-105">{summary.totalOutgoing.toLocaleString('id-ID')}</strong>
+            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Dokumen Keluar (SO)
+            </span>
+            <strong className="text-2xl font-black text-slate-800 dark:text-slate-105">
+              {summary.totalOutgoing.toLocaleString("id-ID")}
+            </strong>
           </div>
         </div>
       </div>
@@ -379,7 +430,7 @@ export default function ErpDocumentsPage() {
             </label>
             <select
               value={type}
-              onChange={(e) => updateQueryParam('type', e.target.value)}
+              onChange={(e) => updateQueryParam("type", e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-805 dark:text-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-850 cursor-pointer"
             >
               <option value="">SEMUA TIPE</option>
@@ -395,7 +446,7 @@ export default function ErpDocumentsPage() {
             </label>
             <select
               value={state}
-              onChange={(e) => updateQueryParam('state', e.target.value)}
+              onChange={(e) => updateQueryParam("state", e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-805 dark:text-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-850 cursor-pointer"
             >
               <option value="">SEMUA STATUS</option>
@@ -421,7 +472,7 @@ export default function ErpDocumentsPage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => updateQueryParam('startDate', e.target.value)}
+                onChange={(e) => updateQueryParam("startDate", e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-blue-505 focus:bg-white cursor-pointer"
               />
             </div>
@@ -437,7 +488,7 @@ export default function ErpDocumentsPage() {
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => updateQueryParam('endDate', e.target.value)}
+                onChange={(e) => updateQueryParam("endDate", e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-blue-505 focus:bg-white cursor-pointer"
               />
             </div>
@@ -450,7 +501,7 @@ export default function ErpDocumentsPage() {
             </label>
             <select
               value={limit}
-              onChange={(e) => updateQueryParam('limit', e.target.value)}
+              onChange={(e) => updateQueryParam("limit", e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-blue-500 cursor-pointer"
             >
               <option value={10}>10</option>
@@ -483,22 +534,44 @@ export default function ErpDocumentsPage() {
               {isLoading ? (
                 Array.from({ length: limit }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-28"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4.5 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4.5 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div></td>
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-24"></div></td>
-                    <td className="px-6 py-4"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-20"></div></td>
-                    <td className="px-6 py-4 text-right"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12 ml-auto"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div></td>
-                    <td className="px-6 py-4 text-center"><div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12 mx-auto"></div></td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-28"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4.5 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4.5 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-24"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-20"></div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12 ml-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 mx-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12 mx-auto"></div>
+                    </td>
                   </tr>
                 ))
               ) : !documentsData?.data || documentsData.data.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold">
+                  <td
+                    colSpan={9}
+                    className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold"
+                  >
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <FolderOpen className="h-12 w-12 text-slate-300 dark:text-slate-700" />
-                      <span>Tidak ada data dokumen ERP ditemukan. Silakan klik "Sync ERP Documents".</span>
+                      <span>
+                        Tidak ada data dokumen ERP ditemukan. Silakan klik "Sync
+                        ERP Documents".
+                      </span>
                     </div>
                   </td>
                 </tr>
@@ -521,7 +594,8 @@ export default function ErpDocumentsPage() {
         {documentsData?.meta && (
           <div className="bg-slate-50 dark:bg-slate-900 px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-              Menampilkan {documentsData.data.length} dari {documentsData.meta.total} dokumen ERP
+              Menampilkan {documentsData.data.length} dari{" "}
+              {documentsData.meta.total} dokumen ERP
             </span>
 
             <div className="flex items-center space-x-2">
@@ -557,7 +631,12 @@ interface ErpDocumentRowProps {
   onForceSync: (uuid: string) => Promise<any>;
 }
 
-function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: ErpDocumentRowProps) {
+function ErpDocumentRow({
+  doc,
+  getStatusColor,
+  getStatusText,
+  onForceSync,
+}: ErpDocumentRowProps) {
   const { user } = useAuthStore();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -565,12 +644,17 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
   const handleForceSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSyncing(true);
-    const toastId = toast.loading(`Mensinkronkan paksa dokumen ${doc.documentNumber}...`);
+    const toastId = toast.loading(
+      `Mensinkronkan paksa dokumen ${doc.documentNumber}...`,
+    );
     try {
       await onForceSync(doc.uuid);
-      toast.success(`Berhasil sinkronisasi dokumen ${doc.documentNumber}!`, { id: toastId });
+      toast.success(`Berhasil sinkronisasi dokumen ${doc.documentNumber}!`, {
+        id: toastId,
+      });
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Gagal sinkronisasi paksa dokumen.';
+      const msg =
+        err.response?.data?.message || "Gagal sinkronisasi paksa dokumen.";
       toast.error(msg, { id: toastId });
     } finally {
       setIsSyncing(false);
@@ -578,19 +662,19 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
   };
 
   const formattedDate = doc.scheduledDate
-    ? new Date(doc.scheduledDate).toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
+    ? new Date(doc.scheduledDate).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
       })
-    : '-';
+    : "-";
 
   return (
     <>
       <tr
         onClick={() => setIsExpanded(!isExpanded)}
         className={`hover:bg-slate-50/70 dark:hover:bg-slate-850/50 border-b border-slate-100 dark:border-slate-800 transition cursor-pointer select-none ${
-          isExpanded ? 'bg-slate-50/30 dark:bg-slate-900/60' : ''
+          isExpanded ? "bg-slate-50/30 dark:bg-slate-900/60" : ""
         }`}
       >
         <td className="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">
@@ -602,11 +686,13 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
                 <ChevronRightIcon className="h-4 w-4 text-slate-550 shrink-0" />
               )}
             </div>
-            <span className="font-mono select-all truncate">{doc.documentNumber}</span>
+            <span className="font-mono select-all truncate">
+              {doc.documentNumber}
+            </span>
           </div>
         </td>
         <td className="px-6 py-4 text-center">
-          {doc.pickingTypeCode === 'incoming' ? (
+          {doc.pickingTypeCode === "incoming" ? (
             <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 border border-emerald-100 text-emerald-700 font-bold text-[10px] uppercase">
               IN (PO)
             </span>
@@ -617,21 +703,26 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
           )}
         </td>
         <td className="px-6 py-4 text-center">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded border text-[10px] font-bold ${getStatusColor(doc.state)}`}>
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded border text-[10px] font-bold ${getStatusColor(doc.state)}`}
+          >
             {getStatusText(doc.state)}
           </span>
         </td>
-        <td className="px-6 py-4 font-semibold text-slate-750 dark:text-slate-300 truncate max-w-[200px]" title={doc.partnerName || ''}>
-          {doc.partnerName || '-'}
+        <td
+          className="px-6 py-4 font-semibold text-slate-750 dark:text-slate-300 truncate max-w-[200px]"
+          title={doc.partnerName || ""}
+        >
+          {doc.partnerName || "-"}
         </td>
         <td className="px-6 py-4 font-semibold text-slate-605 dark:text-slate-400 truncate font-mono">
-          {doc.purchaseName || doc.origin || '-'}
+          {doc.purchaseName || doc.origin || "-"}
         </td>
         <td className="px-6 py-4 font-semibold text-slate-605 dark:text-slate-400 truncate font-mono">
-          {doc.ref_fax || '-'}
+          {doc.ref_fax || "-"}
         </td>
         <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-slate-200">
-          {doc.totalQuantity.toLocaleString('id-ID')}
+          {doc.totalQuantity.toLocaleString("id-ID")}
           <span className="text-[10px] font-normal text-slate-400 dark:text-slate-505 ml-1">
             ({doc.totalItems} item)
           </span>
@@ -639,7 +730,10 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
         <td className="px-6 py-4 text-center font-medium text-slate-605 dark:text-slate-400">
           {formattedDate}
         </td>
-        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+        <td
+          className="px-6 py-4 text-center"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-center space-x-2">
             <Link
               href={`/erp-documents/${doc.uuid}`}
@@ -647,14 +741,16 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
             >
               Detail
             </Link>
-            {user?.role === 'SUPER_ADMIN' && (
+            {user?.role === "SUPER_ADMIN" && (
               <button
                 onClick={handleForceSync}
                 disabled={isSyncing}
                 className="inline-flex items-center justify-center p-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-105 hover:border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition shadow-sm cursor-pointer"
                 title="Force Sync dari Odoo"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`}
+                />
               </button>
             )}
           </div>
@@ -664,7 +760,10 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
       {/* Expanded Row showing line items list */}
       {isExpanded && (
         <tr>
-          <td colSpan={9} className="bg-slate-50/40 dark:bg-slate-900/30 px-10 py-5 border-b border-slate-200 dark:border-slate-800">
+          <td
+            colSpan={9}
+            className="bg-slate-50/40 dark:bg-slate-900/30 px-10 py-5 border-b border-slate-200 dark:border-slate-800"
+          >
             <div className="space-y-3">
               <div className="text-[11px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider flex items-center space-x-1">
                 <span>Rincian Barang Muatan ({doc.documentNumber})</span>
@@ -682,39 +781,47 @@ function ErpDocumentRow({ doc, getStatusColor, getStatusText, onForceSync }: Erp
                         <th className="px-5 py-3 w-[45%]">Nama Produk</th>
                         <th className="px-5 py-3 w-[20%]">Analytic Account</th>
                         <th className="px-5 py-3 text-right w-[11%]">Qty</th>
-                        <th className="px-5 py-3 text-right w-[12%]">Product Qty</th>
+                        <th className="px-5 py-3 text-right w-[12%]">
+                          Product Qty
+                        </th>
                         <th className="px-5 py-3 text-center w-[12%]">UOM</th>
-                        <th className="px-5 py-3 text-right w-[12%]">Qty Sekunder</th>
+                        <th className="px-5 py-3 text-right w-[12%]">
+                          Qty Sekunder
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
                       {doc.items.map((item: any) => (
-                        <tr key={item.uuid} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/20 transition">
+                        <tr
+                          key={item.uuid}
+                          className="hover:bg-slate-50/50 dark:hover:bg-slate-850/20 transition"
+                        >
                           <td className="px-5 py-3 font-semibold text-slate-800 dark:text-slate-200">
                             {item.productName}
                           </td>
                           <td className="px-5 py-3 text-slate-500 dark:text-slate-400 font-mono text-[10px]">
-                            {item.analyticAccountName || '-'}
+                            {item.analyticAccountName || "-"}
                           </td>
                           <td className="px-5 py-3 text-right font-bold text-slate-800 dark:text-slate-200">
-                            {item.quantity.toLocaleString('id-ID')}
+                            {item.quantity.toLocaleString("id-ID")}
                           </td>
                           <td className="px-5 py-3 text-right font-medium text-slate-500 dark:text-slate-400">
-                            {item.productQty.toLocaleString('id-ID')}
+                            {item.productQty.toLocaleString("id-ID")}
                           </td>
                           <td className="px-5 py-3 text-center font-bold text-blue-600 dark:text-blue-400 uppercase">
                             {item.uom}
                           </td>
                           <td className="px-5 py-3 text-right font-medium text-slate-600 dark:text-slate-400">
-                            {item.secondaryQuantity !== null && item.secondaryQuantity !== undefined ? (
+                            {item.secondaryQuantity !== null &&
+                            item.secondaryQuantity !== undefined ? (
                               <>
-                                {item.secondaryQuantity.toLocaleString('id-ID')}
+                                {item.secondaryQuantity.toLocaleString("id-ID")}
                                 <span className="text-[10px] text-slate-400 ml-1 font-normal uppercase">
-                                  {item.secondaryUom || 'Unit'}
+                                  {item.secondaryUom || "Unit"}
                                 </span>
                               </>
                             ) : (
-                              '-'
+                              "-"
                             )}
                           </td>
                         </tr>

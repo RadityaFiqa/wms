@@ -18,15 +18,20 @@ export class OdooQueueProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     const { accountId } = job.data;
-    this.logger.log(`Processing odoo job: ${job.name} for account ID ${accountId}`);
+    this.logger.log(
+      `Processing odoo job: ${job.name} for account ID ${accountId}`,
+    );
 
     switch (job.name) {
       case 'refresh_session':
         try {
-          const refreshed = await this.sessionManager.validateAndRefreshSession(accountId);
+          const refreshed =
+            await this.sessionManager.validateAndRefreshSession(accountId);
           return { success: true, refreshed };
         } catch (err: any) {
-          this.logger.error(`Failed to refresh session in background job: ${err.message}`);
+          this.logger.error(
+            `Failed to refresh session in background job: ${err.message}`,
+          );
           throw err;
         }
 
@@ -35,7 +40,9 @@ export class OdooQueueProcessor extends WorkerHost {
           const session = await this.authService.establishSession(accountId);
           return { success: true, sessionCreated: !!session };
         } catch (err: any) {
-          this.logger.error(`Failed to retry login in background job: ${err.message}`);
+          this.logger.error(
+            `Failed to retry login in background job: ${err.message}`,
+          );
           throw err;
         }
 

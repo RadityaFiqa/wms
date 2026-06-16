@@ -41,7 +41,8 @@ let OdooAuthService = class OdooAuthService {
         try {
             const decryptedPassword = (0, encryption_util_1.decrypt)(account.encryptedPassword);
             const { sessionId, csrfToken } = await this.client.authenticate(account.baseUrl, account.username, decryptedPassword);
-            await this.auditLogService.log({
+            await this.auditLogService
+                .log({
                 actorId,
                 action: 'ODOO_LOGIN_SUCCESS',
                 ipAddress,
@@ -51,11 +52,13 @@ let OdooAuthService = class OdooAuthService {
                     warehouseName: account.warehouse.name,
                     message: 'Koneksi Odoo berhasil diuji',
                 },
-            }).catch((e) => console.error('Failed to write Odoo audit log:', e));
+            })
+                .catch((e) => console.error('Failed to write Odoo audit log:', e));
             return { success: true, sessionId, csrfToken };
         }
         catch (err) {
-            await this.auditLogService.log({
+            await this.auditLogService
+                .log({
                 actorId,
                 action: 'ODOO_LOGIN_FAILED',
                 ipAddress,
@@ -65,7 +68,8 @@ let OdooAuthService = class OdooAuthService {
                     warehouseName: account.warehouse.name,
                     error: err.message,
                 },
-            }).catch((e) => console.error('Failed to write Odoo audit log:', e));
+            })
+                .catch((e) => console.error('Failed to write Odoo audit log:', e));
             throw new common_1.BadRequestException(`Test koneksi Odoo gagal: ${err.message}`);
         }
     }

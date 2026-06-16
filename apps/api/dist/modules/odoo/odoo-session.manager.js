@@ -40,26 +40,30 @@ let OdooSessionManager = OdooSessionManager_1 = class OdooSessionManager {
                 await this.invalidateSession(account.id);
                 await this.authService.establishSession(account.id);
                 this.logger.log(`Session Odoo berhasil diperbarui untuk gudang ${account.warehouse.name}`);
-                await this.auditLogService.log({
+                await this.auditLogService
+                    .log({
                     action: 'ODOO_SESSION_REFRESH_SUCCESS',
                     details: {
                         odooAccountUuid: account.uuid,
                         warehouseName: account.warehouse.name,
                         message: 'Session Odoo berhasil diperbarui secara otomatis',
                     },
-                }).catch((e) => console.error('Failed to write audit log:', e));
+                })
+                    .catch((e) => console.error('Failed to write audit log:', e));
                 return true;
             }
             catch (err) {
                 this.logger.error(`Gagal memperbarui session Odoo untuk gudang ${account.warehouse.name}: ${err.message}`);
-                await this.auditLogService.log({
+                await this.auditLogService
+                    .log({
                     action: 'ODOO_SESSION_REFRESH_FAILED',
                     details: {
                         odooAccountUuid: account.uuid,
                         warehouseName: account.warehouse.name,
                         error: err.message,
                     },
-                }).catch((e) => console.error('Failed to write audit log:', e));
+                })
+                    .catch((e) => console.error('Failed to write audit log:', e));
                 if (err.message.includes('Kredensial Odoo')) {
                     await this.repository.updateSessionData(account.id, {
                         sessionId: null,

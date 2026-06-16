@@ -15,9 +15,17 @@ export class OdooAuthService {
   /**
    * Test Odoo credentials without saving them to the database (for front-end connection testing).
    */
-  async testConnectionRaw(baseUrl: string, username: string, pass: string): Promise<any> {
+  async testConnectionRaw(
+    baseUrl: string,
+    username: string,
+    pass: string,
+  ): Promise<any> {
     try {
-      const { sessionId, csrfToken } = await this.client.authenticate(baseUrl, username, pass);
+      const { sessionId, csrfToken } = await this.client.authenticate(
+        baseUrl,
+        username,
+        pass,
+      );
       return { success: true, sessionId, csrfToken };
     } catch (err: any) {
       throw new BadRequestException(`Test koneksi gagal: ${err.message}`);
@@ -27,7 +35,12 @@ export class OdooAuthService {
   /**
    * Test connection for an existing configuration in database by UUID.
    */
-  async testConnectionByUuid(uuid: string, actorId?: number, ipAddress?: string, userAgent?: string): Promise<any> {
+  async testConnectionByUuid(
+    uuid: string,
+    actorId?: number,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<any> {
     const account = await this.repository.findByUuid(uuid);
     if (!account) {
       throw new BadRequestException('Konfigurasi akun Odoo tidak ditemukan');
@@ -42,32 +55,36 @@ export class OdooAuthService {
       );
 
       // Log success audit
-      await this.auditLogService.log({
-        actorId,
-        action: 'ODOO_LOGIN_SUCCESS',
-        ipAddress,
-        userAgent,
-        details: {
-          odooAccountUuid: account.uuid,
-          warehouseName: account.warehouse.name,
-          message: 'Koneksi Odoo berhasil diuji',
-        },
-      }).catch((e) => console.error('Failed to write Odoo audit log:', e));
+      await this.auditLogService
+        .log({
+          actorId,
+          action: 'ODOO_LOGIN_SUCCESS',
+          ipAddress,
+          userAgent,
+          details: {
+            odooAccountUuid: account.uuid,
+            warehouseName: account.warehouse.name,
+            message: 'Koneksi Odoo berhasil diuji',
+          },
+        })
+        .catch((e) => console.error('Failed to write Odoo audit log:', e));
 
       return { success: true, sessionId, csrfToken };
     } catch (err: any) {
       // Log failed audit
-      await this.auditLogService.log({
-        actorId,
-        action: 'ODOO_LOGIN_FAILED',
-        ipAddress,
-        userAgent,
-        details: {
-          odooAccountUuid: account.uuid,
-          warehouseName: account.warehouse.name,
-          error: err.message,
-        },
-      }).catch((e) => console.error('Failed to write Odoo audit log:', e));
+      await this.auditLogService
+        .log({
+          actorId,
+          action: 'ODOO_LOGIN_FAILED',
+          ipAddress,
+          userAgent,
+          details: {
+            odooAccountUuid: account.uuid,
+            warehouseName: account.warehouse.name,
+            error: err.message,
+          },
+        })
+        .catch((e) => console.error('Failed to write Odoo audit log:', e));
 
       throw new BadRequestException(`Test koneksi Odoo gagal: ${err.message}`);
     }
@@ -83,7 +100,9 @@ export class OdooAuthService {
     }
 
     if (!account.isActive) {
-      throw new Error(`Akun Odoo untuk gudang ${account.warehouseId} tidak aktif`);
+      throw new Error(
+        `Akun Odoo untuk gudang ${account.warehouseId} tidak aktif`,
+      );
     }
 
     const decryptedPassword = decrypt(account.encryptedPassword);

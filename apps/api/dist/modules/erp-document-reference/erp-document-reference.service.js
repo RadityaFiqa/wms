@@ -109,7 +109,11 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
             this.logger.error(`[SYNC-JOB] ${errorMsg}`);
             await this.prisma.odooSyncLog.update({
                 where: { id: logId },
-                data: { status: 'FAILED', errorMessage: errorMsg, finishedAt: new Date() },
+                data: {
+                    status: 'FAILED',
+                    errorMessage: errorMsg,
+                    finishedAt: new Date(),
+                },
             });
             throw new common_1.NotFoundException(errorMsg);
         }
@@ -118,7 +122,11 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
             this.logger.error(`[SYNC-JOB] ${errorMsg}`);
             await this.prisma.odooSyncLog.update({
                 where: { id: logId },
-                data: { status: 'FAILED', errorMessage: errorMsg, finishedAt: new Date() },
+                data: {
+                    status: 'FAILED',
+                    errorMessage: errorMsg,
+                    finishedAt: new Date(),
+                },
             });
             throw new common_1.BadRequestException(errorMsg);
         }
@@ -176,8 +184,8 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                     },
                     offset,
                     limit,
-                    order: "scheduled_date ASC",
-                    count_limit: 999_999
+                    order: 'scheduled_date ASC',
+                    count_limit: 999_999,
                 });
                 const records = poRes?.records || [];
                 this.logger.log(`[SYNC-JOB] Offset ${offset} fetched ${records.length} records`);
@@ -188,7 +196,7 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                         await this.upsertDocumentRecord(tx, record, warehouseId);
                     }
                 }, {
-                    timeout: 600000
+                    timeout: 600000,
                 });
                 syncedCount += records.length;
                 offset += records.length;
@@ -253,7 +261,7 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                         await this.prisma.$transaction(async (tx) => {
                             await this.upsertDocumentRecord(tx, record, warehouseId);
                         }, {
-                            timeout: 60000
+                            timeout: 60000,
                         });
                         this.logger.log(`[SYNC-JOB] Successfully refreshed active document ID=${doc.id}`);
                     }
@@ -293,7 +301,8 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                 where: { id: logId },
                 data: { status: 'FAILED', errorMessage: err.message, finishedAt },
             });
-            await this.prisma.odooAccount.update({
+            await this.prisma.odooAccount
+                .update({
                 where: { id: account.id },
                 data: {
                     lastSyncAt: finishedAt,
@@ -301,12 +310,13 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                     lastSyncError: `Gagal menyimpan data ke database: ${err.message}`,
                     lastSyncBy: triggeredBy,
                 },
-            }).catch((e) => this.logger.error('[SYNC-JOB] Failed to update OdooAccount sync status', e));
+            })
+                .catch((e) => this.logger.error('[SYNC-JOB] Failed to update OdooAccount sync status', e));
             throw err;
         }
     }
     async findAll(warehouseId, query) {
-        this.logger.log(`[findAll] Fetching documents for warehouseId=${warehouseId}, search="${query.search || ''}", type="${query.type || ''}", page=${query.page || 1}, limit=${query.limit || 10}`);
+        this.logger.log(`[findAll] Fetching documents for warehouseId=${warehouseId}, search="${query.search || ''}", type="${query.type || ''}", page=${query.page || 1}, limit=${query.limit || 10}, gateOperationUuid="${query.gateOperationUuid || ''}"`);
         const page = Number(query.page) || 1;
         const limit = Number(query.limit) || 10;
         const skip = (page - 1) * limit;
@@ -314,6 +324,7 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
             warehouseId,
         };
         const andConditions = [];
+        console.log(`product`, JSON.stringify(andConditions, null, 2));
         if (query.search) {
             andConditions.push({
                 OR: [
@@ -369,7 +380,10 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                 where,
                 skip,
                 take: limit,
-                orderBy: { scheduledDate: 'desc' },
+                orderBy: [
+                    { scheduledDate: 'desc' },
+                    { id: 'desc' },
+                ],
                 include: {
                     items: true,
                 },
@@ -377,8 +391,12 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
         ]);
         const [totalCount, incomingCount, outgoingCount, odooAccount] = await Promise.all([
             this.prisma.documentReference.count({ where: { warehouseId } }),
-            this.prisma.documentReference.count({ where: { warehouseId, pickingTypeCode: 'incoming' } }),
-            this.prisma.documentReference.count({ where: { warehouseId, pickingTypeCode: 'outgoing' } }),
+            this.prisma.documentReference.count({
+                where: { warehouseId, pickingTypeCode: 'incoming' },
+            }),
+            this.prisma.documentReference.count({
+                where: { warehouseId, pickingTypeCode: 'outgoing' },
+            }),
             this.prisma.odooAccount.findUnique({ where: { warehouseId } }),
         ]);
         const summary = {
@@ -489,7 +507,7 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                 include: { items: true },
             });
         }, {
-            timeout: 60000
+            timeout: 60000,
         });
         this.logger.log(`[FORCE-SYNC] ✅ Document ${doc.documentNumber} force-synced successfully`);
         return this.sanitizeDocReference(updatedDoc);
@@ -505,7 +523,9 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
         const ref_fax = record.ref_fax || null;
         const sourceLocationName = this.getRelationalName(record.location_id);
         const destinationLocationName = this.getRelationalName(record.location_dest_id);
-        const scheduledDate = record.scheduled_date ? new Date(record.scheduled_date) : null;
+        const scheduledDate = record.scheduled_date
+            ? new Date(record.scheduled_date)
+            : null;
         const dateDone = record.date_done ? new Date(record.date_done) : null;
         const driver = record.driver || null;
         const plateNumber = record.plat_number || null;
@@ -637,7 +657,9 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
         if (!docs || docs.length === 0)
             return [];
         const inventoryIds = [];
+        const docIds = [];
         for (const doc of docs) {
+            docIds.push(doc.id);
             if (doc.items) {
                 for (const item of doc.items) {
                     if (item.inventoryId) {
@@ -656,23 +678,50 @@ let ErpDocumentReferenceService = ErpDocumentReferenceService_1 = class ErpDocum
                 inventoryMap.set(inv.id, inv);
             }
         }
+        const signedDocs = await this.prisma.signedDocument.findMany({
+            where: {
+                sourceType: 'ERP',
+                sourceDocumentId: { in: docIds },
+                status: 'VALID',
+                deletedAt: null,
+            },
+            select: {
+                id: true,
+                sourceDocumentId: true,
+                signedAt: true,
+                verificationToken: true,
+                signedBy: true,
+            },
+        });
+        const signedMap = new Map();
+        for (const s of signedDocs) {
+            if (s.sourceDocumentId !== null) {
+                signedMap.set(s.sourceDocumentId, s);
+            }
+        }
         return docs.map((doc) => {
             const { warehouseId, rawPayload, items, ...restDoc } = doc;
-            const sanitizedItems = items ? items.map((item) => {
-                const { id: itemId, documentReferenceId, inventoryId, ...restItem } = item;
-                const inv = inventoryMap.get(inventoryId);
-                return {
-                    ...restItem,
-                    inventoryId,
-                    inventoryUuid: inv?.uuid || null,
-                    inventorySku: inv?.sku || null,
-                    inventoryName: inv?.name || null,
-                    inventoryUom: inv?.uom || null,
-                };
-            }) : [];
+            const sanitizedItems = items
+                ? items.map((item) => {
+                    const { id: itemId, documentReferenceId, inventoryId, ...restItem } = item;
+                    const inv = inventoryMap.get(inventoryId);
+                    return {
+                        ...restItem,
+                        inventoryId,
+                        inventoryUuid: inv?.uuid || null,
+                        inventorySku: inv?.sku || null,
+                        inventoryName: inv?.name || null,
+                        inventoryUom: inv?.uom || null,
+                    };
+                })
+                : [];
+            const isSigned = signedMap.has(doc.id);
+            const signatureInfo = signedMap.get(doc.id) || null;
             return {
                 ...restDoc,
                 items: sanitizedItems,
+                isSigned,
+                signatureInfo,
             };
         });
     }

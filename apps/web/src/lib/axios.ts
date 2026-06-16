@@ -1,10 +1,10 @@
-import axios from 'axios';
-import { useAuthStore } from '../store/auth';
+import axios from "axios";
+import { useAuthStore } from "../store/auth";
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://wms.bulog.my.id/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "https://wms.bulog.my.id/api",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
   withCredentials: true, // Send HttpOnly refresh cookies
 });
@@ -14,10 +14,10 @@ api.interceptors.request.use((config) => {
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  
+
   const activeWarehouse = useAuthStore.getState().activeWarehouse;
   if (activeWarehouse && config.headers) {
-    config.headers['x-warehouse-id'] = activeWarehouse.uuid;
+    config.headers["x-warehouse-id"] = activeWarehouse.uuid;
   }
   return config;
 });
@@ -42,7 +42,10 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Do not intercept auth refresh/login failures to prevent infinite loops
-    if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
+    if (
+      originalRequest.url?.includes("/auth/refresh") ||
+      originalRequest.url?.includes("/auth/login")
+    ) {
       return Promise.reject(error);
     }
 
@@ -62,7 +65,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const response = await api.post('/auth/refresh');
+        const response = await api.post("/auth/refresh");
         const { accessToken, user } = response.data;
 
         useAuthStore.getState().setAuth(user, accessToken);
@@ -80,5 +83,5 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );

@@ -1,8 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 import { StorageService } from '../storage/storage.service';
-import type { CreateGateOperationInput, CreateGateVerificationInput, AssignReferencesInput } from '@bulog-wms/schema';
+import { ConfigService } from '@nestjs/config';
+import * as QRCode from 'qrcode';
+import type {
+  CreateGateOperationInput,
+  CreateGateVerificationInput,
+  AssignReferencesInput,
+} from '@bulog-wms/schema';
 import { CardType, VerificationStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 
@@ -12,6 +22,7 @@ export class GateService {
     private readonly prisma: PrismaService,
     private readonly warehouseContext: WarehouseContextService,
     private readonly storageService: StorageService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -53,19 +64,26 @@ export class GateService {
     return `${cardType}-${nextSeq}/${day}/${month}/${year}`;
   }
 
-
   /**
    * Create a new gate operation.
    */
-  async createGateOperation(createdByUserId: number, body: CreateGateOperationInput) {
+  async createGateOperation(
+    createdByUserId: number,
+    body: CreateGateOperationInput,
+  ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Konteks warehouse (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Konteks warehouse (header x-warehouse-id) diperlukan.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Generate sequential number
-      const opNumber = await this.generateOpNumber(tx, body.cardType as CardType);
+      const opNumber = await this.generateOpNumber(
+        tx,
+        body.cardType as CardType,
+      );
       const docRefId = (body as any).documentReferenceId;
 
       // 2. Create Gate Operation
@@ -117,7 +135,12 @@ export class GateService {
           });
 
           if (prod.quantId) {
-            await this.reserveQuantStock(tx, body.cardType as CardType, prod.quantId, prod.quantity);
+            await this.reserveQuantStock(
+              tx,
+              body.cardType as CardType,
+              prod.quantId,
+              prod.quantity,
+            );
           }
         }
       }
@@ -155,7 +178,9 @@ export class GateService {
   }) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Konteks warehouse (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Konteks warehouse (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const page = Number(query.page) || 1;
@@ -167,20 +192,18 @@ export class GateService {
     };
 
     if (query.startDate || query.endDate) {
-      const verifiedAtFilter: any = {};
+      const createdAtFilter: any = {};
       if (query.startDate) {
         const start = new Date(query.startDate);
         start.setHours(0, 0, 0, 0);
-        verifiedAtFilter.gte = start;
+        createdAtFilter.gte = start;
       }
       if (query.endDate) {
         const end = new Date(query.endDate);
         end.setHours(23, 59, 59, 999);
-        verifiedAtFilter.lte = end;
+        createdAtFilter.lte = end;
       }
-      where.verification = {
-        verifiedAt: verifiedAtFilter,
-      };
+      where.createdAt = createdAtFilter;
     }
 
     if (query.search) {
@@ -188,6 +211,14 @@ export class GateService {
         { opNumber: { contains: query.search, mode: 'insensitive' } },
         { driverName: { contains: query.search, mode: 'insensitive' } },
         { licensePlate: { contains: query.search, mode: 'insensitive' } },
+        {
+          documentReference: {
+            OR: [
+              { documentNumber: { contains: query.search, mode: 'insensitive' } },
+              { origin: { contains: query.search, mode: 'insensitive' } },
+            ],
+          },
+        },
       ];
     }
 
@@ -242,7 +273,9 @@ export class GateService {
       }),
     ]);
 
-    const enrichedItems: any[] = items.map((item) => this.mapOperationUrls(item));
+    const enrichedItems: any[] = items.map((item) =>
+      this.mapOperationUrls(item),
+    );
 
     return {
       total,
@@ -336,8 +369,9 @@ export class GateService {
             _sum: { assignedQuantity: true },
           });
 
+          const erpQty = docItem.productQty || docItem.quantity || 0;
           const totalRealized = aggregate._sum.assignedQuantity || 0;
-          const remainingQty = Math.max(0, docItem.quantity - totalRealized);
+          const remainingQty = Math.max(0, erpQty - totalRealized);
 
           const inventory = await this.prisma.inventory.findUnique({
             where: { id: docItem.inventoryId },
@@ -345,7 +379,7 @@ export class GateService {
           });
 
           let status = 'PENDING';
-          if (totalRealized >= docItem.quantity) {
+          if (totalRealized >= erpQty) {
             status = 'COMPLETED';
           } else if (totalRealized > 0) {
             status = 'PARTIAL';
@@ -356,12 +390,12 @@ export class GateService {
             productName: docItem.productName,
             sku: inventory?.sku || docItem.analyticAccountName || '',
             uom: docItem.uom,
-            erpQty: docItem.quantity,
+            erpQty,
             realizedQty: totalRealized,
             remainingQty,
             status,
           };
-        })
+        }),
       );
 
       documentHistory = {
@@ -411,7 +445,10 @@ export class GateService {
     });
 
     // 3. Merge and deduplicate
-    const historyMap = new Map<string, { licensePlate: string; driverName: string; driverPhone: string }>();
+    const historyMap = new Map<
+      string,
+      { licensePlate: string; driverName: string; driverPhone: string }
+    >();
 
     for (const doc of erpDocs) {
       if (!doc.driver && !doc.plateNumber) continue;
@@ -520,9 +557,10 @@ export class GateService {
           },
         },
       },
-      orderBy: {
-        scheduledDate: 'desc',
-      },
+      orderBy: [
+        { scheduledDate: 'desc' },
+        { id: 'desc' },
+      ],
     });
 
     // Compute remaining quantities and current assigned quantities
@@ -530,24 +568,25 @@ export class GateService {
     for (const doc of documents) {
       for (const item of doc.items) {
         // 1. Sum up assigned quantities for this document item by other verifications (excluding canceled/rejected ones)
-        const otherAssignments = await this.prisma.gateDocumentReference.aggregate({
-          where: {
-            erpDocumentItemId: item.id,
-            gateVerification: {
-              gateOperationId: {
-                not: gateOperation.id,
-              },
-              gateOperation: {
-                status: {
-                  notIn: ['CANCELED', 'REJECTED'],
+        const otherAssignments =
+          await this.prisma.gateDocumentReference.aggregate({
+            where: {
+              erpDocumentItemId: item.id,
+              gateVerification: {
+                gateOperationId: {
+                  not: gateOperation.id,
+                },
+                gateOperation: {
+                  status: {
+                    notIn: ['CANCELED', 'REJECTED'],
+                  },
                 },
               },
             },
-          },
-          _sum: {
-            assignedQuantity: true,
-          },
-        });
+            _sum: {
+              assignedQuantity: true,
+            },
+          });
 
         const usedQty = otherAssignments._sum.assignedQuantity || 0;
         const remainingQty = Math.max(0, item.quantity - usedQty);
@@ -555,13 +594,14 @@ export class GateService {
         // 2. Get current assigned quantity for this item in this gate operation
         let currentAssignedQty = 0;
         if (gateOperation.verification && gateItemId) {
-          const currentAssignment = await this.prisma.gateDocumentReference.findFirst({
-            where: {
-              gateVerificationId: gateOperation.verification.id,
-              gateItemId,
-              erpDocumentItemId: item.id,
-            },
-          });
+          const currentAssignment =
+            await this.prisma.gateDocumentReference.findFirst({
+              where: {
+                gateVerificationId: gateOperation.verification.id,
+                gateItemId,
+                erpDocumentItemId: item.id,
+              },
+            });
           currentAssignedQty = currentAssignment?.assignedQuantity || 0;
         }
 
@@ -600,8 +640,13 @@ export class GateService {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
 
-    if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
-      throw new BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
+      throw new BadRequestException(
+        'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
+      );
     }
 
     // Verify that the gateItemId exists and belongs to this gate operation
@@ -638,7 +683,9 @@ export class GateService {
         });
 
         if (!docItem) {
-          throw new BadRequestException(`Item Dokumen ERP dengan ID ${assign.erpDocumentItemId} tidak ditemukan.`);
+          throw new BadRequestException(
+            `Item Dokumen ERP dengan ID ${assign.erpDocumentItemId} tidak ditemukan.`,
+          );
         }
 
         // Validate inventoryId matching
@@ -693,7 +740,9 @@ export class GateService {
         });
 
         if (!docItem) {
-          throw new BadRequestException(`Item Dokumen ERP dengan ID ${assign.erpDocumentItemId} tidak ditemukan.`);
+          throw new BadRequestException(
+            `Item Dokumen ERP dengan ID ${assign.erpDocumentItemId} tidak ditemukan.`,
+          );
         }
 
         await tx.gateDocumentReference.create({
@@ -710,7 +759,11 @@ export class GateService {
       }
 
       // 5. Update Status and Realisasi quantity for Gate Verification
-      await this.updateGateStatusAndRealisasi(tx, gateOperation.id, verification.id);
+      await this.updateGateStatusAndRealisasi(
+        tx,
+        gateOperation.id,
+        verification.id,
+      );
 
       // Return the updated verification details
       const result = await tx.gateVerification.findUnique({
@@ -732,7 +785,11 @@ export class GateService {
   /**
    * Unassign an ERP PO/SO item reference from a gate cargo item.
    */
-  async unassignReference(referenceUuid: string, userId: number, userName: string) {
+  async unassignReference(
+    referenceUuid: string,
+    userId: number,
+    userName: string,
+  ) {
     const docRef = await this.prisma.gateDocumentReference.findUnique({
       where: { uuid: referenceUuid },
       include: {
@@ -750,8 +807,13 @@ export class GateService {
     }
 
     const gateOperation = docRef.gateVerification.gateOperation;
-    if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
-      throw new BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
+      throw new BadRequestException(
+        'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
+      );
     }
 
     const gateOperationId = docRef.gateVerification.gateOperationId;
@@ -765,7 +827,11 @@ export class GateService {
       });
 
       // Recalculate status and realisasi quantity
-      await this.updateGateStatusAndRealisasi(tx, gateOperationId, verificationId);
+      await this.updateGateStatusAndRealisasi(
+        tx,
+        gateOperationId,
+        verificationId,
+      );
     });
 
     return {
@@ -799,7 +865,10 @@ export class GateService {
     });
 
     // 2. Sum up gate operation products total quantity
-    const totalGateQty = operationProducts.reduce((sum: number, p: any) => sum + p.quantity, 0);
+    const totalGateQty = operationProducts.reduce(
+      (sum: number, p: any) => sum + p.quantity,
+      0,
+    );
 
     // 3. Get all references assigned for this verification
     const references = await tx.gateDocumentReference.findMany({
@@ -808,7 +877,10 @@ export class GateService {
     });
 
     // 4. Sum up total assigned quantity
-    const totalAssignedQty = references.reduce((sum: number, r: any) => sum + r.assignedQuantity, 0);
+    const totalAssignedQty = references.reduce(
+      (sum: number, r: any) => sum + r.assignedQuantity,
+      0,
+    );
 
     // 5. Determine new status
     let newStatus: VerificationStatus = 'PENDING';
@@ -821,7 +893,9 @@ export class GateService {
     }
 
     // Update list of unique PO/SO numbers
-    const docNumbers = Array.from(new Set(references.map((r: any) => r.erpDocument.documentNumber)));
+    const docNumbers = Array.from(
+      new Set(references.map((r: any) => r.erpDocument.documentNumber)),
+    );
 
     const prevVerification = await tx.gateVerification.findUnique({
       where: { id: verificationId },
@@ -863,11 +937,16 @@ export class GateService {
     const productAssignedTotals = new Map<number, number>();
     for (const ref of references) {
       const current = productAssignedTotals.get(ref.inventoryId) || 0;
-      productAssignedTotals.set(ref.inventoryId, current + ref.assignedQuantity);
+      productAssignedTotals.set(
+        ref.inventoryId,
+        current + ref.assignedQuantity,
+      );
     }
 
     for (const [inventoryId, quantity] of productAssignedTotals.entries()) {
-      const existingMatch = existingProds.find((p: any) => p.inventoryId === inventoryId);
+      const existingMatch = existingProds.find(
+        (p: any) => p.inventoryId === inventoryId,
+      );
       await tx.gateVerificationProduct.create({
         data: {
           gateVerificationId: verificationId,
@@ -883,7 +962,11 @@ export class GateService {
   /**
    * Verify/Audit a gate operation.
    */
-  async verifyGateOperation(uuid: string, verifiedById: number, body: CreateGateVerificationInput) {
+  async verifyGateOperation(
+    uuid: string,
+    verifiedById: number,
+    body: CreateGateVerificationInput,
+  ) {
     const gateOperation = await this.prisma.gateOperation.findUnique({
       where: { uuid },
       include: { verification: true },
@@ -893,8 +976,13 @@ export class GateService {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
 
-    if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
-      throw new BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
+      throw new BadRequestException(
+        'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -903,13 +991,18 @@ export class GateService {
 
       // Handle Document Reference Update if provided
       const newDocRefId = (body as any).documentReferenceId;
-      if (newDocRefId !== undefined && newDocRefId !== gateOperation.documentReferenceId) {
+      if (
+        newDocRefId !== undefined &&
+        newDocRefId !== gateOperation.documentReferenceId
+      ) {
         if (newDocRefId) {
           // 1. Ensure Gate Operation items match the new ERP document items
           const docItems = await tx.documentReferenceItem.findMany({
             where: { documentReferenceId: newDocRefId },
           });
-          const docInventoryIds = new Set(docItems.map((item: any) => item.inventoryId));
+          const docInventoryIds = new Set(
+            docItems.map((item: any) => item.inventoryId),
+          );
 
           const gateProducts = await tx.gateOperationProduct.findMany({
             where: { gateOperationId: gateOperation.id },
@@ -917,7 +1010,9 @@ export class GateService {
 
           for (const gp of gateProducts) {
             if (!docInventoryIds.has(gp.inventoryId)) {
-              const product = await tx.inventory.findUnique({ where: { id: gp.inventoryId } });
+              const product = await tx.inventory.findUnique({
+                where: { id: gp.inventoryId },
+              });
               throw new BadRequestException(
                 `Produk ${product?.name || gp.inventoryId} tidak terdaftar pada dokumen referensi ERP yang baru dipilih.`,
               );
@@ -926,32 +1021,37 @@ export class GateService {
 
           // 2. Ensure total realized qty per item does not exceed ERP productQty
           for (const gp of gateProducts) {
-            const docItem = docItems.find((item: any) => item.inventoryId === gp.inventoryId);
+            const docItem = docItems.find(
+              (item: any) => item.inventoryId === gp.inventoryId,
+            );
             if (docItem) {
-              const otherAssignments = await tx.gateDocumentReference.aggregate({
-                where: {
-                  erpDocumentItemId: docItem.id,
-                  gateVerification: {
-                    gateOperationId: { not: gateOperation.id },
-                    gateOperation: {
-                      status: { notIn: ['CANCELED', 'REJECTED'] },
+              const otherAssignments = await tx.gateDocumentReference.aggregate(
+                {
+                  where: {
+                    erpDocumentItemId: docItem.id,
+                    gateVerification: {
+                      gateOperationId: { not: gateOperation.id },
+                      gateOperation: {
+                        status: { notIn: ['CANCELED', 'REJECTED'] },
+                      },
                     },
                   },
+                  _sum: { assignedQuantity: true },
                 },
-                _sum: { assignedQuantity: true },
-              });
+              );
               const otherUsed = otherAssignments._sum.assignedQuantity || 0;
 
               const currentUsed = 0; // we don't have new verification record ID yet, or if verification exists we check existing references
               let currentAssigned = 0;
               if (verification) {
-                const currentAssignment = await tx.gateDocumentReference.aggregate({
-                  where: {
-                    gateVerificationId: verification.id,
-                    inventoryId: gp.inventoryId,
-                  },
-                  _sum: { assignedQuantity: true },
-                });
+                const currentAssignment =
+                  await tx.gateDocumentReference.aggregate({
+                    where: {
+                      gateVerificationId: verification.id,
+                      inventoryId: gp.inventoryId,
+                    },
+                    _sum: { assignedQuantity: true },
+                  });
                 currentAssigned = currentAssignment._sum.assignedQuantity || 0;
               }
 
@@ -1007,7 +1107,11 @@ export class GateService {
       }
 
       // Recalculate status and references list based on current references table
-      await this.updateGateStatusAndRealisasi(tx, gateOperation.id, verification.id);
+      await this.updateGateStatusAndRealisasi(
+        tx,
+        gateOperation.id,
+        verification.id,
+      );
 
       // Save verification products details with quantId/locationId
       if (body.products && body.products.length > 0) {
@@ -1019,6 +1123,7 @@ export class GateService {
             prod.quantity,
             prod.quantId,
             prod.locationId,
+            gateOperation.id,
           );
         }
 
@@ -1096,7 +1201,9 @@ export class GateService {
           data: {
             verifiedById,
             status: 'CANCELED',
-            notes: verification.notes ? `${verification.notes} (Dibatalkan)` : 'Dibatalkan',
+            notes: verification.notes
+              ? `${verification.notes} (Dibatalkan)`
+              : 'Dibatalkan',
           },
         });
       }
@@ -1111,10 +1218,19 @@ export class GateService {
       });
 
       // Release Reservations
-      if (prevStatus !== 'CANCELED' && prevStatus !== 'COMPLETED' && prevStatus !== 'VERIFIED') {
+      if (
+        prevStatus !== 'CANCELED' &&
+        prevStatus !== 'COMPLETED' &&
+        prevStatus !== 'VERIFIED'
+      ) {
         for (const p of gateOperation.products) {
           if (p.quantId) {
-            await this.releaseQuantStock(tx, gateOperation.cardType, p.quantId, p.quantity);
+            await this.releaseQuantStock(
+              tx,
+              gateOperation.cardType,
+              p.quantId,
+              p.quantity,
+            );
           }
         }
       }
@@ -1153,7 +1269,9 @@ export class GateService {
     }
 
     if (gateOperation.status === 'VERIFIED') {
-      throw new BadRequestException('Operasi gerbang sudah dalam status VERIFIED.');
+      throw new BadRequestException(
+        'Operasi gerbang sudah dalam status VERIFIED.',
+      );
     }
 
     if (gateOperation.status === 'CANCELED') {
@@ -1179,7 +1297,9 @@ export class GateService {
           data: {
             verifiedById,
             status: 'VERIFIED',
-            notes: verification.notes ? `${verification.notes} (Diverifikasi)` : 'Diverifikasi',
+            notes: verification.notes
+              ? `${verification.notes} (Diverifikasi)`
+              : 'Diverifikasi',
             verifiedAt: new Date(),
           },
         });
@@ -1234,11 +1354,16 @@ export class GateService {
     }
 
     if (mapped.verification) {
-      if (mapped.verification.attachments && Array.isArray(mapped.verification.attachments)) {
-        mapped.verification.attachments = mapped.verification.attachments.map((attach: any) => ({
-          ...attach,
-          url: this.storageService.getFilePublicUrl(attach.filePath),
-        }));
+      if (
+        mapped.verification.attachments &&
+        Array.isArray(mapped.verification.attachments)
+      ) {
+        mapped.verification.attachments = mapped.verification.attachments.map(
+          (attach: any) => ({
+            ...attach,
+            url: this.storageService.getFilePublicUrl(attach.filePath),
+          }),
+        );
       }
     }
 
@@ -1249,25 +1374,30 @@ export class GateService {
     if (obj === null || obj === undefined) return obj;
     if (obj instanceof Date) return obj;
     if (Array.isArray(obj)) {
-      return obj.map(item => this.stripIdField(item));
+      return obj.map((item) => this.stripIdField(item));
     }
     if (typeof obj === 'object') {
       // Retain 'id' for Inventory, GateOperationProduct, and GateVerificationProduct because they are needed as references in the frontend/API
       const isProduct = 'sku' in obj && 'name' in obj;
       const isGateOpProduct = 'gateOperationId' in obj && 'inventoryId' in obj;
-      const isGateVerificationProduct = 'gateVerificationId' in obj && 'inventoryId' in obj;
+      const isGateVerificationProduct =
+        'gateVerificationId' in obj && 'inventoryId' in obj;
 
       const newObj: any = {};
       for (const key of Object.keys(obj)) {
-        if (key === 'id' && !isProduct && !isGateOpProduct && !isGateVerificationProduct) continue;
+        if (
+          key === 'id' &&
+          !isProduct &&
+          !isGateOpProduct &&
+          !isGateVerificationProduct
+        )
+          continue;
         newObj[key] = this.stripIdField(obj[key]);
       }
       return newObj;
     }
     return obj;
   }
-
-
 
   private async validateDocumentReferenceLimits(
     tx: any,
@@ -1308,7 +1438,7 @@ export class GateService {
 
       if (prod.quantity > remainingQty) {
         throw new BadRequestException(
-          `Kuantitas barang (${prod.quantity} ${docItem.uom}) melebihi sisa kuantitas pada dokumen ERP untuk ${docItem.productName} (Sisa: ${remainingQty} ${docItem.uom}).`
+          `Kuantitas barang (${prod.quantity} ${docItem.uom}) melebihi sisa kuantitas pada dokumen ERP untuk ${docItem.productName} (Sisa: ${remainingQty} ${docItem.uom}).`,
         );
       }
     }
@@ -1316,7 +1446,13 @@ export class GateService {
 
   async addCargoItem(
     operationUuid: string,
-    body: { productId: number; quantity: number; notes?: string; quantId?: number | null; locationId?: number | null },
+    body: {
+      productId: number;
+      quantity: number;
+      notes?: string;
+      quantId?: number | null;
+      locationId?: number | null;
+    },
   ) {
     const { productId, quantity, notes, quantId, locationId } = body;
     if (quantity <= 0) {
@@ -1334,8 +1470,13 @@ export class GateService {
         throw new NotFoundException('Gate operation tidak ditemukan');
       }
 
-      if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
-        throw new BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
+      if (
+        gateOperation.status === 'VERIFIED' ||
+        gateOperation.status === 'CANCELED'
+      ) {
+        throw new BadRequestException(
+          'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
+        );
       }
 
       // Check if product exists in Inventory
@@ -1366,7 +1507,9 @@ export class GateService {
         },
       });
       if (existing) {
-        throw new BadRequestException('Barang muatan dengan tumpukan/lokasi ini sudah terdaftar.');
+        throw new BadRequestException(
+          'Barang muatan dengan tumpukan/lokasi ini sudah terdaftar.',
+        );
       }
 
       // Create GateOperationProduct
@@ -1387,12 +1530,21 @@ export class GateService {
       });
 
       if (quantId) {
-        await this.reserveQuantStock(tx, gateOperation.cardType, quantId, quantity);
+        await this.reserveQuantStock(
+          tx,
+          gateOperation.cardType,
+          quantId,
+          quantity,
+        );
       }
 
       // If verification exists, update verification status/totals
       if (gateOperation.verification) {
-        await this.updateGateStatusAndRealisasi(tx, gateOperation.id, gateOperation.verification.id);
+        await this.updateGateStatusAndRealisasi(
+          tx,
+          gateOperation.id,
+          gateOperation.verification.id,
+        );
       }
 
       return this.stripIdField(cargoItem);
@@ -1417,8 +1569,13 @@ export class GateService {
       }
 
       const gateOperation = cargoItem.gateOperation;
-      if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
-        throw new BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
+      if (
+        gateOperation.status === 'VERIFIED' ||
+        gateOperation.status === 'CANCELED'
+      ) {
+        throw new BadRequestException(
+          'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
+        );
       }
 
       // Delete the cargo item (associated references are deleted via cascade)
@@ -1427,12 +1584,21 @@ export class GateService {
       });
 
       if (cargoItem.quantId) {
-        await this.releaseQuantStock(tx, gateOperation.cardType, cargoItem.quantId, cargoItem.quantity);
+        await this.releaseQuantStock(
+          tx,
+          gateOperation.cardType,
+          cargoItem.quantId,
+          cargoItem.quantity,
+        );
       }
 
       // If verification exists, update verification status/totals
       if (gateOperation.verification) {
-        await this.updateGateStatusAndRealisasi(tx, gateOperation.id, gateOperation.verification.id);
+        await this.updateGateStatusAndRealisasi(
+          tx,
+          gateOperation.id,
+          gateOperation.verification.id,
+        );
       }
 
       return {
@@ -1445,7 +1611,11 @@ export class GateService {
 
   async updateCargoItem(
     cargoItemUuid: string,
-    body: { quantId?: number | null; locationId?: number | null; quantity?: number },
+    body: {
+      quantId?: number | null;
+      locationId?: number | null;
+      quantity?: number;
+    },
   ) {
     const { quantId, locationId, quantity } = body;
 
@@ -1466,11 +1636,17 @@ export class GateService {
       }
 
       const gateOperation = cargoItem.gateOperation;
-      if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
-        throw new BadRequestException('Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.');
+      if (
+        gateOperation.status === 'VERIFIED' ||
+        gateOperation.status === 'CANCELED'
+      ) {
+        throw new BadRequestException(
+          'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
+        );
       }
 
-      const targetQuantity = quantity !== undefined ? quantity : cargoItem.quantity;
+      const targetQuantity =
+        quantity !== undefined ? quantity : cargoItem.quantity;
 
       if (targetQuantity <= 0) {
         throw new BadRequestException('Quantity harus lebih besar dari 0');
@@ -1478,7 +1654,12 @@ export class GateService {
 
       // 1. Release previous stock reservation if there was one
       if (cargoItem.quantId) {
-        await this.releaseQuantStock(tx, gateOperation.cardType, cargoItem.quantId, cargoItem.quantity);
+        await this.releaseQuantStock(
+          tx,
+          gateOperation.cardType,
+          cargoItem.quantId,
+          cargoItem.quantity,
+        );
       }
 
       // 2. Validate stack/quant quantity limits for new location/quant and quantity
@@ -1489,6 +1670,7 @@ export class GateService {
         targetQuantity,
         quantId,
         locationId,
+        gateOperation.id,
       );
 
       // 3. Update the cargo item
@@ -1508,12 +1690,21 @@ export class GateService {
 
       // 4. Reserve new stock
       if (quantId) {
-        await this.reserveQuantStock(tx, gateOperation.cardType, quantId, targetQuantity);
+        await this.reserveQuantStock(
+          tx,
+          gateOperation.cardType,
+          quantId,
+          targetQuantity,
+        );
       }
 
       // 5. If verification exists, update verification status/totals
       if (gateOperation.verification) {
-        await this.updateGateStatusAndRealisasi(tx, gateOperation.id, gateOperation.verification.id);
+        await this.updateGateStatusAndRealisasi(
+          tx,
+          gateOperation.id,
+          gateOperation.verification.id,
+        );
       }
 
       return this.stripIdField(updated);
@@ -1527,6 +1718,7 @@ export class GateService {
     quantity: number,
     quantId?: number | null,
     locationId?: number | null,
+    gateOperationId?: number,
   ) {
     if (quantId) {
       const quant = await tx.quant.findUnique({
@@ -1536,27 +1728,52 @@ export class GateService {
         throw new BadRequestException('Tumpukan/stack tidak ditemukan.');
       }
       if (quant.inventoryId !== productId) {
-        throw new BadRequestException('Produk tidak cocok dengan tumpukan yang dipilih.');
-      }
-      if (cardType === 'OUT' && quantity > quant.availableQuantity) {
         throw new BadRequestException(
-          `Kuantitas (${quantity}) melebihi kuantitas tersedia di tumpukan (tersedia: ${quant.availableQuantity}).`
+          'Produk tidak cocok dengan tumpukan yang dipilih.',
         );
       }
+      if (cardType === 'OUT') {
+        let reservedByThisOp = 0;
+        if (gateOperationId) {
+          const existingProduct = await tx.gateOperationProduct.findFirst({
+            where: {
+              gateOperationId,
+              quantId,
+              inventoryId: productId,
+            },
+          });
+          reservedByThisOp = existingProduct ? existingProduct.quantity : 0;
+        }
+        const totalAvailable = quant.availableQuantity + reservedByThisOp;
+        if (quantity > totalAvailable) {
+          throw new BadRequestException(
+            `Kuantitas (${quantity}) melebihi kuantitas tersedia di tumpukan (tersedia: ${totalAvailable}).`,
+          );
+        }
+      }
       if (locationId && quant.locationId !== locationId) {
-        throw new BadRequestException('Lokasi tidak cocok dengan tumpukan yang dipilih.');
+        throw new BadRequestException(
+          'Lokasi tidak cocok dengan tumpukan yang dipilih.',
+        );
       }
     }
   }
 
-  private async reserveQuantStock(tx: any, cardType: CardType, quantId: number, qty: number) {
+  private async reserveQuantStock(
+    tx: any,
+    cardType: CardType,
+    quantId: number,
+    qty: number,
+  ) {
     if (cardType !== 'OUT') return;
 
     const quant = await tx.quant.findUnique({
       where: { id: quantId },
     });
     if (!quant) {
-      throw new NotFoundException(`Tumpukan dengan ID ${quantId} tidak ditemukan.`);
+      throw new NotFoundException(
+        `Tumpukan dengan ID ${quantId} tidak ditemukan.`,
+      );
     }
 
     const newReserved = quant.reservedQuantity + qty;
@@ -1564,7 +1781,7 @@ export class GateService {
 
     if (newAvailable < 0) {
       throw new BadRequestException(
-        `Kuantitas tidak mencukupi untuk dialokasikan. (Tersedia: ${quant.availableQuantity}, Dibutuhkan: ${qty})`
+        `Kuantitas tidak mencukupi untuk dialokasikan. (Tersedia: ${quant.availableQuantity}, Dibutuhkan: ${qty})`,
       );
     }
 
@@ -1577,7 +1794,12 @@ export class GateService {
     });
   }
 
-  private async releaseQuantStock(tx: any, cardType: CardType, quantId: number, qty: number) {
+  private async releaseQuantStock(
+    tx: any,
+    cardType: CardType,
+    quantId: number,
+    qty: number,
+  ) {
     if (cardType !== 'OUT') return;
 
     const quant = await tx.quant.findUnique({
@@ -1597,7 +1819,10 @@ export class GateService {
     });
   }
 
-  private async processStockReductionOnCompletion(tx: any, gateOperationId: number) {
+  private async processStockReductionOnCompletion(
+    tx: any,
+    gateOperationId: number,
+  ) {
     const gateOperation = await tx.gateOperation.findUnique({
       where: { id: gateOperationId },
       include: {
@@ -1659,6 +1884,17 @@ export class GateService {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
 
+    const appDomain = this.configService.get<string>('APP_DOMAIN') || 'localhost:3001';
+    const useSSL = this.configService.get<string>('FRONTEND_USE_SSL') === 'true';
+    const protocol = useSSL ? 'https' : 'http';
+    const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
+
+    const qrCodeBuffer = await QRCode.toBuffer(verificationUrl, {
+      type: 'png',
+      width: 150,
+      margin: 1,
+    });
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const buffers: Buffer[] = [];
@@ -1670,39 +1906,92 @@ export class GateService {
       // Draw Top Header
       // Logo (Left)
       doc.rect(40, 40, 50, 40).fill('#1e3a8a');
-      doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold').text('BULOG', 45, 48);
+      doc
+        .fillColor('#ffffff')
+        .fontSize(11)
+        .font('Helvetica-Bold')
+        .text('BULOG', 45, 48);
       doc.fontSize(8).text('WMS', 54, 62);
 
       // Header Text (Center)
-      doc.fillColor('#1e293b').fontSize(14).font('Helvetica-Bold').text('SURAT PENGANTAR / SURAT JALAN', 110, 50, { align: 'center', width: 380 });
+      doc
+        .fillColor('#1e293b')
+        .fontSize(14)
+        .font('Helvetica-Bold')
+        .text('SURAT PENGANTAR / SURAT JALAN', 110, 50, {
+          align: 'center',
+          width: 380,
+        });
+
+      // QR Code (Right)
+      doc.image(qrCodeBuffer, 505, 40, { width: 50, height: 50 });
+
       doc.moveTo(40, 95).lineTo(555, 95).lineWidth(1.5).stroke('#1e3a8a');
 
       // General Info Section
       doc.fillColor('#334155').fontSize(9).font('Helvetica');
       let currentY = 115;
-      
-      const drawInfoRow = (label1: string, val1: string, label2: string, val2: string) => {
-        doc.font('Helvetica-Bold').fillColor('#64748b').text(label1, 40, currentY, { width: 120 });
-        doc.font('Helvetica').fillColor('#1e293b').text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
 
-        doc.font('Helvetica-Bold').fillColor('#64748b').text(label2, 320, currentY, { width: 110 });
-        doc.font('Helvetica').fillColor('#1e293b').text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
+      const drawInfoRow = (
+        label1: string,
+        val1: string,
+        label2: string,
+        val2: string,
+      ) => {
+        doc
+          .font('Helvetica-Bold')
+          .fillColor('#64748b')
+          .text(label1, 40, currentY, { width: 120 });
+        doc
+          .font('Helvetica')
+          .fillColor('#1e293b')
+          .text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
+
+        doc
+          .font('Helvetica-Bold')
+          .fillColor('#64748b')
+          .text(label2, 320, currentY, { width: 110 });
+        doc
+          .font('Helvetica')
+          .fillColor('#1e293b')
+          .text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
 
         currentY += 18;
       };
 
-      const dateStr = new Date(gateOperation.createdAt).toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
+      const dateStr = new Date(gateOperation.createdAt).toLocaleDateString(
+        'id-ID',
+        {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        },
+      );
 
-      drawInfoRow('No Tiket', gateOperation.opNumber, 'Tujuan / Partner', gateOperation.clientPartner || gateOperation.documentReference?.partnerName || '-');
+      drawInfoRow(
+        'No Tiket',
+        gateOperation.opNumber,
+        'Tujuan / Partner',
+        gateOperation.clientPartner ||
+          gateOperation.documentReference?.partnerName ||
+          '-',
+      );
       drawInfoRow('Tanggal', dateStr, 'Nama Driver', gateOperation.driverName);
-      drawInfoRow('No. Dokumen Ref', gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber || '-', 'Nomor Plat', gateOperation.licensePlate);
+      drawInfoRow(
+        'No. Dokumen Ref',
+        gateOperation.documentReference?.origin ||
+          gateOperation.documentReference?.documentNumber ||
+          '-',
+        'Nomor Plat',
+        gateOperation.licensePlate,
+      );
       drawInfoRow('No. Telp Driver', gateOperation.driverPhone || '-', '', '');
 
-      doc.moveTo(40, currentY + 5).lineTo(555, currentY + 5).lineWidth(0.5).stroke('#cbd5e1');
+      doc
+        .moveTo(40, currentY + 5)
+        .lineTo(555, currentY + 5)
+        .lineWidth(0.5)
+        .stroke('#cbd5e1');
       currentY += 15;
 
       // Table Header
@@ -1713,15 +2002,14 @@ export class GateService {
       doc.text('SKU', 220, currentY + 6, { width: 65 });
       doc.text('UOM', 290, currentY + 6, { width: 35 });
       doc.text('Jumlah', 330, currentY + 6, { width: 45, align: 'right' });
-      doc.text('Location', 380, currentY + 6, { width: 70 });
-      doc.text('Tumpukan / Lot', 455, currentY + 6, { width: 95 });
+      doc.text('Location', 380, currentY + 6, { width: 175 });
 
       currentY += 20;
 
       // Table Rows
       let totalQty = 0;
       const products = gateOperation.products || [];
-      
+
       products.forEach((p: any, idx: number) => {
         if (currentY + 25 > 720) {
           doc.addPage();
@@ -1729,20 +2017,38 @@ export class GateService {
         }
 
         const locationName = p.location?.displayName || '-';
-        const lotName = p.quant?.lotName || p.lotName || '-';
 
         doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica');
         doc.text(String(idx + 1), 45, currentY + 6, { width: 20 });
-        doc.font('Helvetica-Bold').text(p.inventory?.name || '-', 70, currentY + 6, { width: 145, ellipsis: true });
-        doc.font('Helvetica').text(p.inventory?.sku || '-', 220, currentY + 6, { width: 65, ellipsis: true });
+        doc
+          .font('Helvetica-Bold')
+          .text(p.inventory?.name || '-', 70, currentY + 6, {
+            width: 145,
+            ellipsis: true,
+          });
+        doc
+          .font('Helvetica')
+          .text(p.inventory?.sku || '-', 220, currentY + 6, {
+            width: 65,
+            ellipsis: true,
+          });
         doc.text(p.inventory?.uom || '-', 290, currentY + 6, { width: 35 });
-        doc.text(p.quantity.toLocaleString('id-ID'), 330, currentY + 6, { width: 45, align: 'right' });
-        doc.text(locationName, 380, currentY + 6, { width: 70, ellipsis: true });
-        doc.text(lotName, 455, currentY + 6, { width: 95, ellipsis: true });
+        doc.text(p.quantity.toLocaleString('id-ID'), 330, currentY + 6, {
+          width: 45,
+          align: 'right',
+        });
+        doc.text(locationName, 380, currentY + 6, {
+          width: 175,
+          ellipsis: true,
+        });
 
         totalQty += p.quantity;
-        
-        doc.moveTo(40, currentY + 18).lineTo(555, currentY + 18).lineWidth(0.3).stroke('#e2e8f0');
+
+        doc
+          .moveTo(40, currentY + 18)
+          .lineTo(555, currentY + 18)
+          .lineWidth(0.3)
+          .stroke('#e2e8f0');
         currentY += 18;
       });
 
@@ -1756,16 +2062,48 @@ export class GateService {
       doc.text('Total Quantity', 330, currentY + 22);
       doc.text(`:  ${totalQty.toLocaleString('id-ID')}`, 430, currentY + 22);
 
-      currentY += 60;
+      // Warning Note Section
+      currentY += 55;
+      if (currentY + 20 > 750) {
+        doc.addPage();
+        currentY = 50;
+      }
+      doc
+        .fillColor('#ef4444')
+        .fontSize(8)
+        .font('Helvetica-Oblique')
+        .text(
+          'Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.',
+          40,
+          currentY,
+          { width: 515, align: 'center' }
+        );
+
+      currentY += 25;
 
       // Signatures
+      if (currentY + 60 > 750) {
+        doc.addPage();
+        currentY = 50;
+      }
       doc.fillColor('#1e293b').fontSize(9).font('Helvetica');
-      doc.text('Pengangkut / Driver', 70, currentY, { width: 150, align: 'center' });
+      doc.text('Pengangkut / Driver', 70, currentY, {
+        width: 150,
+        align: 'center',
+      });
       doc.text('Kepala Gudang', 375, currentY, { width: 150, align: 'center' });
 
       currentY += 50;
-      doc.font('Helvetica-Bold').text(`(  ${gateOperation.driverName}  )`, 70, currentY, { width: 150, align: 'center' });
-      doc.text('(  ........................  )', 375, currentY, { width: 150, align: 'center' });
+      doc
+        .font('Helvetica-Bold')
+        .text(`(  ${gateOperation.driverName}  )`, 70, currentY, {
+          width: 150,
+          align: 'center',
+        });
+      doc.text('(  ........................  )', 375, currentY, {
+        width: 150,
+        align: 'center',
+      });
 
       doc.end();
     });
@@ -1796,20 +2134,30 @@ export class GateService {
     if (!gateOperation) {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
-    
-    const dateStr = new Date(gateOperation.createdAt).toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+
+    const appDomain = this.configService.get<string>('APP_DOMAIN') || 'localhost:3001';
+    const useSSL = this.configService.get<string>('FRONTEND_USE_SSL') === 'true';
+    const protocol = useSSL ? 'https' : 'http';
+    const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
+
+    const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl);
+
+    const dateStr = new Date(gateOperation.createdAt).toLocaleDateString(
+      'id-ID',
+      {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      },
+    );
 
     const products = gateOperation.products || [];
     const totalQty = products.reduce((sum, p) => sum + p.quantity, 0);
 
-    const rowsHtml = products.map((p, idx) => {
-      const locationName = p.location?.displayName || '-';
-      const lotName = p.quant?.lotName || (p as any).lotName || '-';
-      return `
+    const rowsHtml = products
+      .map((p, idx) => {
+        const locationName = p.location?.displayName || '-';
+        return `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">${p.inventory?.name || '-'}</td>
@@ -1817,10 +2165,10 @@ export class GateService {
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${p.inventory?.uom || '-'}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${p.quantity.toLocaleString('id-ID')}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${locationName}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${lotName}</td>
         </tr>
       `;
-    }).join('');
+      })
+      .join('');
 
     return `
       <!DOCTYPE html>
@@ -1879,7 +2227,10 @@ export class GateService {
             color: #1e293b;
             text-align: center;
             flex-grow: 1;
-            margin-right: 80px;
+          }
+          .qr-box {
+            text-align: right;
+            width: 80px;
           }
           .info-grid {
             display: grid;
@@ -1982,6 +2333,9 @@ export class GateService {
               <span class="logo-sub">WMS</span>
             </div>
             <div class="title">SURAT PENGANTAR / SURAT JALAN</div>
+            <div class="qr-box">
+              <img src="${qrCodeDataUrl}" style="width: 55px; height: 55px; display: inline-block;" alt="Verification QR" />
+            </div>
           </div>
           
           <div class="info-grid">
@@ -2028,11 +2382,10 @@ export class GateService {
               <tr>
                 <th style="width: 30px; text-align: center;">No</th>
                 <th>Nama Produk</th>
-                <th style="width: 80px;">SKU</th>
-                <th style="width: 50px; text-align: center;">UOM</th>
-                <th style="width: 80px; text-align: right;">Jumlah Muatan</th>
-                <th style="width: 100px;">Location</th>
-                <th style="width: 120px;">Tumpukan / Lot</th>
+                <th style="width: 100px;">SKU</th>
+                <th style="width: 60px; text-align: center;">UOM</th>
+                <th style="width: 100px; text-align: right;">Jumlah Muatan</th>
+                <th style="width: 180px;">Location</th>
               </tr>
             </thead>
             <tbody>
@@ -2049,6 +2402,10 @@ export class GateService {
               <div class="summary-label">Total Quantity</div>
               <div class="summary-value">${totalQty.toLocaleString('id-ID')}</div>
             </div>
+          </div>
+
+          <div style="margin-top: 20px; margin-bottom: 20px; font-style: italic; color: #ef4444; font-size: 10px; text-align: center; border: 1px dashed #fca5a5; padding: 8px; border-radius: 4px; background-color: #fef2f2;">
+            Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.
           </div>
 
           <div class="signatures">

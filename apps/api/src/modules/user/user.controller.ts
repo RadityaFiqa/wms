@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, UseInterceptors, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  UseInterceptors,
+  Req,
+} from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
@@ -36,7 +47,10 @@ export class UserController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.userService.findAll({ search, roleId, isActive, page, limit }, req.user);
+    return this.userService.findAll(
+      { search, roleId, isActive, page, limit },
+      req.user,
+    );
   }
 
   @Get(':uuid')

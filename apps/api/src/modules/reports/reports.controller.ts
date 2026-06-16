@@ -1,4 +1,12 @@
-import { Controller, Get, Query, Res, UseGuards, UseInterceptors, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Res,
+  UseGuards,
+  UseInterceptors,
+  BadRequestException,
+} from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
@@ -25,7 +33,9 @@ export class ReportsController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getDailyStockMovementReport(warehouseId, {
       startDate,
@@ -42,7 +52,9 @@ export class ReportsController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getDailyStockMovementDetail(warehouseId, {
       date,
@@ -60,7 +72,9 @@ export class ReportsController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const pdfBuffer = await this.service.generatePdfReport(warehouseId, {
@@ -88,7 +102,9 @@ export class ReportsController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const csvContent = await this.service.generateCsvReport(warehouseId, {

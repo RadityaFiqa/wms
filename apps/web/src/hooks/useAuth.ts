@@ -1,17 +1,21 @@
-import { useCallback } from 'react';
-import { api } from '@/lib/axios';
-import { API_ROUTES } from '@/lib/api-routes';
-import { useAuthStore } from '@/store/auth';
+import { useCallback } from "react";
+import { api } from "@/lib/axios";
+import { API_ROUTES } from "@/lib/api-routes";
+import { useAuthStore } from "@/store/auth";
 
 export function useAuth() {
-  const { user, token, activeWarehouse, logout, setAuth, setActiveWarehouse } = useAuthStore();
+  const { user, token, activeWarehouse, logout, setAuth, setActiveWarehouse } =
+    useAuthStore();
 
-  const handleLogin = useCallback(async (data: any) => {
-    const res = await api.post(API_ROUTES.auth.login, data);
-    const { user: userPayload, accessToken } = res.data;
-    setAuth(userPayload, accessToken);
-    return res.data;
-  }, [setAuth]);
+  const handleLogin = useCallback(
+    async (data: any) => {
+      const res = await api.post(API_ROUTES.auth.login, data);
+      const { user: userPayload, accessToken } = res.data;
+      setAuth(userPayload, accessToken);
+      return res.data;
+    },
+    [setAuth],
+  );
 
   const handleLogout = useCallback(async () => {
     try {

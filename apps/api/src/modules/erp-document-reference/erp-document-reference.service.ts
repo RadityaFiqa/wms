@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { OdooClient } from '../odoo/odoo-client';
 import { OdooSessionManager } from '../odoo/odoo-session.manager';
@@ -45,8 +50,13 @@ export class ErpDocumentReferenceService {
    * Trigger the ERP Document Sync directly (no BullMQ queue).
    * Runs in the background without locking.
    */
-  async triggerSync(warehouseId: number, createdBy: string): Promise<{ message: string }> {
-    this.logger.log(`[SYNC-TRIGGER] Warehouse ${warehouseId} — triggered by ${createdBy}`);
+  async triggerSync(
+    warehouseId: number,
+    createdBy: string,
+  ): Promise<{ message: string }> {
+    this.logger.log(
+      `[SYNC-TRIGGER] Warehouse ${warehouseId} — triggered by ${createdBy}`,
+    );
 
     // 1. Create the sync log entry in DB
     const log = await this.prisma.odooSyncLog.create({
@@ -61,10 +71,15 @@ export class ErpDocumentReferenceService {
     // 2. Fire-and-forget: run the sync in the background (no await)
     this.executeSyncJob(warehouseId, log.id, createdBy)
       .then((result) => {
-        this.logger.log(`[SYNC-COMPLETE] Warehouse ${warehouseId}, log ${log.id} — synced ${result.syncedCount} documents`);
+        this.logger.log(
+          `[SYNC-COMPLETE] Warehouse ${warehouseId}, log ${log.id} — synced ${result.syncedCount} documents`,
+        );
       })
       .catch((err) => {
-        this.logger.error(`[SYNC-FAILED] Warehouse ${warehouseId}, log ${log.id} — ${err.message}`, err.stack);
+        this.logger.error(
+          `[SYNC-FAILED] Warehouse ${warehouseId}, log ${log.id} — ${err.message}`,
+          err.stack,
+        );
       });
 
     return { message: 'Sync started' };
@@ -112,7 +127,9 @@ export class ErpDocumentReferenceService {
     logId: number,
     triggeredBy: string,
   ): Promise<{ success: boolean; syncedCount: number }> {
-    this.logger.log(`[SYNC-JOB] Starting sync for warehouse ${warehouseId}, log ${logId}`);
+    this.logger.log(
+      `[SYNC-JOB] Starting sync for warehouse ${warehouseId}, log ${logId}`,
+    );
 
     // Update log status to RUNNING
     await this.prisma.odooSyncLog.update({
@@ -122,7 +139,9 @@ export class ErpDocumentReferenceService {
     this.logger.log(`[SYNC-JOB] Log ${logId} status set to RUNNING`);
 
     // 1. Get active OdooAccount configuration for this warehouse
-    this.logger.log(`[SYNC-JOB] Fetching OdooAccount for warehouse ${warehouseId}...`);
+    this.logger.log(
+      `[SYNC-JOB] Fetching OdooAccount for warehouse ${warehouseId}...`,
+    );
     const account = await this.prisma.odooAccount.findUnique({
       where: { warehouseId },
       include: { warehouse: true },
@@ -133,7 +152,11 @@ export class ErpDocumentReferenceService {
       this.logger.error(`[SYNC-JOB] ${errorMsg}`);
       await this.prisma.odooSyncLog.update({
         where: { id: logId },
-        data: { status: 'FAILED', errorMessage: errorMsg, finishedAt: new Date() },
+        data: {
+          status: 'FAILED',
+          errorMessage: errorMsg,
+          finishedAt: new Date(),
+        },
       });
       throw new NotFoundException(errorMsg);
     }
@@ -143,12 +166,18 @@ export class ErpDocumentReferenceService {
       this.logger.error(`[SYNC-JOB] ${errorMsg}`);
       await this.prisma.odooSyncLog.update({
         where: { id: logId },
-        data: { status: 'FAILED', errorMessage: errorMsg, finishedAt: new Date() },
+        data: {
+          status: 'FAILED',
+          errorMessage: errorMsg,
+          finishedAt: new Date(),
+        },
       });
       throw new BadRequestException(errorMsg);
     }
 
-    this.logger.log(`[SYNC-JOB] OdooAccount found: ID=${account.id}, baseUrl=${account.baseUrl}, lastOffset=${account.lastOffset}`);
+    this.logger.log(
+      `[SYNC-JOB] OdooAccount found: ID=${account.id}, baseUrl=${account.baseUrl}, lastOffset=${account.lastOffset}`,
+    );
 
     // 2. Fetch PO & SO documents in Odoo using pagination
     const limit = 100;
@@ -158,14 +187,24 @@ export class ErpDocumentReferenceService {
     // Best-effort: Get total count matching domain for progress bar calculation
     let totalDocuments = offset;
     try {
-      const totalCount = await this.safeOdooCall(warehouseId, 'stock.picking', 'search_count', [], {
-        domain: [],
-      });
+      const totalCount = await this.safeOdooCall(
+        warehouseId,
+        'stock.picking',
+        'search_count',
+        [],
+        {
+          domain: [],
+        },
+      );
 
       totalDocuments = totalCount?.result;
-      this.logger.log(`[SYNC-JOB] Total matching documents in Odoo: ${totalCount}`);
+      this.logger.log(
+        `[SYNC-JOB] Total matching documents in Odoo: ${totalCount}`,
+      );
     } catch (err: any) {
-      this.logger.warn(`[SYNC-JOB] Failed to fetch total document count: ${err.message}`);
+      this.logger.warn(
+        `[SYNC-JOB] Failed to fetch total document count: ${err.message}`,
+      );
     }
 
     // Update log total count
@@ -176,95 +215,17 @@ export class ErpDocumentReferenceService {
 
     try {
       while (true) {
-        this.logger.log(`[SYNC-JOB] Fetching PO documents: offset=${offset}, limit=${limit}`);
+        this.logger.log(
+          `[SYNC-JOB] Fetching PO documents: offset=${offset}, limit=${limit}`,
+        );
 
-        const poRes = await this.safeOdooCall(warehouseId, 'stock.picking', 'web_search_read', [], {
-          domain: [],
-          specification: {
-            id: {},
-            name: {},
-            state: {},
-            picking_type_code: {},
-            partner_id: { fields: { display_name: {} } },
-            purchase_id: { fields: { display_name: {} } },
-            origin: {},
-            ref_fax: {},
-            location_id: { fields: { display_name: {} } },
-            location_dest_id: { fields: { display_name: {} } },
-            scheduled_date: {},
-            date_done: {},
-            driver: {},
-            plat_number: {},
-            move_ids_without_package: {
-              fields: {
-                id: {},
-                product_id: { fields: { display_name: {} } },
-                product_uom: { fields: { display_name: {} } },
-                analytic_account_id: { fields: { display_name: {} } },
-                quantity: {},
-                product_qty: {},
-                sh_sec_qty: {},
-                sh_sec_uom_id: { fields: { display_name: {} } },
-              },
-            },
-          },
-          offset,
-          limit,
-          order: "scheduled_date ASC",
-          count_limit: 999_999
-        });
-
-        const records = poRes?.records || [];
-        this.logger.log(`[SYNC-JOB] Offset ${offset} fetched ${records.length} records`);
-        if (records.length === 0) break;
-
-        // Upsert documents in DB transaction
-        await this.prisma.$transaction(async (tx) => {
-          for (const record of records) {
-            await this.upsertDocumentRecord(tx, record, warehouseId);
-          }
-        }, {
-          timeout: 600000
-        });
-
-        syncedCount += records.length;
-        offset += records.length;
-
-        // Update OdooAccount offset
-        await this.prisma.odooAccount.update({
-          where: { id: account.id },
-          data: { lastOffset: offset },
-        });
-
-        // Update processedDocuments in sync log
-        await this.prisma.odooSyncLog.update({
-          where: { id: logId },
-          data: { processedDocuments: offset },
-        });
-
-        this.logger.log(`[SYNC-JOB] Progress offset updated to ${offset}`);
-
-        if (records.length < limit) break;
-      }
-
-      // 3. Refresh Open/Active Documents
-      this.logger.log(`[SYNC-JOB] Starting refresh of open/active documents...`);
-      const activeDocuments = await this.prisma.documentReference.findMany({
-        where: {
+        const poRes = await this.safeOdooCall(
           warehouseId,
-          state: {
-            notIn: ['done', 'cancel'],
-          },
-        },
-        select: { id: true, documentNumber: true },
-      });
-
-      this.logger.log(`[SYNC-JOB] Found ${activeDocuments.length} active documents to refresh`);
-
-      for (const doc of activeDocuments) {
-        try {
-          this.logger.log(`[SYNC-JOB] Refreshing active document ID=${doc.id}, Number=${doc.documentNumber} from Odoo...`);
-          const res = await this.safeOdooCall(warehouseId, 'stock.picking', 'web_read', [[doc.id]], {
+          'stock.picking',
+          'web_search_read',
+          [],
+          {
+            domain: [],
             specification: {
               id: {},
               name: {},
@@ -293,21 +254,133 @@ export class ErpDocumentReferenceService {
                 },
               },
             },
-          });
+            offset,
+            limit,
+            order: 'scheduled_date ASC',
+            count_limit: 999_999,
+          },
+        );
+
+        const records = poRes?.records || [];
+        this.logger.log(
+          `[SYNC-JOB] Offset ${offset} fetched ${records.length} records`,
+        );
+        if (records.length === 0) break;
+
+        // Upsert documents in DB transaction
+        await this.prisma.$transaction(
+          async (tx) => {
+            for (const record of records) {
+              await this.upsertDocumentRecord(tx, record, warehouseId);
+            }
+          },
+          {
+            timeout: 600000,
+          },
+        );
+
+        syncedCount += records.length;
+        offset += records.length;
+
+        // Update OdooAccount offset
+        await this.prisma.odooAccount.update({
+          where: { id: account.id },
+          data: { lastOffset: offset },
+        });
+
+        // Update processedDocuments in sync log
+        await this.prisma.odooSyncLog.update({
+          where: { id: logId },
+          data: { processedDocuments: offset },
+        });
+
+        this.logger.log(`[SYNC-JOB] Progress offset updated to ${offset}`);
+
+        if (records.length < limit) break;
+      }
+
+      // 3. Refresh Open/Active Documents
+      this.logger.log(
+        `[SYNC-JOB] Starting refresh of open/active documents...`,
+      );
+      const activeDocuments = await this.prisma.documentReference.findMany({
+        where: {
+          warehouseId,
+          state: {
+            notIn: ['done', 'cancel'],
+          },
+        },
+        select: { id: true, documentNumber: true },
+      });
+
+      this.logger.log(
+        `[SYNC-JOB] Found ${activeDocuments.length} active documents to refresh`,
+      );
+
+      for (const doc of activeDocuments) {
+        try {
+          this.logger.log(
+            `[SYNC-JOB] Refreshing active document ID=${doc.id}, Number=${doc.documentNumber} from Odoo...`,
+          );
+          const res = await this.safeOdooCall(
+            warehouseId,
+            'stock.picking',
+            'web_read',
+            [[doc.id]],
+            {
+              specification: {
+                id: {},
+                name: {},
+                state: {},
+                picking_type_code: {},
+                partner_id: { fields: { display_name: {} } },
+                purchase_id: { fields: { display_name: {} } },
+                origin: {},
+                ref_fax: {},
+                location_id: { fields: { display_name: {} } },
+                location_dest_id: { fields: { display_name: {} } },
+                scheduled_date: {},
+                date_done: {},
+                driver: {},
+                plat_number: {},
+                move_ids_without_package: {
+                  fields: {
+                    id: {},
+                    product_id: { fields: { display_name: {} } },
+                    product_uom: { fields: { display_name: {} } },
+                    analytic_account_id: { fields: { display_name: {} } },
+                    quantity: {},
+                    product_qty: {},
+                    sh_sec_qty: {},
+                    sh_sec_uom_id: { fields: { display_name: {} } },
+                  },
+                },
+              },
+            },
+          );
 
           if (res && Array.isArray(res) && res.length > 0) {
             const record = res[0];
-            await this.prisma.$transaction(async (tx) => {
-              await this.upsertDocumentRecord(tx, record, warehouseId);
-            }, {
-              timeout: 60000
-            });
-            this.logger.log(`[SYNC-JOB] Successfully refreshed active document ID=${doc.id}`);
+            await this.prisma.$transaction(
+              async (tx) => {
+                await this.upsertDocumentRecord(tx, record, warehouseId);
+              },
+              {
+                timeout: 60000,
+              },
+            );
+            this.logger.log(
+              `[SYNC-JOB] Successfully refreshed active document ID=${doc.id}`,
+            );
           } else {
-            this.logger.warn(`[SYNC-JOB] Document ID=${doc.id} not found in Odoo during refresh. Skipping.`);
+            this.logger.warn(
+              `[SYNC-JOB] Document ID=${doc.id} not found in Odoo during refresh. Skipping.`,
+            );
           }
         } catch (err: any) {
-          this.logger.error(`[SYNC-JOB] Failed to refresh active document ID=${doc.id}: ${err.message}`);
+          this.logger.error(
+            `[SYNC-JOB] Failed to refresh active document ID=${doc.id}: ${err.message}`,
+          );
         }
       }
 
@@ -329,7 +402,9 @@ export class ErpDocumentReferenceService {
         },
       });
 
-      this.logger.log(`[SYNC-JOB] ✅ Sync completed successfully for warehouse ${warehouseId}. Total synced: ${syncedCount}`);
+      this.logger.log(
+        `[SYNC-JOB] ✅ Sync completed successfully for warehouse ${warehouseId}. Total synced: ${syncedCount}`,
+      );
 
       return {
         success: true,
@@ -337,25 +412,34 @@ export class ErpDocumentReferenceService {
       };
     } catch (err: any) {
       const finishedAt = new Date();
-      this.logger.error(`[SYNC-JOB] ❌ Sync failed for warehouse ${warehouseId}: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SYNC-JOB] ❌ Sync failed for warehouse ${warehouseId}: ${err.message}`,
+        err.stack,
+      );
       await this.prisma.odooSyncLog.update({
         where: { id: logId },
         data: { status: 'FAILED', errorMessage: err.message, finishedAt },
       });
 
-      await this.prisma.odooAccount.update({
-        where: { id: account.id },
-        data: {
-          lastSyncAt: finishedAt,
-          lastSyncStatus: 'FAILED',
-          lastSyncError: `Gagal menyimpan data ke database: ${err.message}`,
-          lastSyncBy: triggeredBy,
-        },
-      }).catch((e) => this.logger.error('[SYNC-JOB] Failed to update OdooAccount sync status', e));
+      await this.prisma.odooAccount
+        .update({
+          where: { id: account.id },
+          data: {
+            lastSyncAt: finishedAt,
+            lastSyncStatus: 'FAILED',
+            lastSyncError: `Gagal menyimpan data ke database: ${err.message}`,
+            lastSyncBy: triggeredBy,
+          },
+        })
+        .catch((e) =>
+          this.logger.error(
+            '[SYNC-JOB] Failed to update OdooAccount sync status',
+            e,
+          ),
+        );
       throw err;
     }
   }
-
 
   /**
    * Find paginated local ERP document references with search filters, type filters, and summary stats.
@@ -371,9 +455,12 @@ export class ErpDocumentReferenceService {
       startDate?: string;
       endDate?: string;
       refFax?: string;
+      gateOperationUuid?: string;
     },
   ) {
-    this.logger.log(`[findAll] Fetching documents for warehouseId=${warehouseId}, search="${query.search || ''}", type="${query.type || ''}", page=${query.page || 1}, limit=${query.limit || 10}`);
+    this.logger.log(
+      `[findAll] Fetching documents for warehouseId=${warehouseId}, search="${query.search || ''}", type="${query.type || ''}", page=${query.page || 1}, limit=${query.limit || 10}, gateOperationUuid="${query.gateOperationUuid || ''}"`,
+    );
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -383,6 +470,27 @@ export class ErpDocumentReferenceService {
     };
 
     const andConditions: any[] = [];
+
+    // if (query.gateOperationUuid) {
+    //   const gateOp = await this.prisma.gateOperation.findUnique({
+    //     where: { uuid: query.gateOperationUuid },
+    //     include: { products: true },
+    //   });
+    //   const inventoryIds = gateOp ? gateOp.products.map((p) => p.inventoryId) : [];
+    //   if (inventoryIds.length > 0) {
+    //     andConditions.push({
+    //       items: {
+    //         some: {
+    //           inventoryId: { in: inventoryIds },
+    //         },
+    //       },
+    //     });
+    //   } else {
+    //     andConditions.push({ id: -1 }); // return no results if gate operation has no products
+    //   }
+    // }
+
+    console.log(`product`, JSON.stringify(andConditions, null, 2))
 
     if (query.search) {
       andConditions.push({
@@ -445,7 +553,10 @@ export class ErpDocumentReferenceService {
         where,
         skip,
         take: limit,
-        orderBy: { scheduledDate: 'desc' },
+        orderBy: [
+          { scheduledDate: 'desc' },
+          { id: 'desc' },
+        ],
         include: {
           items: true,
         },
@@ -453,12 +564,17 @@ export class ErpDocumentReferenceService {
     ]);
 
     // 2. Fetch overall summary stats for active warehouse context
-    const [totalCount, incomingCount, outgoingCount, odooAccount] = await Promise.all([
-      this.prisma.documentReference.count({ where: { warehouseId } }),
-      this.prisma.documentReference.count({ where: { warehouseId, pickingTypeCode: 'incoming' } }),
-      this.prisma.documentReference.count({ where: { warehouseId, pickingTypeCode: 'outgoing' } }),
-      this.prisma.odooAccount.findUnique({ where: { warehouseId } }),
-    ]);
+    const [totalCount, incomingCount, outgoingCount, odooAccount] =
+      await Promise.all([
+        this.prisma.documentReference.count({ where: { warehouseId } }),
+        this.prisma.documentReference.count({
+          where: { warehouseId, pickingTypeCode: 'incoming' },
+        }),
+        this.prisma.documentReference.count({
+          where: { warehouseId, pickingTypeCode: 'outgoing' },
+        }),
+        this.prisma.odooAccount.findUnique({ where: { warehouseId } }),
+      ]);
 
     const summary = {
       totalDocuments: totalCount,
@@ -468,7 +584,9 @@ export class ErpDocumentReferenceService {
     };
 
     const sanitizedData = await this.sanitizeDocReferences(data);
-    this.logger.log(`[findAll] Found total=${total} matching documents, returning ${sanitizedData.length} documents for current page`);
+    this.logger.log(
+      `[findAll] Found total=${total} matching documents, returning ${sanitizedData.length} documents for current page`,
+    );
 
     return {
       data: sanitizedData,
@@ -511,7 +629,9 @@ export class ErpDocumentReferenceService {
     idOrUuid: string,
     triggeredBy: string,
   ): Promise<any> {
-    this.logger.log(`[FORCE-SYNC] Document ${idOrUuid} for warehouse ${warehouseId}, triggered by ${triggeredBy}`);
+    this.logger.log(
+      `[FORCE-SYNC] Document ${idOrUuid} for warehouse ${warehouseId}, triggered by ${triggeredBy}`,
+    );
 
     // Find local document reference only by uuid to keep API purely UUID-based
     const doc = await this.prisma.documentReference.findFirst({
@@ -526,7 +646,9 @@ export class ErpDocumentReferenceService {
       throw new NotFoundException('Dokumen ERP tidak ditemukan.');
     }
 
-    this.logger.log(`[FORCE-SYNC] Found local document: id=${doc.id}, number=${doc.documentNumber}`);
+    this.logger.log(
+      `[FORCE-SYNC] Found local document: id=${doc.id}, number=${doc.documentNumber}`,
+    );
 
     // 2. Get active OdooAccount configuration
     const account = await this.prisma.odooAccount.findUnique({
@@ -534,7 +656,9 @@ export class ErpDocumentReferenceService {
     });
 
     if (!account) {
-      throw new NotFoundException('Akun Odoo untuk gudang aktif ini belum dikonfigurasi.');
+      throw new NotFoundException(
+        'Akun Odoo untuk gudang aktif ini belum dikonfigurasi.',
+      );
     }
 
     if (!account.isActive) {
@@ -573,38 +697,64 @@ export class ErpDocumentReferenceService {
 
     let record: any;
     try {
-      this.logger.log(`[FORCE-SYNC] Fetching document id=${doc.id} from Odoo...`);
-      const res = await this.safeOdooCall(warehouseId, 'stock.picking', 'web_read', [[doc.id]], {
-        specification,
-      });
+      this.logger.log(
+        `[FORCE-SYNC] Fetching document id=${doc.id} from Odoo...`,
+      );
+      const res = await this.safeOdooCall(
+        warehouseId,
+        'stock.picking',
+        'web_read',
+        [[doc.id]],
+        {
+          specification,
+        },
+      );
 
       if (!res || !Array.isArray(res) || res.length === 0) {
         throw new NotFoundException('Dokumen tidak ditemukan di Odoo.');
       }
       record = res[0];
-      this.logger.log(`[FORCE-SYNC] Fetched document from Odoo: name=${record.name}, state=${record.state}`);
+      this.logger.log(
+        `[FORCE-SYNC] Fetched document from Odoo: name=${record.name}, state=${record.state}`,
+      );
     } catch (err: any) {
-      this.logger.error(`[FORCE-SYNC] Failed to fetch from Odoo: ${err.message}`, err.stack);
-      throw new BadRequestException(`Gagal mengambil detail dokumen dari Odoo: ${err.message}`);
+      this.logger.error(
+        `[FORCE-SYNC] Failed to fetch from Odoo: ${err.message}`,
+        err.stack,
+      );
+      throw new BadRequestException(
+        `Gagal mengambil detail dokumen dari Odoo: ${err.message}`,
+      );
     }
 
     // 5. Update the local database inside transaction
-    this.logger.log(`[FORCE-SYNC] Updating local DB for document id=${doc.id}...`);
-    const updatedDoc = await this.prisma.$transaction(async (tx) => {
-      const docRef = await this.upsertDocumentRecord(tx, record, warehouseId);
-      return tx.documentReference.findUnique({
-        where: { id: docRef.id },
-        include: { items: true },
-      });
-    }, {
-      timeout: 60000
-    });
+    this.logger.log(
+      `[FORCE-SYNC] Updating local DB for document id=${doc.id}...`,
+    );
+    const updatedDoc = await this.prisma.$transaction(
+      async (tx) => {
+        const docRef = await this.upsertDocumentRecord(tx, record, warehouseId);
+        return tx.documentReference.findUnique({
+          where: { id: docRef.id },
+          include: { items: true },
+        });
+      },
+      {
+        timeout: 60000,
+      },
+    );
 
-    this.logger.log(`[FORCE-SYNC] ✅ Document ${doc.documentNumber} force-synced successfully`);
+    this.logger.log(
+      `[FORCE-SYNC] ✅ Document ${doc.documentNumber} force-synced successfully`,
+    );
     return this.sanitizeDocReference(updatedDoc);
   }
 
-  private async upsertDocumentRecord(tx: any, record: any, warehouseId: number) {
+  private async upsertDocumentRecord(
+    tx: any,
+    record: any,
+    warehouseId: number,
+  ) {
     const erpId = record.id;
     const documentNumber = record.name || `DOC-${erpId}`;
     const state = record.state || 'draft';
@@ -614,8 +764,12 @@ export class ErpDocumentReferenceService {
     const origin = record.origin || null;
     const ref_fax = record.ref_fax || null;
     const sourceLocationName = this.getRelationalName(record.location_id);
-    const destinationLocationName = this.getRelationalName(record.location_dest_id);
-    const scheduledDate = record.scheduled_date ? new Date(record.scheduled_date) : null;
+    const destinationLocationName = this.getRelationalName(
+      record.location_dest_id,
+    );
+    const scheduledDate = record.scheduled_date
+      ? new Date(record.scheduled_date)
+      : null;
     const dateDone = record.date_done ? new Date(record.date_done) : null;
     const driver = record.driver || null;
     const plateNumber = record.plat_number || null;
@@ -624,11 +778,14 @@ export class ErpDocumentReferenceService {
 
     // Pre-calculate sums
     const totalItems = rawItems.length;
-    const totalQuantity = rawItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0.0), 0.0);
+    const totalQuantity = rawItems.reduce(
+      (sum: number, item: any) => sum + (Number(item.quantity) || 0.0),
+      0.0,
+    );
 
     this.logger.log(
       `[SYNC-JOB] Upserting document: erpId=${erpId}, number=${documentNumber}, ` +
-      `state=${state}, type=${pickingTypeCode}, items=${totalItems}, ref_fax=${ref_fax}`
+        `state=${state}, type=${pickingTypeCode}, items=${totalItems}, ref_fax=${ref_fax}`,
     );
 
     // Upsert Document Header using Odoo ID directly as id
@@ -682,12 +839,16 @@ export class ErpDocumentReferenceService {
       const itemsData = rawItems.map((item: any) => {
         const moveId = item.id; // Odoo move ID
         const inventoryId = this.getRelationalId(item.product_id) || 0;
-        const productName = this.getRelationalName(item.product_id) || 'Unnamed Product';
+        const productName =
+          this.getRelationalName(item.product_id) || 'Unnamed Product';
         const uom = this.getRelationalName(item.product_uom) || 'Unit';
-        const analyticAccountName = this.getRelationalName(item.analytic_account_id);
+        const analyticAccountName = this.getRelationalName(
+          item.analytic_account_id,
+        );
         const quantity = Number(item.quantity) || 0.0;
         const productQty = Number(item.product_qty) || 0.0;
-        const secondaryQuantity = item.sh_sec_qty !== undefined ? Number(item.sh_sec_qty) : null;
+        const secondaryQuantity =
+          item.sh_sec_qty !== undefined ? Number(item.sh_sec_qty) : null;
         const secondaryUom = this.getRelationalName(item.sh_sec_uom_id);
 
         return {
@@ -730,7 +891,9 @@ export class ErpDocumentReferenceService {
         },
       });
 
-      this.logger.log(`[SYNC-JOB] Upserted ${itemsData.length} items for document id=${docRef.id}`);
+      this.logger.log(
+        `[SYNC-JOB] Upserted ${itemsData.length} items for document id=${docRef.id}`,
+      );
     } else {
       await tx.documentReferenceItem.deleteMany({
         where: { documentReferenceId: docRef.id },
@@ -766,7 +929,9 @@ export class ErpDocumentReferenceService {
 
     // Collect all inventoryIds across all items in all docs
     const inventoryIds: number[] = [];
+    const docIds: number[] = [];
     for (const doc of docs) {
+      docIds.push(doc.id);
       if (doc.items) {
         for (const item of doc.items) {
           if (item.inventoryId) {
@@ -788,24 +953,60 @@ export class ErpDocumentReferenceService {
       }
     }
 
+    // Lookup signature details
+    const signedDocs = await this.prisma.signedDocument.findMany({
+      where: {
+        sourceType: 'ERP',
+        sourceDocumentId: { in: docIds },
+        status: 'VALID',
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        sourceDocumentId: true,
+        signedAt: true,
+        verificationToken: true,
+        signedBy: true,
+      },
+    });
+
+    const signedMap = new Map<number, any>();
+    for (const s of signedDocs) {
+      if (s.sourceDocumentId !== null) {
+        signedMap.set(s.sourceDocumentId, s);
+      }
+    }
+
     return docs.map((doc) => {
       const { warehouseId, rawPayload, items, ...restDoc } = doc;
-      const sanitizedItems = items ? items.map((item: any) => {
-        const { id: itemId, documentReferenceId, inventoryId, ...restItem } = item;
-        const inv = inventoryMap.get(inventoryId);
-        return {
-          ...restItem,
-          inventoryId,
-          inventoryUuid: inv?.uuid || null,
-          inventorySku: inv?.sku || null,
-          inventoryName: inv?.name || null,
-          inventoryUom: inv?.uom || null,
-        };
-      }) : [];
+      const sanitizedItems = items
+        ? items.map((item: any) => {
+            const {
+              id: itemId,
+              documentReferenceId,
+              inventoryId,
+              ...restItem
+            } = item;
+            const inv = inventoryMap.get(inventoryId);
+            return {
+              ...restItem,
+              inventoryId,
+              inventoryUuid: inv?.uuid || null,
+              inventorySku: inv?.sku || null,
+              inventoryName: inv?.name || null,
+              inventoryUom: inv?.uom || null,
+            };
+          })
+        : [];
+
+      const isSigned = signedMap.has(doc.id);
+      const signatureInfo = signedMap.get(doc.id) || null;
 
       return {
         ...restDoc,
         items: sanitizedItems,
+        isSigned,
+        signatureInfo,
       };
     });
   }
@@ -833,7 +1034,9 @@ export class ErpDocumentReferenceService {
     });
 
     if (!account) {
-      throw new NotFoundException('Akun Odoo untuk gudang aktif ini belum dikonfigurasi.');
+      throw new NotFoundException(
+        'Akun Odoo untuk gudang aktif ini belum dikonfigurasi.',
+      );
     }
 
     // 1. Validate session initially
@@ -851,12 +1054,16 @@ export class ErpDocumentReferenceService {
     const triedSessionId = refreshedAccount.sessionId;
 
     try {
-      return await this.odooClient.call(refreshedAccount.baseUrl, triedSessionId, {
-        model,
-        method,
-        args,
-        kwargs,
-      });
+      return await this.odooClient.call(
+        refreshedAccount.baseUrl,
+        triedSessionId,
+        {
+          model,
+          method,
+          args,
+          kwargs,
+        },
+      );
     } catch (err: any) {
       const isSessionExpired =
         err.message.includes('Session expired') ||
@@ -875,15 +1082,21 @@ export class ErpDocumentReferenceService {
           this.logger.log(
             `Session Odoo untuk gudang ${account.warehouseId} telah diperbarui oleh proses lain. Mencoba ulang dengan session baru...`,
           );
-          return await this.odooClient.call(currentAccount.baseUrl, latestSessionId, {
-            model,
-            method,
-            args,
-            kwargs,
-          });
+          return await this.odooClient.call(
+            currentAccount.baseUrl,
+            latestSessionId,
+            {
+              model,
+              method,
+              args,
+              kwargs,
+            },
+          );
         }
 
-        this.logger.log(`Session Odoo untuk gudang ${account.warehouseId} kedaluwarsa. Melakukan refresh session...`);
+        this.logger.log(
+          `Session Odoo untuk gudang ${account.warehouseId} kedaluwarsa. Melakukan refresh session...`,
+        );
         // Force refresh session
         await this.odooSessionManager.invalidateSession(account.id);
         await this.odooSessionManager.validateAndRefreshSession(account.id);
@@ -894,12 +1107,16 @@ export class ErpDocumentReferenceService {
 
         if (refreshedAccount?.sessionId) {
           // Retry call once
-          return await this.odooClient.call(refreshedAccount.baseUrl, refreshedAccount.sessionId, {
-            model,
-            method,
-            args,
-            kwargs,
-          });
+          return await this.odooClient.call(
+            refreshedAccount.baseUrl,
+            refreshedAccount.sessionId,
+            {
+              model,
+              method,
+              args,
+              kwargs,
+            },
+          );
         }
       }
 

@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { ForgotPasswordSchema } from '@bulog-wms/schema';
-import type { ForgotPasswordInput } from '@bulog-wms/schema';
-import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import React, { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ForgotPasswordSchema } from "@bulog-wms/schema";
+import type { ForgotPasswordInput } from "@bulog-wms/schema";
+import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -28,9 +28,10 @@ export default function ForgotPasswordPage() {
     try {
       await forgotPassword(data);
       setIsSent(true);
-      toast.success('Instruksi pemulihan telah dikirimkan ke email Anda.');
+      toast.success("Instruksi pemulihan telah dikirimkan ke email Anda.");
     } catch (error: any) {
-      const errMsg = error.response?.data?.message || 'Gagal mengirim email pemulihan.';
+      const errMsg =
+        error.response?.data?.message || "Gagal mengirim email pemulihan.";
       toast.error(errMsg);
     } finally {
       setIsLoading(false);
@@ -40,28 +41,30 @@ export default function ForgotPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 px-4">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
-      
+
       <div className="relative w-full max-w-md">
         <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 opacity-20 blur-xl"></div>
-        
+
         <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-8 shadow-2xl">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-extrabold text-white tracking-tight">
               Lupa Password
             </h1>
             <p className="text-sm text-slate-400 mt-2">
-              Masukkan email terdaftar Anda untuk menerima tautan pemulihan password
+              Masukkan email terdaftar Anda untuk menerima tautan pemulihan
+              password
             </p>
           </div>
 
           {isSent ? (
             <div className="space-y-6 text-center">
               <div className="bg-emerald-950/30 border border-emerald-800 rounded-lg p-4 text-emerald-400 text-sm">
-                Tautan pemulihan password berhasil dikirim. Silakan periksa kotak masuk dan folder spam email Anda.
+                Tautan pemulihan password berhasil dikirim. Silakan periksa
+                kotak masuk dan folder spam email Anda.
               </div>
               <button
                 type="button"
-                onClick={() => router.push('/login')}
+                onClick={() => router.push("/login")}
                 className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-lg transition duration-200"
               >
                 Kembali ke Login
@@ -70,18 +73,23 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div>
-                <label htmlFor="email" className="block text-sm font-semibold text-slate-300 mb-2">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-semibold text-slate-300 mb-2"
+                >
                   Alamat Email
                 </label>
                 <input
                   id="email"
                   type="email"
                   placeholder="nama@bulog.co.id"
-                  {...register('email')}
+                  {...register("email")}
                   className="w-full bg-slate-950/50 border border-slate-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 placeholder:text-slate-600"
                 />
                 {errors.email && (
-                  <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.email.message}
+                  </p>
                 )}
               </div>
 
@@ -91,18 +99,34 @@ export default function ForgotPasswordPage() {
                 className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg shadow-lg active:scale-[0.98] transition duration-200"
               >
                 {isLoading ? (
-                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                 ) : (
-                  'Kirim Tautan Pemulihan'
+                  "Kirim Tautan Pemulihan"
                 )}
               </button>
 
               <button
                 type="button"
-                onClick={() => router.push('/login')}
+                onClick={() => router.push("/login")}
                 className="w-full bg-slate-800/50 hover:bg-slate-800 border border-slate-850 text-slate-300 font-bold py-2.5 rounded-lg transition duration-200"
               >
                 Batal

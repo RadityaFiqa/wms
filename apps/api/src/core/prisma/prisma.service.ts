@@ -5,10 +5,15 @@ import { Pool } from 'pg';
 import { WarehouseContextService } from '../warehouse-context/warehouse-context.service';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private pool: Pool;
 
-  constructor(private readonly warehouseContextService: WarehouseContextService) {
+  constructor(
+    private readonly warehouseContextService: WarehouseContextService,
+  ) {
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
     });
@@ -38,11 +43,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               'updateMany',
               'delete',
               'deleteMany',
-              'upsert'
+              'upsert',
             ];
 
             if (op === 'findUnique' || op === 'findUniqueOrThrow') {
-              const targetOp = op === 'findUnique' ? 'findFirst' : 'findFirstOrThrow';
+              const targetOp =
+                op === 'findUnique' ? 'findFirst' : 'findFirstOrThrow';
               currentArgs.where = currentArgs.where || {};
               if (model === 'Warehouse') {
                 currentArgs.where.id = warehouseId;
@@ -62,7 +68,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             } else if (op === 'create') {
               if (['Inventory', 'OdooAccount', 'User'].includes(model)) {
                 currentArgs.data = currentArgs.data || {};
-                if (currentArgs.data.warehouseId === undefined || currentArgs.data.warehouseId === null) {
+                if (
+                  currentArgs.data.warehouseId === undefined ||
+                  currentArgs.data.warehouseId === null
+                ) {
                   currentArgs.data.warehouseId = warehouseId;
                 }
               }
@@ -72,19 +81,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               currentArgs.create = currentArgs.create || {};
               currentArgs.update = currentArgs.update || {};
               if (['Inventory', 'OdooAccount', 'User'].includes(model)) {
-                if (currentArgs.create.warehouseId === undefined || currentArgs.create.warehouseId === null) {
+                if (
+                  currentArgs.create.warehouseId === undefined ||
+                  currentArgs.create.warehouseId === null
+                ) {
                   currentArgs.create.warehouseId = warehouseId;
                 }
-                if (currentArgs.update.warehouseId === undefined || currentArgs.update.warehouseId === null) {
+                if (
+                  currentArgs.update.warehouseId === undefined ||
+                  currentArgs.update.warehouseId === null
+                ) {
                   currentArgs.update.warehouseId = warehouseId;
                 }
               }
             }
 
             return query(currentArgs);
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     return extendedClient as any;

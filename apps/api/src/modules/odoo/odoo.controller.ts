@@ -20,8 +20,14 @@ import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { AuditLogAction } from '../audit-log/audit-log.decorator';
-import { CreateOdooAccountSchema, UpdateOdooAccountSchema } from '@bulog-wms/schema';
-import type { CreateOdooAccountInput, UpdateOdooAccountInput } from '@bulog-wms/schema';
+import {
+  CreateOdooAccountSchema,
+  UpdateOdooAccountSchema,
+} from '@bulog-wms/schema';
+import type {
+  CreateOdooAccountInput,
+  UpdateOdooAccountInput,
+} from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import { encrypt } from '../../core/utils/encryption.util';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
@@ -40,11 +46,16 @@ export class OdooController {
   @Post()
   @CheckPolicies((ability) => ability.can('create', 'OdooAccount'))
   @AuditLogAction('ODOO_CONFIG_CREATE')
-  async create(@Body(new ZodValidationPipe(CreateOdooAccountSchema)) body: CreateOdooAccountInput) {
+  async create(
+    @Body(new ZodValidationPipe(CreateOdooAccountSchema))
+    body: CreateOdooAccountInput,
+  ) {
     // Check if configuration already exists for this warehouse
     const existing = await this.repository.findByWarehouseId(body.warehouseId);
     if (existing) {
-      throw new BadRequestException('Konfigurasi Odoo untuk gudang ini sudah ada.');
+      throw new BadRequestException(
+        'Konfigurasi Odoo untuk gudang ini sudah ada.',
+      );
     }
 
     const encryptedPassword = encrypt(body.password);
@@ -64,7 +75,9 @@ export class OdooController {
   async findOneForWarehouse() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     const account = await this.repository.findByWarehouseId(warehouseId);
     return this.sanitize(account);
@@ -85,7 +98,8 @@ export class OdooController {
   @AuditLogAction('ODOO_CONFIG_UPDATE')
   async update(
     @Param('uuid') uuid: string,
-    @Body(new ZodValidationPipe(UpdateOdooAccountSchema)) body: UpdateOdooAccountInput,
+    @Body(new ZodValidationPipe(UpdateOdooAccountSchema))
+    body: UpdateOdooAccountInput,
   ) {
     const existing = await this.repository.findByUuid(uuid);
     if (!existing) {
@@ -94,9 +108,13 @@ export class OdooController {
 
     // Check if warehouse is changing and already assigned to another odoo account config
     if (existing.warehouseId !== body.warehouseId) {
-      const warehouseAssignee = await this.repository.findByWarehouseId(body.warehouseId);
+      const warehouseAssignee = await this.repository.findByWarehouseId(
+        body.warehouseId,
+      );
       if (warehouseAssignee) {
-        throw new BadRequestException('Gudang tujuan sudah dikonfigurasi dengan akun Odoo lain.');
+        throw new BadRequestException(
+          'Gudang tujuan sudah dikonfigurasi dengan akun Odoo lain.',
+        );
       }
     }
 
@@ -136,7 +154,9 @@ export class OdooController {
   async testConnectionRaw(@Body() body: any) {
     const { baseUrl, username, password } = body;
     if (!baseUrl || !username || !password) {
-      throw new BadRequestException('Base URL, username, dan password harus diisi.');
+      throw new BadRequestException(
+        'Base URL, username, dan password harus diisi.',
+      );
     }
     return this.authService.testConnectionRaw(baseUrl, username, password);
   }
@@ -145,11 +165,19 @@ export class OdooController {
   @CheckPolicies((ability) => ability.can('update', 'OdooAccount'))
   @AuditLogAction('ODOO_CONNECTION_TEST')
   async testConnection(@Param('uuid') uuid: string, @Req() req: any) {
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    const ipStr = Array.isArray(ipAddress) ? ipAddress[0] : (ipAddress || undefined);
-    
-    return this.authService.testConnectionByUuid(uuid, req.user?.id, ipStr, userAgent);
+    const ipStr = Array.isArray(ipAddress)
+      ? ipAddress[0]
+      : ipAddress || undefined;
+
+    return this.authService.testConnectionByUuid(
+      uuid,
+      req.user?.id,
+      ipStr,
+      userAgent,
+    );
   }
 
   @Post(':uuid/deactivate')
@@ -191,12 +219,14 @@ export class OdooController {
       throw new BadRequestException('Konfigurasi Odoo tidak ditemukan.');
     }
     if (!existing.isActive) {
-      throw new BadRequestException('Akun Odoo tidak aktif. Aktifkan akun terlebih dahulu.');
+      throw new BadRequestException(
+        'Akun Odoo tidak aktif. Aktifkan akun terlebih dahulu.',
+      );
     }
-    
+
     await this.sessionManager.invalidateSession(existing.id);
     await this.authService.establishSession(existing.id);
-    
+
     const updated = await this.repository.findById(existing.id);
     return this.sanitize(updated);
   }

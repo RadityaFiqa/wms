@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
 @Injectable()
@@ -20,7 +24,20 @@ export class ReconciliationService {
       },
     });
 
-    // 2. Fetch active gate operations for this warehouse (excluding canceled/rejected)
+    // 2. Fetch all gate operation products for the warehouse to find all related products
+    const relatedGateProducts = await this.prisma.gateOperationProduct.findMany({
+      where: {
+        gateOperation: {
+          warehouseId,
+        },
+      },
+      select: {
+        inventoryId: true,
+      },
+    });
+    const relatedProductIds = new Set(relatedGateProducts.map((p) => p.inventoryId));
+
+    // 3. Fetch active gate operations for this warehouse (excluding canceled/rejected)
     const activeGateOperations = await this.prisma.gateOperation.findMany({
       where: {
         warehouseId,
@@ -38,27 +55,38 @@ export class ReconciliationService {
       },
     });
 
-    // 3. Filter for unreconciled gate operations in memory
+    // 4. Filter for unreconciled gate operations in memory
     const pendingOps = activeGateOperations.filter((op) => {
       // Must not be assigned to any PO (for IN) or SO (for OUT)
-      const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-      const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
+      const hasPoRef =
+        op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
+      const hasSoRef =
+        op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
       if (hasPoRef || hasSoRef) return false;
 
       // Must not be assigned to any ERP reference document
-      const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
+      const hasErpAssignments =
+        op.verification &&
+        op.verification.references &&
+        op.verification.references.length > 0;
       if (hasErpAssignments) return false;
 
       return true;
     });
 
-    // 4. Map unassigned quantities by product (inventoryId)
-    const pendingQuantitiesMap = new Map<number, { incoming: number; outgoing: number }>();
+    // 5. Map unassigned quantities by product (inventoryId)
+    const pendingQuantitiesMap = new Map<
+      number,
+      { incoming: number; outgoing: number }
+    >();
     for (const op of pendingOps) {
       const isOut = op.cardType === 'OUT';
       for (const opProd of op.products) {
         const invId = opProd.inventoryId;
-        const current = pendingQuantitiesMap.get(invId) || { incoming: 0, outgoing: 0 };
+        const current = pendingQuantitiesMap.get(invId) || {
+          incoming: 0,
+          outgoing: 0,
+        };
         if (isOut) {
           current.outgoing += opProd.quantity;
         } else {
@@ -68,17 +96,21 @@ export class ReconciliationService {
       }
     }
 
-    // 5. Combine inventory stock and pending gate operations
+    // 6. Combine inventory stock and pending gate operations
     const reconciliationRows = inventories.map((inv) => {
-      const pending = pendingQuantitiesMap.get(inv.id) || { incoming: 0, outgoing: 0 };
+      const pending = pendingQuantitiesMap.get(inv.id) || {
+        incoming: 0,
+        outgoing: 0,
+      };
       const erpStock = inv.quants.reduce((sum, q) => sum + q.quantity, 0);
-      
+
       // Expected Stock = ERP Stock - Pending Gate Operation Quantity
       // Where Pending Gate Operation Quantity = Outgoing - Incoming
       const pendingGateQty = pending.outgoing - pending.incoming;
       const expectedStock = erpStock - pendingGateQty;
 
       return {
+        productId: inv.id,
         product: {
           uuid: inv.uuid,
           sku: inv.sku,
@@ -93,9 +125,13 @@ export class ReconciliationService {
       };
     });
 
-    // Filter to return only products with active stock or pending gate activity
+    // Filter to return only products with active stock or related gate operations
     return reconciliationRows
-      .filter((row) => row.erpStock > 0 || row.pendingIncoming > 0 || row.pendingOutgoing > 0)
+      .filter(
+        (row) =>
+          row.erpStock > 0 ||
+          relatedProductIds.has(row.productId),
+      )
       .sort((a, b) => a.product.name.localeCompare(b.product.name));
   }
 
@@ -164,11 +200,18 @@ export class ReconciliationService {
     // Filter unreconciled gate operations in memory
     const pendingGateOperations = activeGateOperations
       .filter((op) => {
-        const hasPoRef = op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-        const hasSoRef = op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
+        const hasPoRef =
+          op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
+        const hasSoRef =
+          op.cardType === 'OUT' &&
+          op.soReferences &&
+          op.soReferences.length > 0;
         if (hasPoRef || hasSoRef) return false;
 
-        const hasErpAssignments = op.verification && op.verification.references && op.verification.references.length > 0;
+        const hasErpAssignments =
+          op.verification &&
+          op.verification.references &&
+          op.verification.references.length > 0;
         if (hasErpAssignments) return false;
 
         return true;

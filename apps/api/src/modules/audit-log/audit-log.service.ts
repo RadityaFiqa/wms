@@ -69,10 +69,7 @@ export class AuditLogService {
       };
 
       if (where.OR) {
-        where.AND = [
-          { OR: where.OR },
-          warehouseCondition,
-        ];
+        where.AND = [{ OR: where.OR }, warehouseCondition];
         delete where.OR;
       } else {
         where.AND = [warehouseCondition];

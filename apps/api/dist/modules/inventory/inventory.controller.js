@@ -43,7 +43,7 @@ let InventoryController = class InventoryController {
             limit: limit ? parseInt(limit, 10) : undefined,
         });
     }
-    async findAllProducts(search) {
+    async findAllProducts(search, selectedId, onlyAvailable, limit) {
         const warehouseId = this.warehouseContext.getWarehouseId();
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
@@ -61,10 +61,36 @@ let InventoryController = class InventoryController {
                 },
             ];
         }
-        return this.prisma.inventory.findMany({
+        if (onlyAvailable === 'true') {
+            where.quants = {
+                some: {
+                    availableQuantity: {
+                        gt: 0,
+                    },
+                },
+            };
+        }
+        const take = limit ? parseInt(limit, 10) : 20;
+        const products = await this.prisma.inventory.findMany({
             where,
             orderBy: { name: 'asc' },
+            take,
         });
+        if (selectedId) {
+            const selId = parseInt(selectedId, 10);
+            if (!isNaN(selId) && !products.some((p) => p.id === selId)) {
+                const selectedProduct = await this.prisma.inventory.findFirst({
+                    where: {
+                        id: selId,
+                        warehouseId,
+                    },
+                });
+                if (selectedProduct) {
+                    products.unshift(selectedProduct);
+                }
+            }
+        }
+        return products;
     }
     async getSyncStatus() {
         const warehouseId = this.warehouseContext.getWarehouseId();
@@ -94,7 +120,9 @@ let InventoryController = class InventoryController {
         if (!warehouseId) {
             throw new common_1.BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
         }
-        const pdfBuffer = await this.service.generatePdfReport(warehouseId, { search });
+        const pdfBuffer = await this.service.generatePdfReport(warehouseId, {
+            search,
+        });
         res.set({
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename=inventory-report-${Date.now()}.pdf`,
@@ -148,8 +176,11 @@ __decorate([
     (0, common_1.Get)('products'),
     (0, policies_decorator_1.CheckPolicies)((ability) => ability.can('read', 'GateOperation') || ability.can('read', 'Inventory')),
     __param(0, (0, common_1.Query)('search')),
+    __param(1, (0, common_1.Query)('selectedId')),
+    __param(2, (0, common_1.Query)('onlyAvailable')),
+    __param(3, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], InventoryController.prototype, "findAllProducts", null);
 __decorate([

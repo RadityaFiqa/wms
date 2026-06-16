@@ -31,6 +31,10 @@ model User {
   warehouse                 Warehouse?            @relation(fields: [warehouseId], references: [id])
   warehouseAccesses         WarehouseAccess[]
   stockOpnames              StockOpname[]
+  manualDocuments           ManualDocument[]
+  signedDocuments           SignedDocument[]
+  signatureAuditLogs        SignatureAuditLog[]
+  signatures                UserSignature[]
 
   @@index([email])
   @@index([uuid])
@@ -144,6 +148,8 @@ model Warehouse {
   warehouseAccesses  WarehouseAccess[]
   documentReferences DocumentReference[]
   odooSyncLogs       OdooSyncLog[]
+  manualDocuments    ManualDocument[]
+  signedDocuments    SignedDocument[]
   stockOpnames       StockOpname[]
   dailyStockSnapshots DailyStockSnapshot[]
   inventories        Inventory[]
@@ -219,7 +225,7 @@ model Quant {
 model Inventory {
   id                       Int                       @id
   uuid                     String                    @unique @default(uuid())
-  sku                      String                    @unique
+  sku                      String
   name                     String
   uom                      String?
   warehouseId              Int                       @default(1)
@@ -587,3 +593,137 @@ model DailyStockSnapshot {
   @@index([warehouseId])
   @@index([inventoryId])
 }
+
+model DocumentCategory {
+  id          Int              @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean          @default(true) @map("is_active")
+  deletedAt   DateTime?        @map("deleted_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  
+  manualDocuments ManualDocument[]
+  signedDocuments SignedDocument[]
+
+  @@map("document_categories")
+}
+
+model SignatureTemplate {
+  id          Int              @id @default(autoincrement())
+  name        String
+  description String?
+  pageNumber  Int              @map("page_number")
+  posX        Float            @map("pos_x")
+  posY        Float            @map("pos_y")
+  width       Float            @map("width")
+  height      Float            @map("height")
+  qrPosX      Float            @map("qr_pos_x")
+  qrPosY      Float            @map("qr_pos_y")
+  qrWidth     Float            @map("qr_width")
+  qrHeight    Float            @map("qr_height")
+  isDefault   Boolean          @default(false) @map("is_default")
+  isActive    Boolean          @default(true) @map("is_active")
+  deletedAt   DateTime?        @map("deleted_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  signedDocuments SignedDocument[]
+
+  @@map("signature_templates")
+}
+
+model ManualDocument {
+  id          Int              @id @default(autoincrement())
+  uuid        String           @unique @default(uuid())
+  warehouseId Int?             @map("warehouse_id")
+  title       String
+  categoryId  Int              @map("category_id")
+  description String?
+  fileUrl     String           @map("file_url")
+  fileKey     String?          @map("file_key")
+  uploadedBy  Int              @map("uploaded_by")
+  deletedAt   DateTime?        @map("deleted_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  warehouse   Warehouse?       @relation(fields: [warehouseId], references: [id])
+  category    DocumentCategory @relation(fields: [categoryId], references: [id])
+  uploader    User             @relation(fields: [uploadedBy], references: [id])
+
+  @@map("manual_documents")
+  @@index([uuid])
+  @@index([warehouseId])
+}
+
+model SignedDocument {
+  id                  Int               @id @default(autoincrement())
+  uuid                String            @unique @default(uuid())
+  warehouseId         Int?              @map("warehouse_id")
+  sourceType          String            @map("source_type") // ERP or MANUAL
+  sourceDocumentId    Int?              @map("source_document_id")
+  title               String
+  categoryId          Int               @map("category_id")
+  signedPdfUrl        String            @map("signed_pdf_url")
+  fileKey             String?           @map("file_key")
+  fileHash            String?           @map("file_hash")
+  originalFileKey     String?           @map("original_file_key")
+  verificationToken   String            @unique @map("verification_token")
+  signedBy            Int               @map("signed_by")
+  signedAt            DateTime          @default(now()) @map("signed_at")
+  signatureTemplateId Int?              @map("signature_template_id")
+  status              String            @default("VALID") @map("status") // VALID, INVALID, REVOKED
+  deletedAt           DateTime?         @map("deleted_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  warehouse           Warehouse?        @relation(fields: [warehouseId], references: [id])
+  category            DocumentCategory  @relation(fields: [categoryId], references: [id])
+  signer              User              @relation(fields: [signedBy], references: [id])
+  template            SignatureTemplate? @relation(fields: [signatureTemplateId], references: [id])
+  verificationLogs    DocumentVerificationLog[]
+
+  @@map("signed_documents")
+  @@index([uuid])
+  @@index([warehouseId])
+}
+
+model DocumentVerificationLog {
+  id                Int            @id @default(autoincrement())
+  signedDocumentId  Int            @map("signed_document_id")
+  verificationToken String         @map("verification_token")
+  ipAddress         String?        @map("ip_address")
+  userAgent         String?        @map("user_agent")
+  verifiedAt        DateTime       @default(now()) @map("verified_at")
+
+  signedDocument    SignedDocument @relation(fields: [signedDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("document_verification_logs")
+}
+
+model SignatureAuditLog {
+  id         Int       @id @default(autoincrement())
+  userId     Int?      @map("user_id")
+  action     String
+  documentId Int?      @map("document_id")
+  metadata   String?   @map("metadata")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model UserSignature {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  fileUrl   String   @map("file_url")
+  fileKey   String   @map("file_key")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_signatures")
+}
+
