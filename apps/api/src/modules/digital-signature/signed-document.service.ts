@@ -560,12 +560,8 @@ export class SignedDocumentService {
 
     // 5. Generate verification token and URLs
     const verificationToken = crypto.randomUUID();
-    const appDomain =
-      this.configService.get<string>('APP_DOMAIN') || 'localhost:3001';
-    const useSSL =
-      this.configService.get<string>('FRONTEND_USE_SSL') === 'true';
-    const protocol = useSSL ? 'https' : 'http';
-    const verificationUrl = `${protocol}://${appDomain}/document-verification/${verificationToken}`;
+    const appDomain = this.configService.get<string>('FRONTEND_URL');
+    const verificationUrl = `${appDomain}/document-verification/${verificationToken}`;
 
     // 6. Generate QR code buffer and upload standalone image
     const qrBuffer = await QRCode.toBuffer(verificationUrl, {
