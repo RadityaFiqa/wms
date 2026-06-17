@@ -14,37 +14,37 @@ export declare class UserController {
         };
         uuid: string;
         id: number;
-        email: string;
         name: string;
         isActive: boolean;
-        isFirstLogin: boolean;
-        roleId: number;
-        warehouseId: number | null;
         createdAt: Date;
         updatedAt: Date;
+        warehouseId: number | null;
+        email: string;
+        isFirstLogin: boolean;
+        roleId: number;
     }>;
     findAll(req: any, search?: string, roleId?: number, isActive?: string, page?: number, limit?: number): Promise<{
         data: {
-            role: {
-                uuid: string;
-                id: number;
-                name: string;
-            };
             warehouse: {
                 uuid: string;
                 id: number;
                 name: string;
             } | null;
+            role: {
+                uuid: string;
+                id: number;
+                name: string;
+            };
             uuid: string;
             id: number;
-            email: string;
             name: string;
             isActive: boolean;
-            isFirstLogin: boolean;
-            roleId: number;
-            warehouseId: number | null;
             createdAt: Date;
             updatedAt: Date;
+            warehouseId: number | null;
+            email: string;
+            isFirstLogin: boolean;
+            roleId: number;
         }[];
         meta: {
             total: number;
@@ -54,26 +54,26 @@ export declare class UserController {
         };
     }>;
     findOne(uuid: string, req: any): Promise<{
-        role: {
-            uuid: string;
-            id: number;
-            name: string;
-        };
         warehouse: {
             uuid: string;
             id: number;
             name: string;
         } | null;
+        role: {
+            uuid: string;
+            id: number;
+            name: string;
+        };
         uuid: string;
         id: number;
-        email: string;
         name: string;
         isActive: boolean;
-        isFirstLogin: boolean;
-        roleId: number;
-        warehouseId: number | null;
         createdAt: Date;
         updatedAt: Date;
+        warehouseId: number | null;
+        email: string;
+        isFirstLogin: boolean;
+        roleId: number;
     }>;
     update(uuid: string, body: UpdateUserInput, req: any): Promise<{
         role: {
@@ -86,38 +86,38 @@ export declare class UserController {
         };
         uuid: string;
         id: number;
-        email: string;
         name: string;
         isActive: boolean;
-        isFirstLogin: boolean;
-        roleId: number;
-        warehouseId: number | null;
         createdAt: Date;
         updatedAt: Date;
+        warehouseId: number | null;
+        email: string;
+        isFirstLogin: boolean;
+        roleId: number;
     }>;
     deactivate(uuid: string, req: any): Promise<{
         uuid: string;
         id: number;
-        email: string;
         name: string;
         isActive: boolean;
-        isFirstLogin: boolean;
-        roleId: number;
-        warehouseId: number | null;
         createdAt: Date;
         updatedAt: Date;
+        warehouseId: number | null;
+        email: string;
+        isFirstLogin: boolean;
+        roleId: number;
     }>;
     activate(uuid: string, req: any): Promise<{
         uuid: string;
         id: number;
-        email: string;
         name: string;
         isActive: boolean;
-        isFirstLogin: boolean;
-        roleId: number;
-        warehouseId: number | null;
         createdAt: Date;
         updatedAt: Date;
+        warehouseId: number | null;
+        email: string;
+        isFirstLogin: boolean;
+        roleId: number;
     }>;
     resetPassword(uuid: string, req: any): Promise<{
         message: string;

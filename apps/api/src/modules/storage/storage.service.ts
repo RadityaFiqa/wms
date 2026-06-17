@@ -25,21 +25,17 @@ export class StorageService implements OnModuleInit {
     private readonly prisma: PrismaService,
   ) {
     const endpoint =
-      this.configService.get<string>('MINIO_ENDPOINT') || 'localhost';
-    const port = this.configService.get<number>('MINIO_PORT') || 9000;
+      this.configService.get<string>('MINIO_PUBLIC_URL') || 'localhost';
     const accessKey =
       this.configService.get<string>('MINIO_ACCESS_KEY') || 'minioadmin';
     const secretKey =
       this.configService.get<string>('MINIO_SECRET_KEY') || 'minioadmin';
-    const useSSL = this.configService.get<string>('MINIO_USE_SSL') === 'true';
 
     this.bucketName =
       this.configService.get<string>('MINIO_BUCKET') || 'wms-bucket';
 
     this.s3Client = new S3Client({
-      endpoint: useSSL
-        ? `https://${endpoint}:${port}`
-        : `http://${endpoint}:${port}`,
+      endpoint: endpoint,
       credentials: {
         accessKeyId: accessKey,
         secretAccessKey: secretKey,

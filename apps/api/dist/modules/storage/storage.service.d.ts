@@ -11,13 +11,13 @@ export declare class StorageService implements OnModuleInit {
     onModuleInit(): Promise<void>;
     uploadFile(file: Express.Multer.File, folder: string, uploadedById: number): Promise<{
         uuid: string;
-        id: number;
         filePath: string;
         fileName: string;
         mimeType: string;
         sizeBytes: number;
-        uploadedById: number;
         uploadedAt: Date;
+        id: number;
+        uploadedById: number;
         gateOperationId: number | null;
         gateVerificationId: number | null;
         stockOpnameId: number | null;

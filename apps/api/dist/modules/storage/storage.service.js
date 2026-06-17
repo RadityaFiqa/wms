@@ -60,17 +60,13 @@ let StorageService = StorageService_1 = class StorageService {
     constructor(configService, prisma) {
         this.configService = configService;
         this.prisma = prisma;
-        const endpoint = this.configService.get('MINIO_ENDPOINT') || 'localhost';
-        const port = this.configService.get('MINIO_PORT') || 9000;
+        const endpoint = this.configService.get('MINIO_PUBLIC_URL') || 'localhost';
         const accessKey = this.configService.get('MINIO_ACCESS_KEY') || 'minioadmin';
         const secretKey = this.configService.get('MINIO_SECRET_KEY') || 'minioadmin';
-        const useSSL = this.configService.get('MINIO_USE_SSL') === 'true';
         this.bucketName =
             this.configService.get('MINIO_BUCKET') || 'wms-bucket';
         this.s3Client = new client_s3_1.S3Client({
-            endpoint: useSSL
-                ? `https://${endpoint}:${port}`
-                : `http://${endpoint}:${port}`,
+            endpoint: endpoint,
             credentials: {
                 accessKeyId: accessKey,
                 secretAccessKey: secretKey,

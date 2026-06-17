@@ -7,10 +7,10 @@ export declare class RoleController {
         permissions: ({
             permission: {
                 uuid: string;
+                action: string;
                 id: number;
                 createdAt: Date;
                 updatedAt: Date;
-                action: string;
                 subject: string;
                 conditions: string | null;
             };
@@ -28,10 +28,10 @@ export declare class RoleController {
     })[]>;
     findAllPermissions(req: any): Promise<{
         uuid: string;
+        action: string;
         id: number;
         createdAt: Date;
         updatedAt: Date;
-        action: string;
         subject: string;
         conditions: string | null;
     }[]>;
@@ -39,10 +39,10 @@ export declare class RoleController {
         permissions: ({
             permission: {
                 uuid: string;
+                action: string;
                 id: number;
                 createdAt: Date;
                 updatedAt: Date;
-                action: string;
                 subject: string;
                 conditions: string | null;
             };
@@ -62,10 +62,10 @@ export declare class RoleController {
         permissions: ({
             permission: {
                 uuid: string;
+                action: string;
                 id: number;
                 createdAt: Date;
                 updatedAt: Date;
-                action: string;
                 subject: string;
                 conditions: string | null;
             };
@@ -88,10 +88,10 @@ export declare class RoleController {
         permissions: ({
             permission: {
                 uuid: string;
+                action: string;
                 id: number;
                 createdAt: Date;
                 updatedAt: Date;
-                action: string;
                 subject: string;
                 conditions: string | null;
             };

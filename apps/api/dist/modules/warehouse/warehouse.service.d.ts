@@ -4,18 +4,18 @@ export declare class WarehouseService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     create(data: CreateWarehouseInput): Promise<{
-        location: string;
+        code: string;
+        type: string | null;
         uuid: string;
         id: number;
         name: string;
+        location: string;
+        capacity: number;
+        address: string | null;
         isActive: boolean;
+        odooReference: string | null;
         createdAt: Date;
         updatedAt: Date;
-        code: string;
-        capacity: number;
-        type: string | null;
-        address: string | null;
-        odooReference: string | null;
     }>;
     findAll(query: {
         search?: string;
@@ -25,18 +25,18 @@ export declare class WarehouseService {
         allowedIds?: number[];
     }): Promise<{
         data: {
-            location: string;
+            code: string;
+            type: string | null;
             uuid: string;
             id: number;
             name: string;
+            location: string;
+            capacity: number;
+            address: string | null;
             isActive: boolean;
+            odooReference: string | null;
             createdAt: Date;
             updatedAt: Date;
-            code: string;
-            capacity: number;
-            type: string | null;
-            address: string | null;
-            odooReference: string | null;
         }[];
         meta: {
             total: number;
@@ -46,45 +46,45 @@ export declare class WarehouseService {
         };
     }>;
     findByUuid(uuid: string): Promise<{
-        location: string;
+        code: string;
+        type: string | null;
         uuid: string;
         id: number;
         name: string;
+        location: string;
+        capacity: number;
+        address: string | null;
         isActive: boolean;
+        odooReference: string | null;
         createdAt: Date;
         updatedAt: Date;
-        code: string;
-        capacity: number;
-        type: string | null;
-        address: string | null;
-        odooReference: string | null;
     }>;
     update(uuid: string, data: UpdateWarehouseInput): Promise<{
-        location: string;
+        code: string;
+        type: string | null;
         uuid: string;
         id: number;
         name: string;
+        location: string;
+        capacity: number;
+        address: string | null;
         isActive: boolean;
+        odooReference: string | null;
         createdAt: Date;
         updatedAt: Date;
-        code: string;
-        capacity: number;
-        type: string | null;
-        address: string | null;
-        odooReference: string | null;
     }>;
     remove(uuid: string): Promise<{
-        location: string;
+        code: string;
+        type: string | null;
         uuid: string;
         id: number;
         name: string;
+        location: string;
+        capacity: number;
+        address: string | null;
         isActive: boolean;
+        odooReference: string | null;
         createdAt: Date;
         updatedAt: Date;
-        code: string;
-        capacity: number;
-        type: string | null;
-        address: string | null;
-        odooReference: string | null;
     }>;
 }
