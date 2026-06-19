@@ -275,5 +275,7 @@ export const SignDocumentSchema = z.object({
   qrPosY: z.number().nonnegative(),
   qrWidth: z.number().positive(),
   qrHeight: z.number().positive(),
+  clientTime: z.string().optional(),
+  clientTimeZone: z.string().optional(),
 });
 export type SignDocumentInput = z.infer<typeof SignDocumentSchema>;

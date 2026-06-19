@@ -214,4 +214,6 @@ exports.SignDocumentSchema = zod_1.z.object({
     qrPosY: zod_1.z.number().nonnegative(),
     qrWidth: zod_1.z.number().positive(),
     qrHeight: zod_1.z.number().positive(),
+    clientTime: zod_1.z.string().optional(),
+    clientTimeZone: zod_1.z.string().optional(),
 });

@@ -27,7 +27,7 @@ export default function SignDocumentPage() {
   const router = useRouter();
   const params = useParams();
   const type = params.type as "erp" | "manual";
-  const idStr = params.id as string;
+  const uuid = params.uuid as string;
 
   const {
     categories,
@@ -64,25 +64,25 @@ export default function SignDocumentPage() {
 
   // Load document details
   useEffect(() => {
-    if (!idStr) return;
+    if (!uuid) return;
 
     const loadDocDetails = async () => {
       setLoadingDoc(true);
       try {
         if (type === "erp") {
           const res = await api.get(
-            API_ROUTES.erpDocumentReferences.detail(idStr),
+            API_ROUTES.erpDocumentReferences.detail(uuid),
           );
           setDocTitle(`ERP Document Reference: ${res.data.documentNumber}`);
           setDocNumber(res.data.documentNumber);
 
           const baseUrl = api.defaults.baseURL || "";
           setPdfUrl(
-            `${baseUrl}${API_ROUTES.digitalSignature.signedDocuments.erpPreview(idStr)}`,
+            `${baseUrl}${API_ROUTES.digitalSignature.signedDocuments.erpPreview(uuid)}`,
           );
         } else {
           const res = await api.get(
-            API_ROUTES.digitalSignature.manualDocuments.detail(idStr),
+            API_ROUTES.digitalSignature.manualDocuments.detail(uuid),
           );
           setDocTitle(res.data.title);
           setDocNumber("MANUAL-DOC");
@@ -100,7 +100,7 @@ export default function SignDocumentPage() {
     };
 
     loadDocDetails();
-  }, [type, idStr]);
+  }, [type, uuid]);
 
   // Apply default template layout automatically if active signature is available
   useEffect(() => {
@@ -203,12 +203,14 @@ export default function SignDocumentPage() {
         qrPosY: qrArea.posY,
         qrWidth: qrArea.width,
         qrHeight: qrArea.height,
+        clientTime: new Date().toISOString(),
+        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
       if (type === "erp") {
-        await signErpDocument(idStr, payload);
+        await signErpDocument(uuid, payload);
       } else {
-        await signManualDocument(idStr, payload);
+        await signManualDocument(uuid, payload);
       }
 
       toast.success("Dokumen berhasil ditandatangani secara digital!", {

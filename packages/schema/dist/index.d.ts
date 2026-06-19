@@ -529,6 +529,8 @@ export declare const SignDocumentSchema: z.ZodObject<{
     qrPosY: z.ZodNumber;
     qrWidth: z.ZodNumber;
     qrHeight: z.ZodNumber;
+    clientTime: z.ZodOptional<z.ZodString>;
+    clientTimeZone: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     pageNumber: number;
     posX: number;
@@ -541,6 +543,8 @@ export declare const SignDocumentSchema: z.ZodObject<{
     qrHeight: number;
     categoryId: string | number;
     templateId?: number | null | undefined;
+    clientTime?: string | undefined;
+    clientTimeZone?: string | undefined;
 }, {
     pageNumber: number;
     posX: number;
@@ -553,6 +557,8 @@ export declare const SignDocumentSchema: z.ZodObject<{
     qrHeight: number;
     categoryId: string | number;
     templateId?: number | null | undefined;
+    clientTime?: string | undefined;
+    clientTimeZone?: string | undefined;
 }>;
 export type SignDocumentInput = z.infer<typeof SignDocumentSchema>;
 //# sourceMappingURL=index.d.ts.map

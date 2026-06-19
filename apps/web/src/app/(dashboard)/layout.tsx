@@ -406,7 +406,7 @@ export default function DashboardLayout({
               </button>
 
               {isDropdownOpen && (
-                <div className="absolute right-0 mt-2.5 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-2 z-50 text-sm animate-fade-in">
+                <div className="absolute right-0 mt-2.5 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-2 z-[9999] text-sm animate-fade-in">
                   {/* Dropdown Header */}
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/60">
                     <p className="font-bold text-slate-800 dark:text-slate-200 truncate">

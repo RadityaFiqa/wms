@@ -19,6 +19,10 @@ api.interceptors.request.use((config) => {
   if (activeWarehouse && config.headers) {
     config.headers["x-warehouse-id"] = activeWarehouse.uuid;
   }
+
+  if (config.headers) {
+    config.headers["x-timezone"] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
   return config;
 });
 

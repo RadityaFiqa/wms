@@ -245,11 +245,10 @@ export default function ErpDocumentsPage() {
         <div>
           <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center">
             <FileText className="h-8 w-8 text-blue-600 mr-3" />
-            Dokumen ERP (PO/SO)
+            Dokumen ERP
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-            Snapshot dokumen purchase order (PO) & sales order (SO) dari Odoo
-            untuk gudang:{" "}
+            Snapshot dokumen dari Odoo untuk gudang:{" "}
             <span className="font-semibold text-blue-600 dark:text-blue-400">
               {activeWarehouse?.name || "Belum Dipilih"}
             </span>
@@ -719,7 +718,7 @@ function ErpDocumentRow({
           {doc.purchaseName || doc.origin || "-"}
         </td>
         <td className="px-6 py-4 font-semibold text-slate-605 dark:text-slate-400 truncate font-mono">
-          {doc.ref_fax || "-"}
+          {doc.refFax || "-"}
         </td>
         <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-slate-200">
           {doc.totalQuantity.toLocaleString("id-ID")}

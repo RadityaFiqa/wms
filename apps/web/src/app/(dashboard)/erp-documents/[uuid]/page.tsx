@@ -26,13 +26,13 @@ import Link from "next/link";
 export default function ErpDocumentDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const id = params.id as string;
+  const uuid = params.uuid as string;
   const { user, hasPermission } = useAuthStore();
 
   const [isRawPayloadOpen, setIsRawPayloadOpen] = useState(false);
 
   const { documentDetail, isLoading, error, forceSyncDetail } =
-    useErpDocumentDetail(id);
+    useErpDocumentDetail(uuid);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleForceSync = async () => {
@@ -280,7 +280,7 @@ export default function ErpDocumentDetailPage() {
                   Reference Fax
                 </span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 block font-mono">
-                  {documentDetail.ref_fax || "-"}
+                  {documentDetail.refFax || "-"}
                 </span>
               </div>
               <div>{/* Empty block to align layout */}</div>

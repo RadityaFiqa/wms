@@ -116,7 +116,8 @@ Use CASL abilities and `PoliciesGuard` for protected endpoints.
 * Avoid calling APIs directly inside pages or components
 
 ## Database Guidelines
-
+* Use PascalCase for table name & camelCase for column name.
+* Use timestampz type for all datetime columns.
 * Modify schema through Prisma only
 * Run `prisma generate` after schema changes
 * Add indexes for frequently queried fields

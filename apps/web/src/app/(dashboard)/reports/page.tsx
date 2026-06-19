@@ -19,6 +19,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function ReportsPage() {
   const { activeWarehouse } = useAuthStore();
@@ -306,57 +307,86 @@ export default function ReportsPage() {
                             colSpan={4}
                             className="bg-slate-50/30 dark:bg-slate-900/30 px-8 py-4 border-b border-slate-100 dark:border-slate-800/80"
                           >
-                            <div className="bg-white dark:bg-slate-850/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3">
-                              <h4 className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                Rincian Transaksi Truk Gerbang (Gate)
-                              </h4>
+                            <div className="bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
+                              <div className="bg-slate-100/70 dark:bg-slate-800/50 px-4 py-2.5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+                                <span className="font-bold text-slate-700 dark:text-slate-350 text-xs uppercase tracking-wider">
+                                  Rincian Transaksi Truk Gerbang (Gate Operations)
+                                </span>
+                              </div>
                               {row.transactions && row.transactions.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {row.transactions.map((tx: any, txIdx: number) => (
-                                    <div
-                                      key={txIdx}
-                                      className="bg-slate-50/70 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-3.5 flex flex-col justify-between gap-2.5 hover:shadow-xs transition"
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <span className="font-mono text-xs font-black text-slate-850 dark:text-slate-200">
-                                          {tx.opNumber}
-                                        </span>
-                                        <span
-                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                            tx.cardType === "IN"
-                                              ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900"
-                                              : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900"
-                                          }`}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className="bg-slate-50/30 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                        <th className="px-5 py-3">Nomor Operasi</th>
+                                        <th className="px-5 py-3 text-center">Tipe</th>
+                                        <th className="px-5 py-3">Driver & Plat</th>
+                                        <th className="px-5 py-3">Dokumen Referensi</th>
+                                        <th className="px-5 py-3 text-right">Kuantitas</th>
+                                        <th className="px-5 py-3 text-center">Aksi</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                                      {row.transactions.map((tx: any, txIdx: number) => (
+                                        <tr
+                                          key={txIdx}
+                                          className="hover:bg-slate-50/20 dark:hover:bg-slate-800/10 transition bg-white dark:bg-slate-900/40"
                                         >
-                                          {tx.cardType === "IN" ? "Masuk" : "Keluar"}
-                                        </span>
-                                      </div>
-                                      <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-                                        <div>
-                                          Driver: <strong className="font-bold text-slate-700 dark:text-slate-350">{tx.driverName}</strong> ({tx.licensePlate})
-                                        </div>
-                                        <div>
-                                          Dokumen Referensi: <span className="font-semibold text-slate-650 dark:text-slate-300 font-mono text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{tx.referenceDocument}</span>
-                                        </div>
-                                      </div>
-                                      <div className="flex justify-end pt-1.5 border-t border-slate-100 dark:border-slate-800">
-                                        <span
-                                          className={`font-black text-sm ${
-                                            tx.cardType === "IN"
-                                              ? "text-emerald-600 dark:text-emerald-400"
-                                              : "text-red-650"
-                                          }`}
-                                        >
-                                          {tx.cardType === "IN" ? "+" : "-"}
-                                          {tx.quantity.toLocaleString("id-ID")}{" "}
-                                          {row.product.uom}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
+                                          <td className="px-5 py-3 font-mono font-bold text-slate-800 dark:text-slate-250">
+                                            {tx.opNumber}
+                                          </td>
+                                          <td className="px-5 py-3 text-center">
+                                            <span
+                                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                tx.cardType === "IN"
+                                                  ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                                                  : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
+                                              }`}
+                                            >
+                                              {tx.cardType === "IN" ? "Masuk" : "Keluar"}
+                                            </span>
+                                          </td>
+                                          <td className="px-5 py-3 text-slate-700 dark:text-slate-300">
+                                            <strong className="font-bold">{tx.driverName}</strong> ({tx.licensePlate})
+                                          </td>
+                                          <td className="px-5 py-3">
+                                            <span className="font-mono text-[10px] text-slate-650 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/40 dark:border-slate-700/40">
+                                              {tx.referenceDocument}
+                                            </span>
+                                          </td>
+                                          <td
+                                            className={`px-5 py-3 text-right font-bold text-sm ${
+                                              tx.cardType === "IN"
+                                                ? "text-emerald-600 dark:text-emerald-400"
+                                                : "text-red-655 dark:text-red-400"
+                                            }`}
+                                          >
+                                            {tx.cardType === "IN" ? "+" : "-"}
+                                            {tx.quantity.toLocaleString("id-ID")}{" "}
+                                            <span className="text-slate-400 font-normal text-[10px] ml-0.5">
+                                              {row.product.uom}
+                                            </span>
+                                          </td>
+                                          <td className="px-5 py-3 text-center">
+                                            {tx.uuid ? (
+                                              <Link
+                                                href={`/gate-operations/${tx.uuid}`}
+                                                className="inline-flex items-center justify-center p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition cursor-pointer"
+                                                title="Lihat Detail Operasi Gerbang"
+                                              >
+                                                <ExternalLink className="h-4.5 w-4.5" />
+                                              </Link>
+                                            ) : (
+                                              <span className="text-slate-350">-</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 </div>
                               ) : (
-                                <p className="text-xs text-slate-450 italic">
+                                <p className="text-xs text-slate-450 italic p-4 text-center">
                                   Tidak ada data transaksi terperinci.
                                 </p>
                               )}
