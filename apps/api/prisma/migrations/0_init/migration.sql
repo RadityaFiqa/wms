@@ -1,0 +1,1 @@
+-- Empty migration to baseline/match the database's 0_init migration record

@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 
 @Injectable()
 export class AuditLogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly warehouseContext: WarehouseContextService,
+  ) {}
 
   async log(data: {
     actorId?: number;
@@ -12,7 +16,11 @@ export class AuditLogService {
     ipAddress?: string;
     userAgent?: string;
     details?: any;
+    warehouseId?: number;
   }) {
+    const contextWarehouseId = this.warehouseContext.getWarehouseId();
+    const warehouseId = contextWarehouseId || data.warehouseId || null;
+
     return this.prisma.auditLog.create({
       data: {
         actorId: data.actorId || null,
@@ -21,6 +29,7 @@ export class AuditLogService {
         ipAddress: data.ipAddress || null,
         userAgent: data.userAgent || null,
         details: data.details ? JSON.stringify(data.details) : null,
+        warehouseId,
       },
     });
   }
@@ -40,6 +49,16 @@ export class AuditLogService {
 
     const where: any = {};
 
+    const currentWarehouseId = this.warehouseContext.getWarehouseId();
+    if (currentUser.role?.name !== 'SUPER_ADMIN') {
+      if (!currentWarehouseId) {
+        throw new BadRequestException('Warehouse context is required');
+      }
+      where.warehouseId = currentWarehouseId;
+    } else if (currentWarehouseId) {
+      where.warehouseId = currentWarehouseId;
+    }
+
     if (query.action) {
       where.action = query.action;
     }
@@ -52,28 +71,6 @@ export class AuditLogService {
         { target: { email: { contains: query.search, mode: 'insensitive' } } },
         { action: { contains: query.search, mode: 'insensitive' } },
       ];
-    }
-
-    if (currentUser.role?.name !== 'SUPER_ADMIN') {
-      const accesses = await this.prisma.warehouseAccess.findMany({
-        where: { userId: currentUser.id },
-        select: { warehouseId: true },
-      });
-      const allowedWarehouseIds = accesses.map((a) => a.warehouseId);
-
-      const warehouseCondition = {
-        OR: [
-          { actor: { warehouseId: { in: allowedWarehouseIds } } },
-          { target: { warehouseId: { in: allowedWarehouseIds } } },
-        ],
-      };
-
-      if (where.OR) {
-        where.AND = [{ OR: where.OR }, warehouseCondition];
-        delete where.OR;
-      } else {
-        where.AND = [warehouseCondition];
-      }
     }
 
     const [total, data] = await Promise.all([

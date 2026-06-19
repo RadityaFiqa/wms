@@ -55,11 +55,6 @@ async function main() {
     { action: 'read', subject: 'Inventory' },
     { action: 'update', subject: 'Inventory' },
     { action: 'delete', subject: 'Inventory' },
-    // Order CRUD
-    { action: 'create', subject: 'Order' },
-    { action: 'read', subject: 'Order' },
-    { action: 'update', subject: 'Order' },
-    { action: 'delete', subject: 'Order' },
     // Audit Log Read
     { action: 'read', subject: 'AuditLog' },
     // OdooAccount Config
@@ -149,7 +144,6 @@ async function main() {
         'read:User',
         'read:Warehouse',
         'manage:Inventory',
-        'read:Order',
         'read:AuditLog',
         'read:GateOperation',
         'update:GateOperation',
@@ -197,8 +191,6 @@ async function main() {
         'create:Inventory',
         'read:Inventory',
         'update:Inventory',
-        'read:Order',
-        'update:Order',
         'read:StockOpname',
         'update:StockOpname',
       ],
@@ -211,8 +203,6 @@ async function main() {
       permissionKeys: [
         'read:Warehouse',
         'read:Inventory',
-        'read:Order',
-        'update:Order',
       ],
     },
     {
@@ -223,7 +213,6 @@ async function main() {
       permissionKeys: [
         'read:Warehouse',
         'read:Inventory',
-        'manage:Order',
         'read:User',
       ],
     },
@@ -235,7 +224,6 @@ async function main() {
       permissionKeys: [
         'read:Warehouse',
         'read:Inventory',
-        'read:Order',
         'read:AuditLog',
       ],
     },

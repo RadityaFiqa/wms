@@ -12,6 +12,7 @@ import PDFKitDocument from 'pdfkit';
 import * as crypto from 'crypto';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 import type { SignDocumentInput } from '@bulog-wms/schema';
+import { getLocalStartOfDay, getLocalEndOfDay } from '@/core/utils/date';
 
 @Injectable()
 export class SignedDocumentService {
@@ -244,15 +245,14 @@ export class SignedDocumentService {
       where.status = query.status;
     }
 
+    const timezone = this.warehouseContext.getTimezone();
     if (query.startDate || query.endDate) {
       where.signedAt = {};
       if (query.startDate) {
-        where.signedAt.gte = new Date(query.startDate);
+        where.signedAt.gte = getLocalStartOfDay(query.startDate, timezone);
       }
       if (query.endDate) {
-        const end = new Date(query.endDate);
-        end.setHours(23, 59, 59, 999);
-        where.signedAt.lte = end;
+        where.signedAt.lte = getLocalEndOfDay(query.endDate, timezone);
       }
     }
 
@@ -640,8 +640,14 @@ export class SignedDocumentService {
     });
 
     // Draw small text credentials overlay beside signature image for verification auditing
+    const signatureDate = data.clientTime ? new Date(data.clientTime) : new Date();
+    const timezone = data.clientTimeZone || 'UTC';
+    const formattedDate = signatureDate.toLocaleString('id-ID', {
+      timeZone: timezone,
+    });
+
     page.drawText(
-      `Digitally Signed by ${user.name}\nDate: ${new Date().toLocaleString('id-ID')}`,
+      `Digitally Signed by ${user.name}\nDate: ${formattedDate}`,
       {
         x: sigX,
         y: Math.max(5, sigY - 18),
@@ -697,6 +703,7 @@ export class SignedDocumentService {
         signedBy: userId,
         signatureTemplateId: data.templateId || null,
         status: 'VALID',
+        signedAt: data.clientTime ? new Date(data.clientTime) : new Date(),
       },
       include: {
         category: true,
@@ -724,21 +731,20 @@ export class SignedDocumentService {
     };
   }
 
-  /**
-   * Helper to write audit logs.
-   */
   private async logActivity(
     userId: number | null,
     action: string,
     documentId: number | null,
     metadata?: any,
   ) {
-    await this.prisma.signatureAuditLog.create({
+    await this.prisma.auditLog.create({
       data: {
-        userId,
+        actorId: userId,
         action,
-        documentId,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        details: JSON.stringify({
+          documentId,
+          ...metadata,
+        }),
       },
     });
   }

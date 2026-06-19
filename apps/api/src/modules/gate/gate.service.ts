@@ -15,6 +15,7 @@ import type {
 } from '@bulog-wms/schema';
 import { CardType, VerificationStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
+import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
 
 @Injectable()
 export class GateService {
@@ -29,10 +30,10 @@ export class GateService {
    * Helper to format double dates/times.
    */
   private getStartAndEndOfToday() {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const timezone = this.warehouseContext.getTimezone();
+    const todayStr = formatDateInTimezone(new Date(), timezone);
+    const start = getLocalStartOfDay(todayStr, timezone);
+    const end = getLocalEndOfDay(todayStr, timezone);
     return { start, end };
   }
 
@@ -192,16 +193,13 @@ export class GateService {
     };
 
     if (query.startDate || query.endDate) {
+      const timezone = this.warehouseContext.getTimezone();
       const createdAtFilter: any = {};
       if (query.startDate) {
-        const start = new Date(query.startDate);
-        start.setHours(0, 0, 0, 0);
-        createdAtFilter.gte = start;
+        createdAtFilter.gte = getLocalStartOfDay(query.startDate, timezone);
       }
       if (query.endDate) {
-        const end = new Date(query.endDate);
-        end.setHours(23, 59, 59, 999);
-        createdAtFilter.lte = end;
+        createdAtFilter.lte = getLocalEndOfDay(query.endDate, timezone);
       }
       where.createdAt = createdAtFilter;
     }

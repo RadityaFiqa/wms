@@ -21,10 +21,11 @@ export class WarehouseInterceptor implements NestInterceptor {
     const warehouseId = warehouse?.id;
     const warehouseUuid = warehouse?.uuid;
     const userId = user?.id;
+    const timezone = request.headers['x-timezone'] as string | undefined;
 
     return new Observable((subscriber) => {
       this.warehouseContextService.run(
-        { warehouseId, warehouseUuid, userId },
+        { warehouseId, warehouseUuid, userId, timezone },
         () => {
           const subscription = next.handle().subscribe({
             next: (val) => subscriber.next(val),

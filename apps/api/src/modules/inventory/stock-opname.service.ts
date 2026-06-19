@@ -6,12 +6,15 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { ReconciliationService } from './reconciliation.service';
 import PDFDocument from 'pdfkit';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
+import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
 
 @Injectable()
 export class StockOpnameService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reconciliationService: ReconciliationService,
+    private readonly warehouseContext: WarehouseContextService,
   ) {}
 
   /**
@@ -19,16 +22,13 @@ export class StockOpnameService {
    * Format: SO-YYYYMMDD-XXXX
    */
   private async generateOpnameNumber(tx: any): Promise<string> {
-    const today = new Date();
-    const YYYY = today.getFullYear();
-    const MM = String(today.getMonth() + 1).padStart(2, '0');
-    const DD = String(today.getDate()).padStart(2, '0');
+    const timezone = this.warehouseContext.getTimezone();
+    const todayStr = formatDateInTimezone(new Date(), timezone);
+    const [YYYY, MM, DD] = todayStr.split('-');
     const dateStr = `${YYYY}${MM}${DD}`;
 
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const start = getLocalStartOfDay(todayStr, timezone);
+    const end = getLocalEndOfDay(todayStr, timezone);
 
     const count = await tx.stockOpname.count({
       where: {
@@ -74,17 +74,14 @@ export class StockOpnameService {
       where.createdById = parseInt(query.createdById, 10);
     }
 
+    const timezone = this.warehouseContext.getTimezone();
     if (query.startDate || query.endDate) {
       where.createdAt = {};
       if (query.startDate) {
-        const start = new Date(query.startDate);
-        start.setHours(0, 0, 0, 0);
-        where.createdAt.gte = start;
+        where.createdAt.gte = getLocalStartOfDay(query.startDate, timezone);
       }
       if (query.endDate) {
-        const end = new Date(query.endDate);
-        end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
+        where.createdAt.lte = getLocalEndOfDay(query.endDate, timezone);
       }
     }
 

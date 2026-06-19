@@ -11,8 +11,6 @@ type ExtendedSubjects =
       Permission: Permission;
       Warehouse: any;
       Inventory: any;
-      Order: any;
-      OrderItem: any;
       AuditLog: any;
       OdooAccount: any;
       GateOperation: any;
@@ -28,7 +26,6 @@ type ExtendedSubjects =
       SignedDocument: any;
       DocumentCategory: any;
       DocumentVerificationLog: any;
-      SignatureAuditLog: any;
       UserSignature: any;
     }>
   | 'all';

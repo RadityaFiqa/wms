@@ -141,10 +141,10 @@ export class InventoryService {
         .update({
           where: { id: account.id },
           data: {
-            lastSyncAt: new Date(),
-            lastSyncStatus: 'FAILED',
-            lastSyncError: `Gagal memanggil API product.product: ${err.message}`,
-            lastSyncBy: triggeredBy,
+            lastSyncInventoryAt: new Date(),
+            lastSyncInventoryStatus: 'FAILED',
+            lastSyncInventoryError: `Gagal memanggil API product.product: ${err.message}`,
+            lastSyncInventoryBy: triggeredBy,
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));
@@ -211,10 +211,10 @@ export class InventoryService {
         .update({
           where: { id: account.id },
           data: {
-            lastSyncAt: new Date(),
-            lastSyncStatus: 'FAILED',
-            lastSyncError: `Gagal memanggil API stock.location: ${err.message}`,
-            lastSyncBy: triggeredBy,
+            lastSyncInventoryAt: new Date(),
+            lastSyncInventoryStatus: 'FAILED',
+            lastSyncInventoryError: `Gagal memanggil API stock.location: ${err.message}`,
+            lastSyncInventoryBy: triggeredBy,
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));
@@ -277,10 +277,10 @@ export class InventoryService {
         .update({
           where: { id: account.id },
           data: {
-            lastSyncAt: new Date(),
-            lastSyncStatus: 'FAILED',
-            lastSyncError: `Gagal memanggil API stock.quant: ${err.message}`,
-            lastSyncBy: triggeredBy,
+            lastSyncInventoryAt: new Date(),
+            lastSyncInventoryStatus: 'FAILED',
+            lastSyncInventoryError: `Gagal memanggil API stock.quant: ${err.message}`,
+            lastSyncInventoryBy: triggeredBy,
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));
@@ -579,6 +579,18 @@ export class InventoryService {
 
       console.log(`completed`)
 
+      const finishedAt = new Date();
+      await this.prisma.odooAccount.update({
+        where: { id: account.id },
+        data: {
+          lastSyncInventoryAt: finishedAt,
+          lastSyncInventoryStatus: 'SUCCESS',
+          lastSyncInventoryError: null,
+          lastSyncInventoryBy: triggeredBy,
+          lastSyncInventoryCount: records.length,
+        },
+      });
+
       return {
         success: true,
         syncedCount: records.length,
@@ -588,10 +600,10 @@ export class InventoryService {
         .update({
           where: { id: account.id },
           data: {
-            lastSyncAt: new Date(),
-            lastSyncStatus: 'FAILED',
-            lastSyncError: `Gagal menyimpan ke database: ${err.message}`,
-            lastSyncBy: triggeredBy,
+            lastSyncInventoryAt: new Date(),
+            lastSyncInventoryStatus: 'FAILED',
+            lastSyncInventoryError: `Gagal menyimpan ke database: ${err.message}`,
+            lastSyncInventoryBy: triggeredBy,
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));

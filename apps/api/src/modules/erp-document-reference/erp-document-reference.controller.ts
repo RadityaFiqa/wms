@@ -111,10 +111,10 @@ export class ErpDocumentReferenceController {
     return this.service.triggerSync(warehouseId, triggeredBy);
   }
 
-  @Post(':id/force-sync')
+  @Post(':uuid/force-sync')
   @CheckPolicies((ability) => ability.can('update', 'Inventory'))
   @AuditLogAction('ERP_DOCUMENT_FORCE_SYNC')
-  async forceSync(@Param('id') idOrUuid: string, @Req() req: any) {
+  async forceSync(@Param('uuid') uuid: string, @Req() req: any) {
     if (req.user?.role?.name !== 'SUPER_ADMIN') {
       throw new ForbiddenException(
         'Akses ditolak. Hanya Super Admin yang dapat mensinkronkan paksa dokumen ERP.',
@@ -128,6 +128,6 @@ export class ErpDocumentReferenceController {
     }
 
     const triggeredBy = req.user?.email || 'System';
-    return this.service.forceSyncDocument(warehouseId, idOrUuid, triggeredBy);
+    return this.service.forceSyncDocument(warehouseId, uuid, triggeredBy);
   }
 }

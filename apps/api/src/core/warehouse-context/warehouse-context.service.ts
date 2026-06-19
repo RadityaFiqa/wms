@@ -5,6 +5,7 @@ export interface WarehouseContext {
   warehouseId?: number;
   warehouseUuid?: string;
   userId?: number;
+  timezone?: string;
 }
 
 @Injectable()
@@ -30,5 +31,9 @@ export class WarehouseContextService {
 
   getUserId(): number | undefined {
     return this.getStore()?.userId;
+  }
+
+  getTimezone(): string {
+    return this.getStore()?.timezone || 'Asia/Jakarta';
   }
 }

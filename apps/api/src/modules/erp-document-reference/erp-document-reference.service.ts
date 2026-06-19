@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { OdooClient } from '../odoo/odoo-client';
 import { OdooSessionManager } from '../odoo/odoo-session.manager';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
+import { getLocalStartOfDay, getLocalEndOfDay } from '@/core/utils/date';
 
 @Injectable()
 export class ErpDocumentReferenceService {
@@ -16,6 +18,7 @@ export class ErpDocumentReferenceService {
     private readonly prisma: PrismaService,
     private readonly odooClient: OdooClient,
     private readonly odooSessionManager: OdooSessionManager,
+    private readonly warehouseContext: WarehouseContextService,
   ) {}
 
   /**
@@ -176,12 +179,12 @@ export class ErpDocumentReferenceService {
     }
 
     this.logger.log(
-      `[SYNC-JOB] OdooAccount found: ID=${account.id}, baseUrl=${account.baseUrl}, lastOffset=${account.lastOffset}`,
+      `[SYNC-JOB] OdooAccount found: ID=${account.id}, baseUrl=${account.baseUrl}, lastOffset=${account.lastDocumentsOffset}`,
     );
 
     // 2. Fetch PO & SO documents in Odoo using pagination
     const limit = 100;
-    let offset = account.lastOffset ?? 0;
+    let offset = account.lastDocumentsOffset ?? 0;
     let syncedCount = 0;
 
     // Best-effort: Get total count matching domain for progress bar calculation
@@ -256,7 +259,7 @@ export class ErpDocumentReferenceService {
             },
             offset,
             limit,
-            order: 'scheduled_date ASC',
+            order: 'scheduled_date desc',
             count_limit: 999_999,
           },
         );
@@ -285,7 +288,7 @@ export class ErpDocumentReferenceService {
         // Update OdooAccount offset
         await this.prisma.odooAccount.update({
           where: { id: account.id },
-          data: { lastOffset: offset },
+          data: { lastDocumentsOffset: offset },
         });
 
         // Update processedDocuments in sync log
@@ -394,11 +397,11 @@ export class ErpDocumentReferenceService {
       await this.prisma.odooAccount.update({
         where: { id: account.id },
         data: {
-          lastSyncAt: finishedAt,
-          lastSyncStatus: 'SUCCESS',
-          lastSyncError: null,
-          lastSyncBy: triggeredBy,
-          lastSyncCount: syncedCount,
+          lastSyncDocumentsAt: finishedAt,
+          lastSyncDocumentsStatus: 'SUCCESS',
+          lastSyncDocumentsError: null,
+          lastSyncDocumentsBy: triggeredBy,
+          lastSyncDocumentsCount: syncedCount,
         },
       });
 
@@ -425,10 +428,10 @@ export class ErpDocumentReferenceService {
         .update({
           where: { id: account.id },
           data: {
-            lastSyncAt: finishedAt,
-            lastSyncStatus: 'FAILED',
-            lastSyncError: `Gagal menyimpan data ke database: ${err.message}`,
-            lastSyncBy: triggeredBy,
+            lastSyncDocumentsAt: finishedAt,
+            lastSyncDocumentsStatus: 'FAILED',
+            lastSyncDocumentsError: `Gagal menyimpan data ke database: ${err.message}`,
+            lastSyncDocumentsBy: triggeredBy,
           },
         })
         .catch((e) =>
@@ -527,22 +530,21 @@ export class ErpDocumentReferenceService {
     }
 
     if (query.refFax) {
-      where.ref_fax = { contains: query.refFax, mode: 'insensitive' };
+      where.refFax = { contains: query.refFax, mode: 'insensitive' };
     }
 
     if (query.state) {
       where.state = query.state;
     }
 
+    const timezone = this.warehouseContext.getTimezone();
     if (query.startDate || query.endDate) {
       where.scheduledDate = {};
       if (query.startDate) {
-        where.scheduledDate.gte = new Date(query.startDate);
+        where.scheduledDate.gte = getLocalStartOfDay(query.startDate, timezone);
       }
       if (query.endDate) {
-        const end = new Date(query.endDate);
-        end.setHours(23, 59, 59, 999);
-        where.scheduledDate.lte = end;
+        where.scheduledDate.lte = getLocalEndOfDay(query.endDate, timezone);
       }
     }
 
@@ -580,7 +582,7 @@ export class ErpDocumentReferenceService {
       totalDocuments: totalCount,
       totalIncoming: incomingCount,
       totalOutgoing: outgoingCount,
-      lastSyncTime: odooAccount?.lastSyncAt || null,
+      lastSyncTime: odooAccount?.lastSyncDocumentsAt || null,
     };
 
     const sanitizedData = await this.sanitizeDocReferences(data);
@@ -800,7 +802,7 @@ export class ErpDocumentReferenceService {
         partnerName,
         purchaseName,
         origin,
-        ref_fax,
+        refFax: ref_fax,
         sourceLocationName,
         destinationLocationName,
         scheduledDate,
@@ -821,7 +823,7 @@ export class ErpDocumentReferenceService {
         partnerName,
         purchaseName,
         origin,
-        ref_fax,
+        refFax: ref_fax,
         sourceLocationName,
         destinationLocationName,
         scheduledDate,
@@ -924,7 +926,10 @@ export class ErpDocumentReferenceService {
       .filter((name): name is string => name !== null && name !== '');
   }
 
-  private async sanitizeDocReferences(docs: any[]): Promise<any[]> {
+  private async sanitizeDocReferences(
+    docs: any[],
+    includeRawPayload = false,
+  ): Promise<any[]> {
     if (!docs || docs.length === 0) return [];
 
     // Collect all inventoryIds across all items in all docs
@@ -1007,13 +1012,14 @@ export class ErpDocumentReferenceService {
         items: sanitizedItems,
         isSigned,
         signatureInfo,
+        ...(includeRawPayload ? { rawPayload } : {}),
       };
     });
   }
 
   private async sanitizeDocReference(doc: any): Promise<any> {
     if (!doc) return null;
-    const sanitized = await this.sanitizeDocReferences([doc]);
+    const sanitized = await this.sanitizeDocReferences([doc], true);
     return sanitized[0];
   }
 

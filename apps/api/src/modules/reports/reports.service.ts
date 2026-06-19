@@ -5,10 +5,15 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import PDFDocument from 'pdfkit';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
+import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly warehouseContext: WarehouseContextService,
+  ) {}
 
   /**
    * Generates Daily Stock Movement Report rows for a date range and warehouse.
@@ -25,17 +30,17 @@ export class ReportsService {
       throw new BadRequestException('Start date dan End date harus diisi.');
     }
 
-    const start = new Date(query.startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(query.endDate);
-    end.setHours(23, 59, 59, 999);
+    const timezone = this.warehouseContext.getTimezone();
+    const start = getLocalStartOfDay(query.startDate, timezone);
+    const end = getLocalEndOfDay(query.endDate, timezone);
 
     if (start > end) {
       throw new BadRequestException('Start date tidak boleh setelah End date.');
     }
 
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
+    // Today in local timezone end of day
+    const todayStr = formatDateInTimezone(new Date(), timezone);
+    const today = getLocalEndOfDay(todayStr, timezone);
 
     // 1. Fetch COMPLETED or VERIFIED Gate Operations from start date until TODAY
     const gateOps = await this.prisma.gateOperation.findMany({
@@ -58,10 +63,8 @@ export class ReportsService {
 
     // 2. Identify products that had movement within the selected period
     const movedProductIdsSet = new Set<number>();
-    const dateRangeStart = new Date(query.startDate);
-    dateRangeStart.setHours(0, 0, 0, 0);
-    const dateRangeEnd = new Date(query.endDate);
-    dateRangeEnd.setHours(23, 59, 59, 999);
+    const dateRangeStart = start;
+    const dateRangeEnd = end;
 
     for (const op of gateOps) {
       const verifiedAt = op.verification?.verifiedAt;
@@ -121,7 +124,7 @@ export class ReportsService {
         const opProd = op.products.find((p) => p.inventoryId === prod.id);
         if (!opProd) continue;
 
-        const dateStr = this.formatDateString(op.verification!.verifiedAt!);
+        const dateStr = formatDateInTimezone(op.verification!.verifiedAt!, timezone);
         const current = transactionsByDate.get(dateStr) || {
           incoming: 0,
           outgoing: 0,
@@ -135,6 +138,7 @@ export class ReportsService {
         }
 
         current.list.push({
+          uuid: op.uuid,
           opNumber: op.opNumber,
           driverName: op.driverName,
           licensePlate: op.licensePlate,
@@ -151,10 +155,10 @@ export class ReportsService {
         { opening: number; incoming: number; outgoing: number; closing: number; list: any[] }
       >();
 
-      const todayStr = this.formatDateString(new Date());
+      const todayStr = formatDateInTimezone(new Date(), timezone);
 
       for (const dDate of backwardDates) {
-        const dStr = this.formatDateString(dDate);
+        const dStr = formatDateInTimezone(dDate, timezone);
         const txs = transactionsByDate.get(dStr) || {
           incoming: 0,
           outgoing: 0,
@@ -164,7 +168,7 @@ export class ReportsService {
         let closing = 0;
         const snap = snapshots.find(
           (s) =>
-            s.inventoryId === prod.id && this.formatDateString(s.date) === dStr,
+            s.inventoryId === prod.id && formatDateInTimezone(s.date, timezone) === dStr,
         );
 
         if (dStr === todayStr) {
@@ -198,7 +202,7 @@ export class ReportsService {
       }
 
       for (const dDate of datesList) {
-        const dStr = this.formatDateString(dDate);
+        const dStr = formatDateInTimezone(dDate, timezone);
         const metrics = productDailyMetrics.get(dStr);
         if (!metrics) continue;
 
@@ -248,11 +252,9 @@ export class ReportsService {
       throw new NotFoundException('Produk tidak ditemukan.');
     }
 
-    const targetDate = new Date(query.date);
-    const start = new Date(targetDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(targetDate);
-    end.setHours(23, 59, 59, 999);
+    const timezone = this.warehouseContext.getTimezone();
+    const start = getLocalStartOfDay(query.date, timezone);
+    const end = getLocalEndOfDay(query.date, timezone);
 
     // 1. Fetch ERP receipts and deliveries for this product on this day
     const erpItems = await this.prisma.documentReferenceItem.findMany({

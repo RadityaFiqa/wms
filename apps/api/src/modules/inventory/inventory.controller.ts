@@ -139,11 +139,11 @@ export class InventoryController {
     }
 
     return {
-      lastSyncAt: account.lastSyncAt,
-      lastSyncStatus: account.lastSyncStatus,
-      lastSyncError: account.lastSyncError,
-      lastSyncBy: account.lastSyncBy,
-      lastSyncCount: account.lastSyncCount,
+      lastSyncAt: account.lastSyncInventoryAt,
+      lastSyncStatus: account.lastSyncInventoryStatus,
+      lastSyncError: account.lastSyncInventoryError,
+      lastSyncBy: account.lastSyncInventoryBy,
+      lastSyncCount: account.lastSyncInventoryCount,
     };
   }
 

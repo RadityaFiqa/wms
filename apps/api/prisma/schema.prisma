@@ -17,21 +17,19 @@ model User {
   isFirstLogin              Boolean              @default(true)
   roleId                    Int
   warehouseId               Int?
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
+  createdAt                 DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime             @updatedAt @db.Timestamptz(3)
   auditLogsActor            AuditLog[]           @relation("ActorRelation")
   auditLogsTarget           AuditLog[]           @relation("TargetRelation")
   uploadedFiles             FileAttachment[]
   gateOperationsCreated     GateOperation[]      @relation("GateOpCreator")
   gateVerificationsVerified GateVerification[]   @relation("GateVerifier")
-  orders                    Order[]
   passwordResetTokens       PasswordResetToken[]
   sessions                  Session[]
   stockOpnames              StockOpname[]
   role                      Role                 @relation(fields: [roleId], references: [id])
   warehouse                 Warehouse?           @relation(fields: [warehouseId], references: [id])
   warehouseAccesses         WarehouseAccess[]
-  signatureAuditLogs        SignatureAuditLog[]
   manualDocuments           ManualDocument[]
   signedDocuments           SignedDocument[]
   signatures                UserSignature[]
@@ -45,8 +43,8 @@ model Role {
   uuid        String           @unique @default(uuid())
   name        String           @unique
   description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
   permissions RolePermission[]
   users       User[]
 
@@ -60,8 +58,8 @@ model Permission {
   action     String
   subject    String
   conditions String?
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
   roles      RolePermission[]
 
   @@index([uuid])
@@ -84,9 +82,9 @@ model Session {
   userAgent String?
   ipAddress String?
   isRevoked Boolean  @default(false)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -100,8 +98,8 @@ model PasswordResetToken {
   userId    Int
   token     String   @unique
   isUsed    Boolean  @default(false)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -110,20 +108,23 @@ model PasswordResetToken {
 }
 
 model AuditLog {
-  id        Int      @id @default(autoincrement())
-  uuid      String   @unique @default(uuid())
-  actorId   Int?
-  targetId  Int?
-  action    String
-  ipAddress String?
-  userAgent String?
-  details   String?
-  timestamp DateTime @default(now())
-  actor     User?    @relation("ActorRelation", fields: [actorId], references: [id])
-  target    User?    @relation("TargetRelation", fields: [targetId], references: [id])
+  id          Int        @id @default(autoincrement())
+  uuid        String     @unique @default(uuid())
+  actorId     Int?
+  targetId    Int?
+  warehouseId Int?
+  action      String
+  ipAddress   String?
+  userAgent   String?
+  details     String?
+  timestamp   DateTime   @default(now()) @db.Timestamptz(3)
+  actor       User?      @relation("ActorRelation", fields: [actorId], references: [id])
+  target      User?      @relation("TargetRelation", fields: [targetId], references: [id])
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
   @@index([actorId])
   @@index([targetId])
+  @@index([warehouseId])
   @@index([action])
   @@index([uuid])
 }
@@ -139,8 +140,8 @@ model Warehouse {
   address             String?
   isActive            Boolean              @default(true)
   odooReference       String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
   dailyStockSnapshots DailyStockSnapshot[]
   documentReferences  DocumentReference[]
   gateOperations      GateOperation[]
@@ -153,33 +154,39 @@ model Warehouse {
   warehouseAccesses   WarehouseAccess[]
   manualDocuments     ManualDocument[]
   signedDocuments     SignedDocument[]
+  auditLogs           AuditLog[]
 
   @@index([uuid])
   @@index([code])
 }
 
 model OdooAccount {
-  id                Int       @id @default(autoincrement())
-  uuid              String    @unique @default(uuid())
-  warehouseId       Int       @unique
-  baseUrl           String
-  username          String
-  encryptedPassword String
-  sessionId         String?
-  csrfToken         String?
-  sessionExpiredAt  DateTime?
-  lastLoginAt       DateTime?
-  lastRefreshAt     DateTime?
-  isActive          Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  lastSyncAt        DateTime?
-  lastSyncBy        String?
-  lastSyncCount     Int?
-  lastSyncError     String?
-  lastSyncStatus    String?
-  lastOffset        Int       @default(0)
-  warehouse         Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  id                      Int                  @id @default(autoincrement())
+  uuid                    String               @unique @default(uuid())
+  warehouseId             Int                  @unique
+  baseUrl                 String
+  username                String
+  encryptedPassword       String
+  sessionId               String?
+  csrfToken               String?
+  sessionExpiredAt        DateTime?            @db.Timestamptz(3)
+  lastLoginAt             DateTime?            @db.Timestamptz(3)
+  lastRefreshAt           DateTime?            @db.Timestamptz(3)
+  isActive                Boolean              @default(true)
+  createdAt               DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime             @updatedAt @db.Timestamptz(3)
+  lastSyncInventoryAt     DateTime?            @db.Timestamptz(3)
+  lastSyncInventoryBy     String?
+  lastSyncInventoryCount  Int?
+  lastSyncInventoryError  String?
+  lastSyncInventoryStatus String?
+  lastSyncDocumentsAt     DateTime?            @db.Timestamptz(3)
+  lastSyncDocumentsBy     String?
+  lastSyncDocumentsCount  Int?
+  lastSyncDocumentsError  String?
+  lastSyncDocumentsStatus String?
+  lastDocumentsOffset     Int                  @default(0)
+  warehouse               Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@index([warehouseId])
   @@index([uuid])
@@ -190,8 +197,8 @@ model Location {
   uuid                     String                    @unique @default(uuid())
   displayName              String
   warehouseId              Int
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   gateOperationProducts    GateOperationProduct[]
   gateVerificationProducts GateVerificationProduct[]
   warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
@@ -211,8 +218,8 @@ model Quant {
   availableQuantity        Float                     @default(0)
   secondaryUnitQty         Float?                    @default(0)
   lotName                  String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   gateOperationProducts    GateOperationProduct[]
   gateVerificationProducts GateVerificationProduct[]
   inventory                Inventory                 @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
@@ -229,13 +236,12 @@ model Inventory {
   name                     String
   uom                      String?
   warehouseId              Int                       @default(1)
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   dailyStockSnapshots      DailyStockSnapshot[]
   gateOperationProducts    GateOperationProduct[]
   gateVerificationProducts GateVerificationProduct[]
   warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  orderItems               OrderItem[]
   quants                   Quant[]
   stockOpnameItems         StockOpnameItem[]
 
@@ -244,31 +250,7 @@ model Inventory {
   @@index([warehouseId])
 }
 
-model Order {
-  id         Int         @id @default(autoincrement())
-  uuid       String      @unique @default(uuid())
-  status     OrderStatus @default(PENDING)
-  userId     Int
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
 
-  @@index([userId])
-  @@index([uuid])
-}
-
-model OrderItem {
-  id          Int       @id @default(autoincrement())
-  uuid        String    @unique @default(uuid())
-  orderId     Int
-  inventoryId Int
-  quantity    Int
-  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
-  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([uuid])
-}
 
 model WarehouseAccess {
   userId      Int
@@ -287,7 +269,7 @@ model FileAttachment {
   mimeType           String
   sizeBytes          Int
   uploadedById       Int
-  uploadedAt         DateTime          @default(now())
+  uploadedAt         DateTime          @default(now()) @db.Timestamptz(3)
   gateOperationId    Int?
   gateVerificationId Int?
   stockOpnameId      Int?
@@ -310,8 +292,8 @@ model GateOperation {
   status              VerificationStatus     @default(PENDING)
   warehouseId         Int
   createdByUserId     Int
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  createdAt           DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
   poReferences        String[]               @default([])
   soReferences        String[]               @default([])
   documentReferenceId Int?
@@ -354,7 +336,7 @@ model GateVerification {
   uuid            String                    @unique @default(uuid())
   gateOperationId Int                       @unique
   verifiedById    Int
-  verifiedAt      DateTime                  @default(now())
+  verifiedAt      DateTime                  @default(now()) @db.Timestamptz(3)
   status          VerificationStatus        @default(PENDING)
   notes           String?
   attachments     FileAttachment[]
@@ -396,19 +378,19 @@ model DocumentReference {
   partnerName             String?
   purchaseName            String?
   origin                  String?
-  ref_fax                 String?                 @db.VarChar(255)
+  refFax                  String?                 @db.VarChar(255)
   sourceLocationName      String?
   destinationLocationName String?
-  scheduledDate           DateTime?
-  dateDone                DateTime?
+  scheduledDate           DateTime? @db.Timestamptz(3)
+  dateDone                DateTime? @db.Timestamptz(3)
   driver                  String?
   plateNumber             String?
   totalItems              Int
   totalQuantity           Float
   rawPayload              Json
-  lastSyncedAt            DateTime                @default(now())
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
+  lastSyncedAt            DateTime                @default(now()) @db.Timestamptz(3)
+  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
   warehouse               Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   items                   DocumentReferenceItem[]
   references              GateDocumentReference[]
@@ -431,8 +413,8 @@ model DocumentReferenceItem {
   productQty          Float
   secondaryQuantity   Float?
   secondaryUom        String?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  createdAt           DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
   documentReference   DocumentReference       @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
   references          GateDocumentReference[]
 
@@ -444,14 +426,14 @@ model OdooSyncLog {
   uuid               String         @unique @default(uuid())
   warehouseId        Int
   status             OdooSyncStatus
-  startedAt          DateTime       @default(now())
-  finishedAt         DateTime?
+  startedAt          DateTime       @default(now()) @db.Timestamptz(3)
+  finishedAt         DateTime?      @db.Timestamptz(3)
   totalDocuments     Int            @default(0)
   processedDocuments Int            @default(0)
   errorMessage       String?
   createdBy          String
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
   warehouse          Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@index([warehouseId])
@@ -467,7 +449,7 @@ model GateDocumentReference {
   erpDocumentItemId  Int
   inventoryId        Int
   assignedQuantity   Float
-  createdAt          DateTime              @default(now())
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
   createdBy          String
   erpDocument        DocumentReference     @relation(fields: [erpDocumentId], references: [id], onDelete: Cascade)
   erpDocumentItem    DocumentReferenceItem @relation(fields: [erpDocumentItemId], references: [id], onDelete: Cascade)
@@ -488,9 +470,9 @@ model StockOpname {
   warehouseId    Int
   status         StockOpnameStatus @default(DRAFT)
   notes          String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  completionDate DateTime?
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  completionDate DateTime?         @db.Timestamptz(3)
   createdById    Int
   attachments    FileAttachment[]
   createdBy      User              @relation(fields: [createdById], references: [id])
@@ -541,7 +523,7 @@ model StockOpnameStack {
 model DailyStockSnapshot {
   id           Int       @id @default(autoincrement())
   uuid         String    @unique @default(uuid())
-  date         DateTime
+  date         DateTime @db.Timestamptz(3)
   warehouseId  Int
   inventoryId  Int
   closingStock Float
@@ -558,81 +540,81 @@ model DocumentCategory {
   id              Int              @id @default(autoincrement())
   name            String
   description     String?
-  isActive        Boolean          @default(true) @map("is_active")
-  deletedAt       DateTime?        @map("deleted_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
+  isActive        Boolean          @default(true)
+  deletedAt       DateTime?        @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
   manualDocuments ManualDocument[]
   signedDocuments SignedDocument[]
 
-  @@map("document_categories")
+  @@map("DocumentCategory")
 }
 
 model SignatureTemplate {
   id              Int              @id @default(autoincrement())
   name            String
   description     String?
-  pageNumber      Int              @map("page_number")
-  posX            Float            @map("pos_x")
-  posY            Float            @map("pos_y")
-  width           Float            @map("width")
-  height          Float            @map("height")
-  qrPosX          Float            @map("qr_pos_x")
-  qrPosY          Float            @map("qr_pos_y")
-  qrWidth         Float            @map("qr_width")
-  qrHeight        Float            @map("qr_height")
-  isDefault       Boolean          @default(false) @map("is_default")
-  isActive        Boolean          @default(true) @map("is_active")
-  deletedAt       DateTime?        @map("deleted_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
+  pageNumber      Int
+  posX            Float
+  posY            Float
+  width           Float
+  height          Float
+  qrPosX          Float
+  qrPosY          Float
+  qrWidth         Float
+  qrHeight        Float
+  isDefault       Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  deletedAt       DateTime?        @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
   signedDocuments SignedDocument[]
 
-  @@map("signature_templates")
+  @@map("SignatureTemplate")
 }
 
 model ManualDocument {
   id          Int              @id @default(autoincrement())
   uuid        String           @unique @default(uuid())
-  warehouseId Int?             @map("warehouse_id")
+  warehouseId Int?
   title       String
-  categoryId  Int              @map("category_id")
+  categoryId  Int
   description String?
-  fileUrl     String           @map("file_url")
-  fileKey     String?          @map("file_key")
-  uploadedBy  Int              @map("uploaded_by")
-  deletedAt   DateTime?        @map("deleted_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  fileUrl     String
+  fileKey     String?
+  uploadedBy  Int
+  deletedAt   DateTime?        @db.Timestamptz(3)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
   category    DocumentCategory @relation(fields: [categoryId], references: [id])
   uploader    User             @relation(fields: [uploadedBy], references: [id])
   warehouse   Warehouse?       @relation(fields: [warehouseId], references: [id])
 
   @@index([uuid])
   @@index([warehouseId])
-  @@map("manual_documents")
+  @@map("ManualDocument")
 }
 
 model SignedDocument {
   id                  Int                       @id @default(autoincrement())
   uuid                String                    @unique @default(uuid())
-  warehouseId         Int?                      @map("warehouse_id")
-  sourceType          String                    @map("source_type")
-  sourceDocumentId    Int?                      @map("source_document_id")
+  warehouseId         Int?
+  sourceType          String
+  sourceDocumentId    Int?
   title               String
-  categoryId          Int                       @map("category_id")
-  signedPdfUrl        String                    @map("signed_pdf_url")
-  fileKey             String?                   @map("file_key")
-  fileHash            String?                   @map("file_hash")
-  originalFileKey     String?                   @map("original_file_key")
-  verificationToken   String                    @unique @map("verification_token")
-  signedBy            Int                       @map("signed_by")
-  signedAt            DateTime                  @default(now()) @map("signed_at")
-  signatureTemplateId Int?                      @map("signature_template_id")
-  status              String                    @default("VALID") @map("status")
-  deletedAt           DateTime?                 @map("deleted_at")
-  createdAt           DateTime                  @default(now()) @map("created_at")
-  updatedAt           DateTime                  @updatedAt @map("updated_at")
+  categoryId          Int
+  signedPdfUrl        String
+  fileKey             String?
+  fileHash            String?
+  originalFileKey     String?
+  verificationToken   String                    @unique
+  signedBy            Int
+  signedAt            DateTime                  @default(now()) @db.Timestamptz(3)
+  signatureTemplateId Int?
+  status              String                    @default("VALID")
+  deletedAt           DateTime?                 @db.Timestamptz(3)
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                  @updatedAt @db.Timestamptz(3)
   verificationLogs    DocumentVerificationLog[]
   category            DocumentCategory          @relation(fields: [categoryId], references: [id])
   template            SignatureTemplate?        @relation(fields: [signatureTemplateId], references: [id])
@@ -641,52 +623,34 @@ model SignedDocument {
 
   @@index([uuid])
   @@index([warehouseId])
-  @@map("signed_documents")
+  @@map("SignedDocument")
 }
 
 model DocumentVerificationLog {
   id                Int            @id @default(autoincrement())
-  signedDocumentId  Int            @map("signed_document_id")
-  verificationToken String         @map("verification_token")
-  ipAddress         String?        @map("ip_address")
-  userAgent         String?        @map("user_agent")
-  verifiedAt        DateTime       @default(now()) @map("verified_at")
+  signedDocumentId  Int
+  verificationToken String
+  ipAddress         String?
+  userAgent         String?
+  verifiedAt        DateTime       @default(now()) @db.Timestamptz(3)
   signedDocument    SignedDocument @relation(fields: [signedDocumentId], references: [id], onDelete: Cascade)
 
-  @@map("document_verification_logs")
+  @@map("DocumentVerificationLog")
 }
 
-model SignatureAuditLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int?     @map("user_id")
-  action     String
-  documentId Int?     @map("document_id")
-  metadata   String?  @map("metadata")
-  createdAt  DateTime @default(now()) @map("created_at")
-  user       User?    @relation(fields: [userId], references: [id])
 
-  @@map("audit_logs")
-}
 
 model UserSignature {
   id        Int      @id @default(autoincrement())
-  userId    Int      @map("user_id")
-  fileUrl   String   @map("file_url")
-  fileKey   String   @map("file_key")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  userId    Int
+  fileUrl   String
+  fileKey   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("user_signatures")
-}
-
-enum OrderStatus {
-  PENDING
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
+  @@map("UserSignature")
 }
 
 enum CardType {
