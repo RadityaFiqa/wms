@@ -39,23 +39,24 @@ export const API_ROUTES = {
     clientHistory: "/gate-operations/client-history",
   },
   gateVerifications: {
-    verify: (operationUuid: string) => `/gate-verifications/${operationUuid}`,
+    verify: (operationUuid: string) => `/gate-operations/${operationUuid}/verify`,
+    notesAttachments: (operationUuid: string) =>
+      `/gate-operations/${operationUuid}/notes-attachments`,
     cancel: (operationUuid: string) =>
-      `/gate-verifications/${operationUuid}/cancel`,
+      `/gate-operations/${operationUuid}/cancel`,
     confirm: (operationUuid: string) =>
-      `/gate-verifications/${operationUuid}/confirm`,
-    availableReferences: (operationUuid: string) =>
-      `/gate-verifications/${operationUuid}/available-references`,
-    assignReferences: (operationUuid: string) =>
-      `/gate-verifications/${operationUuid}/assign-references`,
+      `/gate-operations/${operationUuid}/confirm`,
+    history: (operationUuid: string) =>
+      `/gate-operations/${operationUuid}/history`,
   },
   erpDocumentReferences: {
     list: "/erp-document-references",
     detail: (uuid: string) => `/erp-document-references/${uuid}`,
-    sync: "/erp-document-references/sync",
     syncStatus: "/erp-document-references/sync/status",
     forceSync: (uuid: string) => `/erp-document-references/${uuid}/force-sync`,
     partners: "/erp-document-references/partners",
+    realizationHistory: (uuid: string) =>
+      `/erp-document-references/${uuid}/realization-history`,
   },
   odoo: {
     list: "/odoo-accounts",
@@ -67,6 +68,7 @@ export const API_ROUTES = {
     testConnection: (uuid: string) => `/odoo-accounts/${uuid}/test-connection`,
     testConnectionRaw: "/odoo-accounts/test-connection-raw",
     refresh: (uuid: string) => `/odoo-accounts/${uuid}/refresh`,
+    sync: "/odoo-accounts/sync",
   },
   auditLog: {
     list: "/audit-logs",
@@ -75,7 +77,6 @@ export const API_ROUTES = {
     list: "/inventory",
     products: "/inventory/products",
     detail: (uuid: string) => `/inventory/${uuid}`,
-    sync: "/inventory/sync",
   },
   reconciliation: {
     list: "/reconciliation",

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useErpDocuments, useErpSyncStatus } from "@/hooks/useErpDocuments";
+import { useErpDocuments } from "@/hooks/useErpDocuments";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
@@ -14,8 +14,6 @@ import {
   ChevronDown,
   ChevronRight as ChevronRightIcon,
   FileText,
-  Clock,
-  CheckCircle2,
   AlertTriangle,
   FolderOpen,
   ArrowRightLeft,
@@ -32,7 +30,7 @@ export default function ErpDocumentsPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  const { activeWarehouse, user, hasPermission } = useAuthStore();
+  const { activeWarehouse, user } = useAuthStore();
 
   // 1. Read URL query parameters for filters
   const page = Number(searchParams.get("page")) || 1;
@@ -51,8 +49,6 @@ export default function ErpDocumentsPage() {
   // Local state for refFax input (to debounce)
   const [refFaxInput, setRefFaxInput] = useState(refFax);
   const debouncedRefFax = useDebounce(refFaxInput, 400);
-
-  const [isSyncing, setIsSyncing] = useState(false);
 
   // Sync debounced search to URL
   useEffect(() => {
@@ -88,17 +84,11 @@ export default function ErpDocumentsPage() {
     setRefFaxInput(refFax);
   }, [refFax]);
 
-  const { syncStatus, refreshStatus } = useErpSyncStatus();
-  const [lastHandledStatus, setLastHandledStatus] = useState<string | null>(
-    null,
-  );
-
   // Fetch ERP documents using SWR hook
   const {
     documentsData,
     isLoading,
     refresh,
-    syncErpDocuments,
     forceSyncErpDocument,
   } = useErpDocuments({
     search: search || undefined,
@@ -110,58 +100,6 @@ export default function ErpDocumentsPage() {
     endDate: endDate || undefined,
     refFax: refFax || undefined,
   });
-
-  const isSyncActive =
-    isSyncing ||
-    syncStatus?.status === "RUNNING" ||
-    syncStatus?.status === "PENDING";
-
-  useEffect(() => {
-    if (!syncStatus) return;
-
-    const currentStatus = syncStatus.status;
-    if (lastHandledStatus === "RUNNING" || lastHandledStatus === "PENDING") {
-      if (currentStatus === "SUCCESS") {
-        toast.success("Sinkronisasi dokumen ERP dari Odoo selesai!");
-        refresh(); // Refresh list of documents
-      } else if (currentStatus === "FAILED") {
-        toast.error("Gagal mensinkronisasi dokumen ERP dari Odoo.");
-      }
-    }
-    setLastHandledStatus(currentStatus);
-  }, [syncStatus?.status, syncStatus?.processedDocuments]);
-
-  const handleSync = async () => {
-    if (!activeWarehouse) {
-      toast.error("Silakan pilih gudang aktif terlebih dahulu.");
-      return;
-    }
-
-    setIsSyncing(true);
-    const toastId = toast.loading(
-      "Memulai sinkronisasi dokumen ERP dari Odoo...",
-    );
-    try {
-      const res = await syncErpDocuments();
-      if (res.message === "Sync already in progress") {
-        toast.info("Sinkronisasi dokumen ERP sedang berjalan.", {
-          id: toastId,
-        });
-      } else {
-        toast.success("Proses sinkronisasi telah dimulai di latar belakang.", {
-          id: toastId,
-        });
-      }
-      refreshStatus();
-    } catch (error: any) {
-      const msg =
-        error.response?.data?.message ||
-        "Gagal memulai sinkronisasi dari Odoo.";
-      toast.error(msg, { id: toastId });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const updateQueryParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -178,20 +116,6 @@ export default function ErpDocumentsPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("page", String(newPage));
     router.push(`${pathname}?${params.toString()}`);
-  };
-
-  const formatRelativeTime = (dateStr: string | null) => {
-    if (!dateStr) return "Belum pernah sync";
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "Baru saja";
-    if (diffMins < 60) return `${diffMins} menit yang lalu`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} jam yang lalu`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays} hari yang lalu`;
   };
 
   const getStatusColor = (state: string) => {
@@ -253,82 +177,6 @@ export default function ErpDocumentsPage() {
               {activeWarehouse?.name || "Belum Dipilih"}
             </span>
           </p>
-        </div>
-        {hasPermission("update", "Inventory") && (
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleSync}
-              disabled={isSyncActive}
-              className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-blue-500/10 active:scale-[0.98] transition cursor-pointer text-sm min-h-[44px]"
-            >
-              {isSyncActive ? (
-                <span className="flex flex-col items-start leading-tight text-left">
-                  <span className="text-xs font-semibold flex items-center">
-                    <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                    Syncing...
-                  </span>
-                  <span className="text-[10px] font-medium opacity-80 pl-5">
-                    {syncStatus?.processedDocuments || 0} /{" "}
-                    {syncStatus?.totalDocuments || 0} documents
-                  </span>
-                </span>
-              ) : (
-                <span className="flex items-center">
-                  <RefreshCw className="h-4.5 w-4.5 mr-2" />
-                  Sync ERP Documents
-                </span>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Sync Status Header Info */}
-      <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200/60 dark:border-slate-700 shadow-xs">
-            <Clock className="h-5 w-5 text-slate-400" />
-          </div>
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Pembaruan Terakhir
-            </div>
-            <div className="text-sm font-semibold text-slate-805 dark:text-slate-200 flex items-center gap-1.5 mt-0.5">
-              <span
-                title={
-                  syncStatus?.lastSyncAt || summary.lastSyncTime
-                    ? new Date(
-                        syncStatus?.lastSyncAt || summary.lastSyncTime!,
-                      ).toLocaleString("id-ID")
-                    : "Tidak tersedia"
-                }
-                className="cursor-help border-b border-dashed border-slate-350"
-              >
-                {formatRelativeTime(
-                  syncStatus?.lastSyncAt || summary.lastSyncTime,
-                )}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center">
-          {syncStatus?.status === "RUNNING" ||
-          syncStatus?.status === "PENDING" ? (
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-50 border border-blue-105 text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-400">
-              <Clock className="h-4 w-4 mr-1.5 text-blue-500 animate-spin" />
-              Proses Sinkronisasi Sedang Berjalan...
-            </span>
-          ) : syncStatus?.lastSyncAt || summary.lastSyncTime ? (
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-50/70 border border-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/40 dark:text-emerald-400">
-              <CheckCircle2 className="h-4 w-4 mr-1.5 text-emerald-500" />
-              Sinkron Terkoneksi
-            </span>
-          ) : (
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
-              Belum Ada Data Lokal
-            </span>
-          )}
         </div>
       </div>
 
@@ -568,8 +416,7 @@ export default function ErpDocumentsPage() {
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <FolderOpen className="h-12 w-12 text-slate-300 dark:text-slate-700" />
                       <span>
-                        Tidak ada data dokumen ERP ditemukan. Silakan klik "Sync
-                        ERP Documents".
+                        Tidak ada data dokumen ERP ditemukan. Silakan lakukan sinkronisasi data melalui halaman Pengaturan Odoo.
                       </span>
                     </div>
                   </td>

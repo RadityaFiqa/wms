@@ -5,20 +5,34 @@ import {
   useReconciliation,
   useReconciliationDetail,
 } from "@/hooks/useReconciliation";
+import { useProducts, useWarehouseLocations } from "@/hooks/useInventory";
 import { useAuthStore } from "@/store/auth";
 import {
   Scale,
   MapPin,
   Info,
-  Calendar,
-  User,
-  ArrowRightLeft,
   ChevronRight,
+  Filter,
+  TrendingUp,
+  TrendingDown,
+  ExternalLink,
+  Search,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function ReconciliationPage() {
   const { activeWarehouse } = useAuthStore();
-  const { reconciliationData, isLoading } = useReconciliation();
+  const [productId, setProductId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  
+  const { reconciliationData, isLoading } = useReconciliation({
+    productId,
+    locationId,
+  });
+
+  const { products } = useProducts();
+  const { locations } = useWarehouseLocations();
+
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
   const toggleRow = (uuid: string) => {
@@ -54,15 +68,67 @@ export default function ReconciliationPage() {
           <p className="font-bold mb-1">
             Cara Perhitungan (Formula) Rekonsiliasi:
           </p>
-          <p className="font-mono bg-blue-100/50 dark:bg-blue-900/20 px-2 py-1 rounded inline-block text-[11px] sm:text-xs">
-            Expected Stock = ERP Stock - Pending Gate Operation Quantity
-          </p>
+          <div className="space-y-1 font-mono text-[11px] sm:text-xs">
+            <p className="bg-blue-100/50 dark:bg-blue-900/20 px-2 py-1 rounded inline-block">
+              Calculated Physical = ERP Stock + Physical Stock Adjustment (Pending IN - Pending OUT)
+            </p>
+            <br />
+            <p className="bg-blue-100/50 dark:bg-blue-900/20 px-2 py-1 rounded inline-block mt-1">
+              Stock Difference = ERP Stock - Physical Stock Adjustment
+            </p>
+          </div>
           <p className="mt-2 text-slate-500 dark:text-slate-450 text-xs">
-            * Pending Gate Operation Quantity adalah total kargo masuk (IN) atau
-            keluar (OUT) di pintu gerbang yang <strong>belum</strong> ditautkan
-            ke referensi Purchase Order (PO), Sales Order (SO), atau dokumen
-            picking ERP Odoo.
+            * Physical Stock Adjustment adalah pergerakan kargo masuk (IN) atau
+            keluar (OUT) pintu gerbang yang <strong>belum</strong> ditautkan ke referensi ERP,
+            atau ditautkan ke dokumen ERP yang statusnya <strong>bukan</strong> `"done"`.
           </p>
+        </div>
+      </div>
+
+      {/* Filters Card */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex items-center gap-2 font-bold text-sm text-slate-700 dark:text-slate-300">
+          <Filter className="h-4.5 w-4.5 text-slate-500" />
+          <span>Saring Rekonsiliasi</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Product Filter */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Filter Produk
+            </label>
+            <select
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 cursor-pointer"
+            >
+              <option value="">Semua Produk</option>
+              {products.map((p: any) => (
+                <option key={p.uuid} value={p.uuid}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Location Filter */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Filter Lokasi
+            </label>
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 cursor-pointer"
+            >
+              <option value="">Semua Lokasi</option>
+              {locations.map((l: any) => (
+                <option key={l.uuid} value={l.uuid}>
+                  {l.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -72,14 +138,11 @@ export default function ReconciliationPage() {
           <table className="w-full text-left border-collapse table-layout-fixed">
             <thead className="bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
               <tr className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[40%]">Produk</th>
-                <th className="px-6 py-4 text-right w-[20%]">ERP Stock</th>
-                <th className="px-6 py-4 text-right w-[20%]">
-                  Pending Gate Operation
-                </th>
-                <th className="px-6 py-4 text-right w-[20%]">
-                  Expected Stock
-                </th>
+                <th className="px-6 py-4 w-[30%]">Produk</th>
+                <th className="px-6 py-4 text-right w-[17%]">ERP Stock</th>
+                <th className="px-6 py-4 text-right w-[17%]">Adjustment</th>
+                <th className="px-6 py-4 text-right w-[18%]">Calculated Physical</th>
+                <th className="px-6 py-4 text-right w-[18%]">Stock Difference</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -98,12 +161,15 @@ export default function ReconciliationPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-16 ml-auto"></div>
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-16 ml-auto"></div>
+                    </td>
                   </tr>
                 ))
               ) : reconciliationData.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     className="px-6 py-16 text-center text-slate-400 font-medium"
                   >
                     Tidak ada data rekonsiliasi yang tersedia.
@@ -135,37 +201,45 @@ export default function ReconciliationPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-330">
+                        <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
                           {row.erpStock.toLocaleString("id-ID")}{" "}
-                          <span className="text-slate-400 text-xs font-normal ml-0.5">
+                          <span className="text-slate-450 text-[10px] font-normal ml-0.5">
                             {row.product.uom}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          {row.pendingGateQty !== 0 ? (
+                        <td className="px-6 py-4 text-right font-semibold">
+                          {row.physicalAdjustment !== 0 ? (
                             <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
-                                row.pendingGateQty > 0
-                                  ? "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30"
-                                  : "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
+                                row.physicalAdjustment > 0
+                                  ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                                  : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
                               }`}
                             >
-                              {row.pendingGateQty > 0
-                                ? `+${row.pendingGateQty.toLocaleString("id-ID")}`
-                                : row.pendingGateQty.toLocaleString(
-                                    "id-ID",
-                                  )}{" "}
+                              {row.physicalAdjustment > 0
+                                ? `+${row.physicalAdjustment.toLocaleString("id-ID")}`
+                                : row.physicalAdjustment.toLocaleString("id-ID")}{" "}
                               {row.product.uom}
                             </span>
                           ) : (
-                            <span className="text-slate-400 dark:text-slate-600">
-                              -
-                            </span>
+                            <span className="text-slate-400">-</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right font-black text-blue-600 dark:text-blue-400">
-                          {row.expectedStock.toLocaleString("id-ID")}{" "}
-                          <span className="text-slate-400 text-xs font-normal ml-0.5">
+                        <td className="px-6 py-4 text-right font-black text-slate-900 dark:text-slate-100">
+                          {row.calculatedPhysical.toLocaleString("id-ID")}{" "}
+                          <span className="text-slate-450 text-[10px] font-normal ml-0.5">
+                            {row.product.uom}
+                          </span>
+                        </td>
+                        <td
+                          className={`px-6 py-4 text-right font-black ${
+                            row.stockDifference !== 0
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-emerald-600 dark:text-emerald-400"
+                          }`}
+                        >
+                          {row.stockDifference.toLocaleString("id-ID")}{" "}
+                          <span className="text-slate-450 text-[10px] font-normal ml-0.5">
                             {row.product.uom}
                           </span>
                         </td>
@@ -173,7 +247,7 @@ export default function ReconciliationPage() {
                       {isExpanded && (
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={5}
                             className="bg-slate-50/30 dark:bg-slate-900/30 px-8 py-4 border-b border-slate-100 dark:border-slate-800/80"
                           >
                             <ReconciliationRowDetail
@@ -196,6 +270,14 @@ export default function ReconciliationPage() {
 
 function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
   const { detailData, isLoading, error } = useReconciliationDetail(productUuid);
+  const [expandedLocations, setExpandedLocations] = useState<Record<number, boolean>>({});
+
+  const toggleLocation = (locId: number) => {
+    setExpandedLocations((prev) => ({
+      ...prev,
+      [locId]: !prev[locId],
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -220,7 +302,7 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           ></path>
         </svg>
-        <span className="text-xs font-semibold">Memuat rincian tumpukan...</span>
+        <span className="text-xs font-semibold">Memuat rincian lokasi...</span>
       </div>
     );
   }
@@ -228,7 +310,7 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
   if (error || !detailData) {
     return (
       <div className="text-red-500 text-xs font-bold py-2 text-center">
-        Gagal memuat rincian tumpukan.
+        Gagal memuat rincian lokasi.
       </div>
     );
   }
@@ -238,68 +320,184 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
       <div className="bg-slate-100/70 dark:bg-slate-800/50 px-4 py-2.5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
         <span className="font-bold text-slate-700 dark:text-slate-350 text-xs uppercase tracking-wider flex items-center gap-1.5">
           <MapPin className="h-4.5 w-4.5 text-blue-500 shrink-0" />
-          Rincian Tumpukan per Lokasi (ERP Source Breakdown)
+          Rincian Rekonsiliasi per Lokasi
         </span>
         <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100/40 dark:border-blue-900/30">
-          {detailData.erpStockSource.length} Stacks
+          {detailData.locations.length} Lokasi
         </span>
       </div>
-      {detailData.erpStockSource.length === 0 ? (
+      {detailData.locations.length === 0 ? (
         <p className="text-xs text-slate-400 italic p-4 text-center">
-          Tidak ada lokasi atau tumpukan aktif di ERP.
+          Tidak ada lokasi atau tumpukan aktif untuk produk ini.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/30 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-5 py-3">Lokasi</th>
-                <th className="px-5 py-3">Lot / Batch</th>
-                <th className="px-5 py-3 text-right">Quantity</th>
-                <th className="px-5 py-3 text-right text-amber-600 dark:text-amber-500">Reserved</th>
-                <th className="px-5 py-3 text-right font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-50/5">
-                  Available
-                </th>
+                <th className="px-5 py-3 w-[30%]">Lokasi</th>
+                <th className="px-5 py-3 text-right w-[15%]">ERP Qty</th>
+                <th className="px-5 py-3 text-right w-[15%]">Adjustment</th>
+                <th className="px-5 py-3 text-right w-[20%]">Calculated Physical</th>
+                <th className="px-5 py-3 text-right w-[20%]">Stock Difference</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-              {detailData.erpStockSource.map((loc: any, idx: number) => (
-                <tr
-                  key={idx}
-                  className="hover:bg-slate-50/20 dark:hover:bg-slate-800/10 transition bg-white dark:bg-slate-900/40"
-                >
-                  <td className="px-5 py-3 font-bold text-slate-700 dark:text-slate-300">
-                    {loc.locationName}
-                  </td>
-                  <td className="px-5 py-3">
-                    {loc.lotName && loc.lotName !== "-" ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-350 border border-slate-200 dark:border-slate-700 font-medium">
-                        {loc.lotName}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 italic">Tanpa Lot</span>
+              {detailData.locations.map((loc: any, idx: number) => {
+                const isLocExpanded = !!expandedLocations[loc.locationId];
+                const hasOps = loc.gateOperations && loc.gateOperations.length > 0;
+
+                return (
+                  <React.Fragment key={idx}>
+                    <tr
+                      onClick={() => hasOps && toggleLocation(loc.locationId)}
+                      className={`hover:bg-slate-50/20 dark:hover:bg-slate-800/10 transition bg-white dark:bg-slate-900/40 ${
+                        hasOps ? "cursor-pointer" : ""
+                      }`}
+                    >
+                      <td className="px-5 py-3 font-bold text-slate-700 dark:text-slate-350">
+                        <div className="flex items-center space-x-1">
+                          {hasOps && (
+                            <ChevronRight
+                              className={`h-3.5 w-3.5 transition-transform duration-200 text-slate-400 shrink-0 ${
+                                isLocExpanded ? "rotate-90 text-blue-500" : ""
+                              }`}
+                            />
+                          )}
+                          <span>{loc.locationName}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-300">
+                        {loc.erpQty.toLocaleString("id-ID")}{" "}
+                        <span className="text-slate-400 text-[9px] font-normal">
+                          {detailData.product.uom}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right font-medium">
+                        {loc.physicalAdjustment !== 0 ? (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              loc.physicalAdjustment > 0
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
+                            {loc.physicalAdjustment > 0
+                              ? `+${loc.physicalAdjustment.toLocaleString("id-ID")}`
+                              : loc.physicalAdjustment.toLocaleString("id-ID")}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right font-bold text-slate-800 dark:text-slate-200">
+                        {loc.calculatedPhysical.toLocaleString("id-ID")}{" "}
+                        <span className="text-slate-400 text-[9px] font-normal">
+                          {detailData.product.uom}
+                        </span>
+                      </td>
+                      <td
+                        className={`px-5 py-3 text-right font-bold ${
+                          loc.stockDifference !== 0
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-emerald-600 dark:text-emerald-400"
+                        }`}
+                      >
+                        {loc.stockDifference.toLocaleString("id-ID")}{" "}
+                        <span className="text-slate-405 text-[9px] font-normal">
+                          {detailData.product.uom}
+                        </span>
+                      </td>
+                    </tr>
+                    {isLocExpanded && hasOps && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="bg-slate-50/20 dark:bg-slate-900/10 px-8 py-3"
+                        >
+                          <div className="border border-slate-200 dark:border-slate-700/80 rounded-xl overflow-hidden">
+                            <div className="bg-slate-100/50 dark:bg-slate-800/40 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700/80">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                Pending Gate Operations yang Mempengaruhi Lokasi Ini
+                              </span>
+                            </div>
+                            <table className="w-full text-left border-collapse text-[11px]">
+                              <thead>
+                                <tr className="bg-slate-50/10 border-b border-slate-100 dark:border-slate-700/80 text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">
+                                  <th className="px-4 py-2">Nomor Tiket</th>
+                                  <th className="px-4 py-2 text-center">Tipe</th>
+                                  <th className="px-4 py-2">Driver & Plat</th>
+                                  <th className="px-4 py-2">Ref Dokumen (State)</th>
+                                  <th className="px-4 py-2 text-right">Kuantitas</th>
+                                  <th className="px-4 py-2 text-center">Aksi</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {loc.gateOperations.map((op: any, opIdx: number) => (
+                                  <tr
+                                    key={opIdx}
+                                    className="hover:bg-slate-55/10 dark:hover:bg-slate-800/20 bg-white dark:bg-slate-900/10"
+                                  >
+                                    <td className="px-4 py-2 font-mono font-bold text-slate-800 dark:text-slate-300">
+                                      {op.opNumber}
+                                    </td>
+                                    <td className="px-4 py-2 text-center">
+                                      <span
+                                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                          op.cardType === "IN"
+                                            ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400"
+                                            : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400"
+                                        }`}
+                                      >
+                                        {op.cardType === "IN" ? "Masuk" : "Keluar"}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2 text-slate-700 dark:text-slate-350">
+                                      {op.driverName} ({op.licensePlate})
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <span className="font-mono text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
+                                        {op.documentNumber}
+                                      </span>
+                                      {op.documentState && (
+                                        <span className="ml-1 text-[9px] font-semibold text-amber-600 dark:text-amber-500 uppercase">
+                                          ({op.documentState})
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td
+                                      className={`px-4 py-2 text-right font-bold ${
+                                        op.cardType === "IN"
+                                          ? "text-emerald-600 dark:text-emerald-400"
+                                          : "text-red-600 dark:text-red-400"
+                                      }`}
+                                    >
+                                      {op.cardType === "IN" ? "+" : "-"}
+                                      {op.quantity.toLocaleString("id-ID")}{" "}
+                                      <span className="text-slate-400 font-normal text-[9px]">
+                                        {detailData.product.uom}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2 text-center">
+                                      <Link
+                                        href={`/gate-operations/${op.uuid}`}
+                                        className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition"
+                                        title="Lihat Detail Operasi"
+                                      >
+                                        <ExternalLink className="h-4 w-4" />
+                                      </Link>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="px-5 py-3 text-right font-bold text-slate-700 dark:text-slate-300">
-                    {loc.quantity.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 font-normal text-[10px] ml-0.5">
-                      {detailData.product.uom}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right font-semibold text-amber-600">
-                    {loc.reservedQuantity.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 font-normal text-[10px] ml-0.5">
-                      {detailData.product.uom}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right font-bold text-emerald-600 bg-emerald-50/5">
-                    {loc.availableQuantity.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 font-normal text-[10px] ml-0.5">
-                      {detailData.product.uom}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

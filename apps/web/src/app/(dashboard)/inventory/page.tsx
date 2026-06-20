@@ -4,14 +4,12 @@ import React, { useState } from "react";
 import {
   useInventory,
   useInventoryDetail,
-  useInventorySyncStatus,
 } from "@/hooks/useInventory";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
 import {
   Search,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -20,10 +18,7 @@ import {
   Layers,
   Box,
   FileText,
-  AlertTriangle,
   CheckCircle2,
-  Clock,
-  UserCheck,
 } from "lucide-react";
 
 export default function InventoryPage() {
@@ -31,49 +26,16 @@ export default function InventoryPage() {
   const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const { activeWarehouse } = useAuthStore();
 
   // Custom hook for paginated stock data and PDF generation
-  const { inventoryData, isLoading, refresh, syncInventory, exportPdf } =
+  const { inventoryData, isLoading, refresh, exportPdf } =
     useInventory({
       search: debouncedSearch,
       page,
       limit,
     });
-
-  // Sync status hook
-  const { statusData, refreshStatus } = useInventorySyncStatus();
-
-  const handleSync = async () => {
-    if (!activeWarehouse) {
-      toast.error("Silakan pilih gudang aktif terlebih dahulu.");
-      return;
-    }
-
-    setIsSyncing(true);
-    const toastId = toast.loading(
-      "Mensinkronisasi data persediaan dari ERP Odoo...",
-    );
-    try {
-      const res = await syncInventory();
-      toast.success(
-        `Sinkronisasi sukses! Berhasil sinkron ${res.syncedCount} baris stok.`,
-        { id: toastId },
-      );
-      refresh();
-      // Auto refresh the sync status after completion
-      refreshStatus();
-    } catch (error: any) {
-      const msg =
-        error.response?.data?.message || "Gagal sinkronisasi data dari Odoo.";
-      toast.error(msg, { id: toastId });
-      refreshStatus();
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const handleExportPdf = async () => {
     if (!activeWarehouse) {
@@ -88,25 +50,6 @@ export default function InventoryPage() {
     } catch (e: any) {
       toast.error("Gagal mengekspor laporan ke PDF.", { id: toastId });
     }
-  };
-
-  // Safe localized relative time formatting helper
-  const getRelativeTime = (dateStr: string | null) => {
-    if (!dateStr) return "Belum pernah sinkron";
-    const date = new Date(dateStr);
-    const diffMs = new Date().getTime() - date.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return "Baru saja";
-    if (diffMin < 60) return `${diffMin} menit yang lalu`;
-    const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return `${diffHours} jam yang lalu`;
-    return date.toLocaleString("id-ID", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   // Destructure summary from SWR data
@@ -142,82 +85,8 @@ export default function InventoryPage() {
             <FileText className="h-4.5 w-4.5 mr-2 text-slate-500" />
             Cetak PDF
           </button>
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-blue-500/10 active:scale-[0.98] transition cursor-pointer text-sm"
-          >
-            <RefreshCw
-              className={`h-4.5 w-4.5 mr-2 ${isSyncing ? "animate-spin" : ""}`}
-            />
-            {isSyncing ? "Sinkronisasi..." : "Sinkronisasi Odoo"}
-          </button>
         </div>
       </div>
-
-      {/* Last Sync Information & Status Header Card */}
-      {statusData && (statusData.lastSyncAt || statusData.lastSyncStatus) && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-white rounded-lg border border-slate-200/60 shadow-xs">
-              <Clock className="h-5 w-5 text-slate-400" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-slate-450 uppercase tracking-wider">
-                Sinkronisasi Terakhir
-              </div>
-              <div className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                {getRelativeTime(statusData.lastSyncAt)}
-                {statusData.lastSyncBy && (
-                  <span className="text-xs font-normal text-slate-500 flex items-center">
-                    <UserCheck className="h-3.5 w-3.5 ml-1 mr-0.5 text-slate-400" />
-                    oleh {statusData.lastSyncBy}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            {statusData.lastSyncCount !== null && (
-              <div className="text-right hidden md:block">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Item Disinkronkan
-                </div>
-                <div className="text-xs font-bold text-slate-700 mt-0.5">
-                  {statusData.lastSyncCount} data quants
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center">
-              {statusData.lastSyncStatus === "SUCCESS" ? (
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                  <CheckCircle2 className="h-4 w-4 mr-1.5 text-emerald-500" />
-                  Sync Sukses
-                </span>
-              ) : statusData.lastSyncStatus === "FAILED" ? (
-                <div className="relative group">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-100 cursor-help">
-                    <AlertTriangle className="h-4 w-4 mr-1.5 text-red-500" />
-                    Sync Gagal
-                  </span>
-                  {statusData.lastSyncError && (
-                    <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-72 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl z-20 font-medium">
-                      Detail error: {statusData.lastSyncError}
-                      <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900"></div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                  Belum Pernah Sync
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Summary Cards / Statistics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -389,8 +258,7 @@ export default function InventoryPage() {
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <Box className="h-10 w-10 text-slate-300" />
                       <span>
-                        Tidak ada data persediaan ditemukan. Silakan klik tombol
-                        Sinkronisasi Odoo.
+                        Tidak ada data persediaan ditemukan. Silakan lakukan sinkronisasi data melalui halaman Pengaturan Odoo.
                       </span>
                     </div>
                   </td>

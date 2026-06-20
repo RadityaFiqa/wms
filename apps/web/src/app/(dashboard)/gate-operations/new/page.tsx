@@ -23,6 +23,7 @@ import { useErpPartners } from "@/hooks/useErpDocuments";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
 import { DocumentReferenceSelector } from "@/components/DocumentReferenceSelector";
+import { DocumentReferenceHistoryDrawer } from "@/components/DocumentReferenceHistoryDrawer";
 
 export default function CreateGateOperationPage() {
   const router = useRouter();
@@ -31,6 +32,11 @@ export default function CreateGateOperationPage() {
   // Drawer open state and edit state
   const [isAddCargoOpen, setIsAddCargoOpen] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
+
+  const [selectedDocRefUuid, setSelectedDocRefUuid] = useState<string | null>(null);
+  const [selectedDocRefNumber, setSelectedDocRefNumber] = useState<string>("");
+  const [isDocHistoryOpen, setIsDocHistoryOpen] = useState(false);
+  const [realizationSummary, setRealizationSummary] = useState<any[] | null>(null);
 
   const { createGateOperation } = useGate();
   const { partners: erpPartners, isLoading: isLoadingPartners } =
@@ -116,10 +122,15 @@ export default function CreateGateOperationPage() {
       setValue("documentReferenceId", null);
       setValue("products", []);
       setProductDetailsMap({});
+      setSelectedDocRefUuid(null);
+      setSelectedDocRefNumber("");
+      setRealizationSummary(null);
       return;
     }
 
     setValue("documentReferenceId", docRef.id);
+    setSelectedDocRefUuid(docRef.uuid);
+    setSelectedDocRefNumber(docRef.documentNumber);
 
     if (docRef.driver) {
       setValue("driverName", docRef.driver);
@@ -137,15 +148,25 @@ export default function CreateGateOperationPage() {
     );
     try {
       const { api } = await import("@/lib/axios");
-      const res = await api.get(`/erp-document-references/${docRef.uuid}`);
+      const [res, historyRes] = await Promise.all([
+        api.get(`/erp-document-references/${docRef.uuid}`),
+        api.get(`/erp-document-references/${docRef.uuid}/realization-history`)
+      ]);
       const fullDoc = res.data;
+      const historyData = historyRes.data;
+      setRealizationSummary(historyData?.summary || null);
+
       if (fullDoc && fullDoc.items && fullDoc.items.length > 0) {
-        const newProducts = fullDoc.items.map((item: any) => ({
-          productId: item.inventoryId,
-          quantity: item.quantity,
-          quantId: null,
-          locationId: null,
-        }));
+        const newProducts = fullDoc.items.map((item: any) => {
+          const histItem = historyData?.summary?.find((s: any) => s.productId === item.inventoryId);
+          const remainingQty = histItem ? histItem.remainingQty : item.quantity;
+          return {
+            productId: item.inventoryId,
+            quantity: remainingQty,
+            quantId: null,
+            locationId: null,
+          };
+        });
 
         setValue("products", newProducts);
 
@@ -253,7 +274,7 @@ export default function CreateGateOperationPage() {
     try {
       const payload = {
         ...data,
-        products: data.products.filter((p: any) => p.productId > 0),
+        products: data.products.filter((p: any) => p.productId > 0 && p.quantity > 0),
       };
       const result = await createGateOperation(payload);
       toast.success("Data kendaraan masuk/keluar berhasil dicatat.", {
@@ -374,9 +395,20 @@ export default function CreateGateOperationPage() {
 
             {/* Dokumen Referensi Autocomplete Selector */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Dokumen Referensi ERP (Opsional)
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Dokumen Referensi ERP (Opsional)
+                </label>
+                {selectedDocRefUuid && (
+                  <button
+                    type="button"
+                    onClick={() => setIsDocHistoryOpen(true)}
+                    className="text-xs text-blue-605 hover:text-blue-500 font-bold hover:underline transition flex items-center cursor-pointer"
+                  >
+                    🔍 Lihat Riwayat Dokumen
+                  </button>
+                )}
+              </div>
               <Controller
                 control={control}
                 name="documentReferenceId"
@@ -726,6 +758,14 @@ export default function CreateGateOperationPage() {
         cardType={watchCardType as "IN" | "OUT"}
         onAdd={handleAddCargo}
         editData={editData}
+        documentReferenceItems={realizationSummary || undefined}
+      />
+
+      <DocumentReferenceHistoryDrawer
+        isOpen={isDocHistoryOpen}
+        onClose={() => setIsDocHistoryOpen(false)}
+        docRefUuid={selectedDocRefUuid}
+        documentNumber={selectedDocRefNumber}
       />
     </div>
   );

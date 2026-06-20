@@ -12,74 +12,89 @@ export class ReconciliationService {
   /**
    * Calculates ERP Stock reconciliation for all products in the active warehouse.
    */
-  async getReconciliationList(warehouseId: number) {
-    // 1. Get all inventories (product catalog) and their quants in this warehouse
+  async getReconciliationList(
+    warehouseId: number,
+    query?: { productId?: string; locationId?: string },
+  ) {
+    let locationDbId: number | undefined;
+    if (query?.locationId) {
+      const loc = await this.prisma.location.findFirst({
+        where: {
+          uuid: query.locationId,
+          warehouseId,
+        },
+      });
+      if (loc) {
+        locationDbId = loc.id;
+      } else {
+        return [];
+      }
+    }
+
+    // 1. Get inventories (catalog) matching productId if provided
     const inventories = await this.prisma.inventory.findMany({
+      where: {
+        ...(query?.productId ? { uuid: query.productId } : {}),
+      },
       include: {
         quants: {
           where: {
-            location: { warehouseId },
+            location: {
+              warehouseId,
+              ...(locationDbId ? { id: locationDbId } : {}),
+            },
           },
         },
       },
     });
 
-    // 2. Fetch all gate operation products for the warehouse to find all related products
-    const relatedGateProducts = await this.prisma.gateOperationProduct.findMany({
-      where: {
-        gateOperation: {
-          warehouseId,
-        },
-      },
-      select: {
-        inventoryId: true,
-      },
-    });
-    const relatedProductIds = new Set(relatedGateProducts.map((p) => p.inventoryId));
-
-    // 3. Fetch active gate operations for this warehouse (excluding canceled/rejected)
+    // 2. Fetch active gate operations contributing to the discrepancy
     const activeGateOperations = await this.prisma.gateOperation.findMany({
       where: {
         warehouseId,
         status: {
           notIn: ['CANCELED', 'REJECTED'],
         },
+        OR: [
+          { documentReferenceId: null },
+          {
+            documentReference: {
+              state: { not: 'done' },
+            },
+          },
+        ],
+        products: {
+          some: {
+            ...(query?.productId ? { inventory: { uuid: query.productId } } : {}),
+            ...(locationDbId ? { locationId: locationDbId } : {}),
+          },
+        },
       },
       include: {
-        products: true,
-        verification: {
-          include: {
-            references: true,
+        products: {
+          where: {
+            ...(query?.productId ? { inventory: { uuid: query.productId } } : {}),
+            ...(locationDbId ? { locationId: locationDbId } : {}),
           },
         },
       },
     });
 
-    // 4. Filter for unreconciled gate operations in memory
-    const pendingOps = activeGateOperations.filter((op) => {
-      // Must not be assigned to any PO (for IN) or SO (for OUT)
-      const hasPoRef =
-        op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-      const hasSoRef =
-        op.cardType === 'OUT' && op.soReferences && op.soReferences.length > 0;
-      if (hasPoRef || hasSoRef) return false;
+    // Collect all related products
+    const relatedProductIds = new Set<number>();
+    for (const op of activeGateOperations) {
+      for (const p of op.products) {
+        relatedProductIds.add(p.inventoryId);
+      }
+    }
 
-      // Must not be assigned to any ERP reference document
-      const hasErpAssignments =
-        op.verification &&
-        op.verification.references &&
-        op.verification.references.length > 0;
-      if (hasErpAssignments) return false;
-
-      return true;
-    });
-
-    // 5. Map unassigned quantities by product (inventoryId)
+    // 3. Map unassigned quantities by product
     const pendingQuantitiesMap = new Map<
       number,
       { incoming: number; outgoing: number }
     >();
-    for (const op of pendingOps) {
+
+    for (const op of activeGateOperations) {
       const isOut = op.cardType === 'OUT';
       for (const opProd of op.products) {
         const invId = opProd.inventoryId;
@@ -96,7 +111,7 @@ export class ReconciliationService {
       }
     }
 
-    // 6. Combine inventory stock and pending gate operations
+    // 4. Combine and calculate metrics
     const reconciliationRows = inventories.map((inv) => {
       const pending = pendingQuantitiesMap.get(inv.id) || {
         incoming: 0,
@@ -104,8 +119,12 @@ export class ReconciliationService {
       };
       const erpStock = inv.quants.reduce((sum, q) => sum + q.quantity, 0);
 
-      // Expected Stock = ERP Stock - Pending Gate Operation Quantity
-      // Where Pending Gate Operation Quantity = Outgoing - Incoming
+      // physicalAdjustment = incoming - outgoing
+      const physicalAdjustment = pending.incoming - pending.outgoing;
+      const calculatedPhysical = erpStock + physicalAdjustment;
+      const stockDifference = erpStock - calculatedPhysical;
+
+      // Backward compatibility fields
       const pendingGateQty = pending.outgoing - pending.incoming;
       const expectedStock = erpStock - pendingGateQty;
 
@@ -118,14 +137,16 @@ export class ReconciliationService {
           uom: inv.uom || 'Unit',
         },
         erpStock,
-        pendingGateQty,
+        physicalAdjustment,
+        calculatedPhysical,
+        stockDifference,
         pendingIncoming: pending.incoming,
         pendingOutgoing: pending.outgoing,
+        pendingGateQty,
         expectedStock,
       };
     });
 
-    // Filter to return only products with active stock or related gate operations
     return reconciliationRows
       .filter(
         (row) =>
@@ -159,24 +180,29 @@ export class ReconciliationService {
       throw new NotFoundException('Produk tidak ditemukan.');
     }
 
-    const erpStock = inventory.quants.reduce((sum, q) => sum + q.quantity, 0);
+    // Get all locations in the warehouse to map details
+    const dbLocations = await this.prisma.location.findMany({
+      where: { warehouseId },
+    });
+    const locationsMap = new Map<number, typeof dbLocations[number]>(
+      dbLocations.map((l) => [l.id, l]),
+    );
 
-    // ERP Stock breakdown (locations)
-    const erpStockSource = inventory.quants.map((q) => ({
-      locationName: q.location.displayName,
-      lotName: q.lotName || '-',
-      quantity: q.quantity,
-      reservedQuantity: q.reservedQuantity,
-      availableQuantity: q.availableQuantity,
-    }));
-
-    // Find contributing gate operations
-    const activeGateOperations = await this.prisma.gateOperation.findMany({
+    // Fetch active contributing gate operations for this product
+    const contributingGateOps = await this.prisma.gateOperation.findMany({
       where: {
         warehouseId,
         status: {
           notIn: ['CANCELED', 'REJECTED'],
         },
+        OR: [
+          { documentReferenceId: null },
+          {
+            documentReference: {
+              state: { not: 'done' },
+            },
+          },
+        ],
         products: {
           some: {
             inventoryId: inventory.id,
@@ -188,57 +214,106 @@ export class ReconciliationService {
           where: {
             inventoryId: inventory.id,
           },
-        },
-        verification: {
           include: {
-            references: true,
+            location: true,
           },
         },
+        documentReference: true,
       },
     });
 
-    // Filter unreconciled gate operations in memory
-    const pendingGateOperations = activeGateOperations
-      .filter((op) => {
-        const hasPoRef =
-          op.cardType === 'IN' && op.poReferences && op.poReferences.length > 0;
-        const hasSoRef =
-          op.cardType === 'OUT' &&
-          op.soReferences &&
-          op.soReferences.length > 0;
-        if (hasPoRef || hasSoRef) return false;
+    // Identify all unique locations for this product (having quants or contributing gate operations)
+    const uniqueLocationIds = new Set<number>();
+    for (const q of inventory.quants) {
+      uniqueLocationIds.add(q.locationId);
+    }
+    for (const op of contributingGateOps) {
+      for (const p of op.products) {
+        if (p.locationId) {
+          uniqueLocationIds.add(p.locationId);
+        }
+      }
+    }
 
-        const hasErpAssignments =
-          op.verification &&
-          op.verification.references &&
-          op.verification.references.length > 0;
-        if (hasErpAssignments) return false;
-
-        return true;
-      })
-      .map((op) => {
-        const qty = op.products[0]?.quantity || 0;
-        return {
+    // Group contributing gate operations by location
+    const opsByLocationMap = new Map<number, any[]>();
+    for (const op of contributingGateOps) {
+      for (const p of op.products) {
+        if (!p.locationId) continue;
+        const list = opsByLocationMap.get(p.locationId) || [];
+        list.push({
           uuid: op.uuid,
           opNumber: op.opNumber,
           cardType: op.cardType,
           driverName: op.driverName,
           licensePlate: op.licensePlate,
           createdAt: op.createdAt,
-          quantity: qty,
-        };
-      });
+          quantity: p.quantity,
+          documentNumber: op.documentReference?.documentNumber || '-',
+          documentState: op.documentReference?.state || null,
+        });
+        opsByLocationMap.set(p.locationId, list);
+      }
+    }
 
-    const pendingIncoming = pendingGateOperations
-      .filter((op) => op.cardType === 'IN')
-      .reduce((sum, op) => sum + op.quantity, 0);
+    // Calculate details for each location
+    const locationsBreakdown = Array.from(uniqueLocationIds).map((locId) => {
+      const loc = locationsMap.get(locId);
+      const erpQty = inventory.quants
+        .filter((q) => q.locationId === locId)
+        .reduce((sum, q) => sum + q.quantity, 0);
 
-    const pendingOutgoing = pendingGateOperations
-      .filter((op) => op.cardType === 'OUT')
-      .reduce((sum, op) => sum + op.quantity, 0);
+      const gateOpsList = opsByLocationMap.get(locId) || [];
 
-    const pendingGateQty = pendingOutgoing - pendingIncoming;
-    const expectedStock = erpStock - pendingGateQty;
+      // Calculate physical adjustment
+      let pendingIncoming = 0;
+      let pendingOutgoing = 0;
+      for (const op of gateOpsList) {
+        if (op.cardType === 'IN') {
+          pendingIncoming += op.quantity;
+        } else {
+          pendingOutgoing += op.quantity;
+        }
+      }
+
+      const physicalAdjustment = pendingIncoming - pendingOutgoing;
+      const calculatedPhysical = erpQty + physicalAdjustment;
+      const stockDifference = erpQty - calculatedPhysical;
+
+      return {
+        locationId: locId,
+        locationUuid: loc?.uuid || '',
+        locationName: loc?.displayName || `Lokasi #${locId}`,
+        erpQty,
+        physicalAdjustment,
+        calculatedPhysical,
+        stockDifference,
+        pendingIncoming,
+        pendingOutgoing,
+        gateOperations: gateOpsList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+      };
+    });
+
+    const totalErpStock = inventory.quants.reduce((sum, q) => sum + q.quantity, 0);
+    let totalIncoming = 0;
+    let totalOutgoing = 0;
+    for (const op of contributingGateOps) {
+      const isOut = op.cardType === 'OUT';
+      for (const p of op.products) {
+        if (isOut) {
+          totalOutgoing += p.quantity;
+        } else {
+          totalIncoming += p.quantity;
+        }
+      }
+    }
+
+    const physicalAdjustment = totalIncoming - totalOutgoing;
+    const calculatedPhysical = totalErpStock + physicalAdjustment;
+    const stockDifference = totalErpStock - physicalAdjustment;
+
+    const pendingGateQty = totalOutgoing - totalIncoming;
+    const expectedStock = totalErpStock - pendingGateQty;
 
     return {
       product: {
@@ -247,13 +322,13 @@ export class ReconciliationService {
         name: inventory.name,
         uom: inventory.uom || 'Unit',
       },
-      erpStock,
-      erpStockSource,
-      pendingGateOperations,
-      pendingIncoming,
-      pendingOutgoing,
+      erpStock: totalErpStock,
+      physicalAdjustment,
+      calculatedPhysical,
+      stockDifference,
       pendingGateQty,
       expectedStock,
+      locations: locationsBreakdown.sort((a, b) => a.locationName.localeCompare(b.locationName)),
     };
   }
 }

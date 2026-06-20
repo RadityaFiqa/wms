@@ -74,10 +74,10 @@ export function useGate() {
     [refreshList],
   );
 
-  const assignReferences = useCallback(
-    async (operationUuid: string, payload: any) => {
-      const res = await api.post(
-        API_ROUTES.gateVerifications.assignReferences(operationUuid),
+  const updateNotesAttachments = useCallback(
+    async (operationUuid: string, payload: { notes?: string; attachmentPaths?: string[] }) => {
+      const res = await api.put(
+        API_ROUTES.gateVerifications.notesAttachments(operationUuid),
         payload,
       );
       refreshList();
@@ -86,6 +86,7 @@ export function useGate() {
     },
     [refreshList],
   );
+
 
   const addCargoItem = useCallback(
     async (
@@ -140,17 +141,6 @@ export function useGate() {
     [refreshList],
   );
 
-  const unassignReference = useCallback(
-    async (referenceUuid: string, operationUuid: string) => {
-      const res = await api.delete(
-        `/gate-verifications/references/${referenceUuid}`,
-      );
-      refreshList();
-      mutate(API_ROUTES.gateOperations.detail(operationUuid));
-      return res.data;
-    },
-    [refreshList],
-  );
 
   return {
     uploadFile,
@@ -158,8 +148,7 @@ export function useGate() {
     verifyGateOperation,
     cancelGateVerification,
     confirmGateVerification,
-    assignReferences,
-    unassignReference,
+    updateNotesAttachments,
     addCargoItem,
     deleteCargoItem,
     updateCargoItem,
@@ -167,48 +156,6 @@ export function useGate() {
   };
 }
 
-export function useAvailableReferences(
-  operationUuid: string | null,
-  productId: number | null,
-  gateItemId?: number | null,
-  search?: string,
-) {
-  const queryParams = new URLSearchParams();
-  if (productId) queryParams.append("productId", String(productId));
-  if (gateItemId) queryParams.append("gateItemId", String(gateItemId));
-  if (search) queryParams.append("search", search);
-
-  const swrKey =
-    operationUuid && productId
-      ? `${API_ROUTES.gateVerifications.availableReferences(operationUuid)}?${queryParams.toString()}`
-      : null;
-
-  const {
-    data,
-    error,
-    isLoading,
-    mutate: refresh,
-  } = useSWR(swrKey, (url) => api.get(url).then((res) => res.data));
-
-  return {
-    data: data as
-      | {
-          erpDocumentId: number;
-          erpDocumentItemId: number;
-          documentNumber: string;
-          scheduledDate: string | null;
-          partnerName: string;
-          productName: string;
-          totalQty: number;
-          remainingQty: number;
-          currentAssignedQty: number;
-        }[]
-      | undefined,
-    error,
-    isLoading,
-    refresh,
-  };
-}
 
 export function useGateOperations(
   query: {
@@ -276,3 +223,24 @@ export function useGateOperationDetail(uuid: string | null) {
     refresh,
   };
 }
+
+export function useGateVerificationHistory(operationUuid: string | null) {
+  const swrKey = operationUuid
+    ? API_ROUTES.gateVerifications.history(operationUuid)
+    : null;
+
+  const {
+    data,
+    error,
+    isLoading,
+    mutate: refresh,
+  } = useSWR(swrKey, (url) => api.get(url).then((res) => res.data));
+
+  return {
+    data: data as any[] | undefined,
+    error,
+    isLoading,
+    refresh,
+  };
+}
+

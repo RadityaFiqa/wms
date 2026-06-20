@@ -77,6 +77,12 @@ export function useOdooAccount() {
     [refresh],
   );
 
+  const syncAll = useCallback(async () => {
+    const res = await api.post(API_ROUTES.odoo.sync);
+    refresh();
+    return res.data;
+  }, [refresh]);
+
   return {
     config: data,
     error,
@@ -89,5 +95,6 @@ export function useOdooAccount() {
     testConnection,
     testConnectionRaw,
     refreshSession,
+    syncAll,
   };
 }

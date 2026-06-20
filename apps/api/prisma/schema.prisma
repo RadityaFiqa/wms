@@ -23,7 +23,7 @@ model User {
   auditLogsTarget           AuditLog[]           @relation("TargetRelation")
   uploadedFiles             FileAttachment[]
   gateOperationsCreated     GateOperation[]      @relation("GateOpCreator")
-  gateVerificationsVerified GateVerification[]   @relation("GateVerifier")
+  gateOperationsVerified    GateOperation[]      @relation("GateOpVerifier")
   passwordResetTokens       PasswordResetToken[]
   sessions                  Session[]
   stockOpnames              StockOpname[]
@@ -142,7 +142,8 @@ model Warehouse {
   odooReference       String?
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
-  dailyStockSnapshots DailyStockSnapshot[]
+  dailyStockSnapshots      DailyStockSnapshot[]
+  dailyLocationStockSnapshots DailyLocationStockSnapshot[]
   documentReferences  DocumentReference[]
   gateOperations      GateOperation[]
   inventories         Inventory[]
@@ -200,10 +201,10 @@ model Location {
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   gateOperationProducts    GateOperationProduct[]
-  gateVerificationProducts GateVerificationProduct[]
   warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   quants                   Quant[]
   stockOpnameStacks        StockOpnameStack[]
+  dailyLocationStockSnapshots DailyLocationStockSnapshot[]
 
   @@index([warehouseId])
 }
@@ -221,7 +222,6 @@ model Quant {
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   gateOperationProducts    GateOperationProduct[]
-  gateVerificationProducts GateVerificationProduct[]
   inventory                Inventory                 @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
   location                 Location                  @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -239,8 +239,8 @@ model Inventory {
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   dailyStockSnapshots      DailyStockSnapshot[]
+  dailyLocationStockSnapshots DailyLocationStockSnapshot[]
   gateOperationProducts    GateOperationProduct[]
-  gateVerificationProducts GateVerificationProduct[]
   warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   quants                   Quant[]
   stockOpnameItems         StockOpnameItem[]
@@ -271,10 +271,8 @@ model FileAttachment {
   uploadedById       Int
   uploadedAt         DateTime          @default(now()) @db.Timestamptz(3)
   gateOperationId    Int?
-  gateVerificationId Int?
   stockOpnameId      Int?
   gateOperation      GateOperation?    @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
-  gateVerification   GateVerification? @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
   stockOpname        StockOpname?      @relation(fields: [stockOpnameId], references: [id], onDelete: Cascade)
   uploadedBy         User              @relation(fields: [uploadedById], references: [id])
 }
@@ -292,17 +290,18 @@ model GateOperation {
   status              VerificationStatus     @default(PENDING)
   warehouseId         Int
   createdByUserId     Int
+  verifiedById        Int?
+  verifiedAt          DateTime?              @db.Timestamptz(3)
+  verificationNotes   String?
   createdAt           DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
-  poReferences        String[]               @default([])
-  soReferences        String[]               @default([])
   documentReferenceId Int?
   attachments         FileAttachment[]
   createdByUser       User                   @relation("GateOpCreator", fields: [createdByUserId], references: [id])
+  verifiedBy          User?                  @relation("GateOpVerifier", fields: [verifiedById], references: [id])
   documentReference   DocumentReference?     @relation(fields: [documentReferenceId], references: [id])
   warehouse           Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   products            GateOperationProduct[]
-  verification        GateVerification?
 
   @@index([uuid])
   @@index([opNumber])
@@ -319,7 +318,6 @@ model GateOperationProduct {
   notes           String?
   quantId         Int?
   locationId      Int?
-  references      GateDocumentReference[]
   gateOperation   GateOperation           @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
   inventory       Inventory               @relation(fields: [inventoryId], references: [id])
   location        Location?               @relation(fields: [locationId], references: [id])
@@ -331,42 +329,7 @@ model GateOperationProduct {
   @@index([locationId])
 }
 
-model GateVerification {
-  id              Int                       @id @default(autoincrement())
-  uuid            String                    @unique @default(uuid())
-  gateOperationId Int                       @unique
-  verifiedById    Int
-  verifiedAt      DateTime                  @default(now()) @db.Timestamptz(3)
-  status          VerificationStatus        @default(PENDING)
-  notes           String?
-  attachments     FileAttachment[]
-  references      GateDocumentReference[]
-  gateOperation   GateOperation             @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
-  verifiedBy      User                      @relation("GateVerifier", fields: [verifiedById], references: [id])
-  products        GateVerificationProduct[]
 
-  @@index([uuid])
-  @@index([gateOperationId])
-}
-
-model GateVerificationProduct {
-  id                 Int              @id @default(autoincrement())
-  uuid               String           @unique @default(uuid())
-  gateVerificationId Int
-  inventoryId        Int
-  quantity           Float
-  quantId            Int?
-  locationId         Int?
-  gateVerification   GateVerification @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
-  inventory          Inventory        @relation(fields: [inventoryId], references: [id])
-  location           Location?        @relation(fields: [locationId], references: [id])
-  quant              Quant?           @relation(fields: [quantId], references: [id])
-
-  @@index([gateVerificationId])
-  @@index([inventoryId])
-  @@index([quantId])
-  @@index([locationId])
-}
 
 model DocumentReference {
   id                      Int                     @id
@@ -393,7 +356,6 @@ model DocumentReference {
   updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
   warehouse               Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   items                   DocumentReferenceItem[]
-  references              GateDocumentReference[]
   gateOperations          GateOperation[]
 
   @@index([warehouseId])
@@ -416,7 +378,6 @@ model DocumentReferenceItem {
   createdAt           DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
   documentReference   DocumentReference       @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
-  references          GateDocumentReference[]
 
   @@index([documentReferenceId])
 }
@@ -440,28 +401,7 @@ model OdooSyncLog {
   @@index([uuid])
 }
 
-model GateDocumentReference {
-  id                 Int                   @id @default(autoincrement())
-  uuid               String                @unique @default(uuid())
-  gateVerificationId Int
-  gateItemId         Int
-  erpDocumentId      Int
-  erpDocumentItemId  Int
-  inventoryId        Int
-  assignedQuantity   Float
-  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
-  createdBy          String
-  erpDocument        DocumentReference     @relation(fields: [erpDocumentId], references: [id], onDelete: Cascade)
-  erpDocumentItem    DocumentReferenceItem @relation(fields: [erpDocumentItemId], references: [id], onDelete: Cascade)
-  gateItem           GateOperationProduct  @relation(fields: [gateItemId], references: [id], onDelete: Cascade)
-  gateVerification   GateVerification      @relation(fields: [gateVerificationId], references: [id], onDelete: Cascade)
 
-  @@index([gateVerificationId])
-  @@index([gateItemId])
-  @@index([erpDocumentId])
-  @@index([erpDocumentItemId])
-  @@index([inventoryId])
-}
 
 model StockOpname {
   id             Int               @id @default(autoincrement())
@@ -533,6 +473,36 @@ model DailyStockSnapshot {
   @@unique([date, warehouseId, inventoryId])
   @@index([date])
   @@index([warehouseId])
+  @@index([inventoryId])
+}
+
+model DailyLocationStockSnapshot {
+  id           Int       @id @default(autoincrement())
+  uuid         String    @unique @default(uuid())
+  date         DateTime  @db.Timestamptz(3)
+  warehouseId  Int
+  locationId   Int
+  inventoryId  Int
+  openingStock   Float     @default(0)
+  erpStock       Float     @default(0)
+  pendingInQty   Float     @default(0)
+  pendingOutQty  Float     @default(0)
+  totalIn        Float     @default(0)
+  totalOut       Float     @default(0)
+  closingStock   Float     @default(0)
+  stack          String?
+  gateOpRefs     String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  location     Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  inventory    Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([date, warehouseId, locationId, inventoryId])
+  @@index([date])
+  @@index([warehouseId])
+  @@index([locationId])
   @@index([inventoryId])
 }
 
@@ -660,8 +630,6 @@ enum CardType {
 
 enum VerificationStatus {
   PENDING
-  PARTIAL
-  COMPLETED
   CANCELED
   VERIFIED
   REJECTED

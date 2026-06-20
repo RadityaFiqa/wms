@@ -14,7 +14,6 @@ type ExtendedSubjects =
       AuditLog: any;
       OdooAccount: any;
       GateOperation: any;
-      GateVerification: any;
       FileAttachment: any;
       DocumentReference: any;
       DocumentReferenceItem: any;

@@ -43,16 +43,6 @@ export function useErpDocuments(query?: {
     return api.get(url).then((res) => res.data);
   });
 
-  const syncErpDocuments = useCallback(async () => {
-    const res = await api.post(API_ROUTES.erpDocumentReferences.sync);
-    mutate(
-      (key) =>
-        typeof key === "string" &&
-        key.startsWith(API_ROUTES.erpDocumentReferences.list),
-    );
-    return res.data;
-  }, []);
-
   const forceSyncErpDocument = useCallback(async (uuid: string) => {
     const res = await api.post(
       API_ROUTES.erpDocumentReferences.forceSync(uuid),
@@ -70,7 +60,6 @@ export function useErpDocuments(query?: {
     error,
     isLoading,
     refresh,
-    syncErpDocuments,
     forceSyncErpDocument,
   };
 }
@@ -167,3 +156,24 @@ export function useErpPartners() {
     refresh,
   };
 }
+
+export function useErpDocumentRealizationHistory(uuid: string | null) {
+  const swrKey = uuid
+    ? API_ROUTES.erpDocumentReferences.realizationHistory(uuid)
+    : null;
+
+  const {
+    data,
+    error,
+    isLoading,
+    mutate: refresh,
+  } = useSWR(swrKey, (url) => api.get(url).then((res) => res.data));
+
+  return {
+    data,
+    error,
+    isLoading,
+    refresh,
+  };
+}
+

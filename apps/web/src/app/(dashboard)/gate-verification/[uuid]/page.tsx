@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CreateGateVerificationSchema } from "@bulog-wms/schema";
 import {
   useGate,
   useGateOperationDetail,
-  useAvailableReferences,
+  useGateVerificationHistory,
 } from "@/hooks/useGate";
 import { useAuthStore } from "@/store/auth";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -24,6 +23,7 @@ import {
   Loader2,
   FileText,
   Boxes,
+  Clock,
   ExternalLink,
   Plus,
   Trash2,
@@ -34,14 +34,14 @@ import {
   X,
   XCircle,
   CheckCircle2,
-  Clock,
   Search,
   Edit,
 } from "lucide-react";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
-import { ERPReferenceSelector } from "@/components/ERPReferenceSelector";
+
 import { DocumentReferenceSelector } from "@/components/DocumentReferenceSelector";
+import { DocumentReferenceHistoryDrawer } from "@/components/DocumentReferenceHistoryDrawer";
 
 const getProductDetails = (item: any) => {
   if (!item) return { sku: "-", name: "-", uom: "-" };
@@ -70,12 +70,8 @@ export default function GateVerificationDetailPage() {
   const uuid = params.uuid as string;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedItemToAssign, setSelectedItemToAssign] = useState<{
-    gateItemId: number;
-    productId: number;
-    productName: string;
-    qtyGate: number;
-  } | null>(null);
+  const [isNotesDocsSubmitting, setIsNotesDocsSubmitting] = useState(false);
+
   const [selectedZoomImage, setSelectedZoomImage] = useState<string | null>(
     null,
   );
@@ -92,7 +88,7 @@ export default function GateVerificationDetailPage() {
     verifyGateOperation,
     cancelGateVerification,
     confirmGateVerification,
-    unassignReference,
+    updateNotesAttachments,
     addCargoItem,
     deleteCargoItem,
     updateCargoItem,
@@ -103,11 +99,65 @@ export default function GateVerificationDetailPage() {
   const isReadOnly =
     gateOperation?.status === "VERIFIED" ||
     gateOperation?.status === "CANCELED";
+  const isNotesDocsReadOnly = isReadOnly;
+
+  // 1. Verification history timeline hook
+  const { data: timelineHistory, refresh: refreshTimeline } = useGateVerificationHistory(uuid);
+
+  // Redirect to gate operation details if already verified/canceled
+  useEffect(() => {
+    if (gateOperation && (gateOperation.status === "VERIFIED" || gateOperation.status === "CANCELED")) {
+      router.replace(`/gate-operations/${uuid}`);
+    }
+  }, [gateOperation, uuid, router]);
+
+  // Unique references computed from gateOperation.references list
+  const uniqueReferences = React.useMemo(() => {
+    if (!gateOperation?.references) return [];
+    const docs = gateOperation.references.map((r: any) => r.erpDocument?.documentNumber).filter(Boolean);
+    return Array.from(new Set(docs)) as string[];
+  }, [gateOperation]);
+
+  // 2. Memos for confirmation validation
+  const isConfirmEnabled = React.useMemo(() => {
+    if (!gateOperation) return false;
+
+    // Document reference must be selected
+    if (!gateOperation.documentReferenceId) return false;
+
+    // All cargo items must have location and stack selected
+    const hasMissingLocationOrStack = gateOperation.products?.some(
+      (p: any) => !p.locationId || !p.quantId
+    );
+    if (hasMissingLocationOrStack) return false;
+
+    return true;
+  }, [gateOperation]);
+
+
+  const confirmationRequirements = React.useMemo(() => {
+    if (!gateOperation) return [];
+    const reqs = [];
+
+    if (!gateOperation.documentReferenceId) {
+      reqs.push("Dokumen referensi ERP harus dipilih.");
+    }
+
+    const hasMissingLocationOrStack = gateOperation.products?.some(
+      (p: any) => !p.locationId || !p.quantId
+    );
+    if (hasMissingLocationOrStack) {
+      reqs.push("Semua barang muatan harus memiliki lokasi dan tumpukan (stack) yang dipilih.");
+    }
+
+    return reqs;
+  }, [gateOperation]);
+
 
   const handleConfirmVerification = async () => {
     if (
       !window.confirm(
-        "Apakah Anda yakin ingin mengonfirmasi verifikasi ini? Stok quant akan dipotong dan status akan dikunci.",
+        "Apakah Anda yakin ingin mengonfirmasi verifikasi ini? Gate verifikasi tidak dapat diubah lagi setelah ini.",
       )
     ) {
       return;
@@ -117,10 +167,11 @@ export default function GateVerificationDetailPage() {
     try {
       await confirmGateVerification(uuid);
       toast.success(
-        "Verifikasi berhasil dikonfirmasi dan stok telah dipotong!",
+        "Verifikasi berhasil dikonfirmasi!",
         { id: toastId },
       );
       refreshDetail();
+      refreshTimeline();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal mengonfirmasi verifikasi.",
@@ -131,32 +182,6 @@ export default function GateVerificationDetailPage() {
     }
   };
 
-  const handleUnassignReference = async (
-    referenceUuid: string,
-    docNumber: string,
-  ) => {
-    if (
-      !window.confirm(
-        `Apakah Anda yakin ingin melepas referensi ${docNumber} dari barang ini?`,
-      )
-    ) {
-      return;
-    }
-
-    const toastId = toast.loading("Melepas referensi ERP...");
-    try {
-      await unassignReference(referenceUuid, uuid);
-      toast.success(`Referensi ${docNumber} berhasil dilepas!`, {
-        id: toastId,
-      });
-      refreshDetail();
-    } catch (err: any) {
-      toast.error(
-        err.response?.data?.message || "Gagal melepas referensi ERP.",
-        { id: toastId },
-      );
-    }
-  };
 
   const getStatusBadge = (statusValue: string) => {
     switch (statusValue) {
@@ -166,16 +191,16 @@ export default function GateVerificationDetailPage() {
             Pending
           </span>
         );
-      case "PARTIAL":
-        return (
-          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-            Partial
-          </span>
-        );
-      case "COMPLETED":
+      case "VERIFIED":
         return (
           <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
-            Completed
+            Verified
+          </span>
+        );
+      case "REJECTED":
+        return (
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+            Rejected
           </span>
         );
       case "CANCELED":
@@ -199,7 +224,8 @@ export default function GateVerificationDetailPage() {
     setValue,
     control,
     reset,
-    formState: { errors },
+    getValues,
+    formState: { errors, isDirty },
     watch,
   } = useForm({
     resolver: zodResolver(CreateGateVerificationSchema),
@@ -213,19 +239,51 @@ export default function GateVerificationDetailPage() {
         quantId?: number | null;
         locationId?: number | null;
       }[],
-      poReferences: [] as string[],
-      soReferences: [] as string[],
       documentReferenceId: null as number | null,
     },
   });
+
+  // Intercept window close / reload if form is dirty
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "Anda memiliki perubahan yang belum disimpan. Apakah Anda yakin ingin meninggalkan halaman ini?";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isDirty]);
+
+  // Intercept browser back button
+  useEffect(() => {
+    const handlePopState = () => {
+      if (isDirty) {
+        const confirmLeave = window.confirm(
+          "Anda memiliki perubahan yang belum disimpan. Apakah Anda yakin ingin meninggalkan halaman ini?"
+        );
+        if (!confirmLeave) {
+          window.history.pushState(null, "", window.location.pathname);
+        }
+      }
+    };
+    
+    window.history.pushState(null, "", window.location.pathname);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [isDirty]);
 
   const { fields, append, remove } = useFieldArray({
     control,
     name: "products",
   });
 
-  const poRefs = watch("poReferences") || [];
-  const soRefs = watch("soReferences") || [];
+
 
   // Local state for adding/editing products step-by-step
   const [tempProduct, setTempProduct] = useState<{
@@ -272,22 +330,14 @@ export default function GateVerificationDetailPage() {
   // Pre-populate products list and verification details when gateOperation is loaded
   useEffect(() => {
     if (gateOperation) {
-      // Map products to verified quantities (sum of assignments), defaulting to 0
+      // Map products directly since there is no separate verification table anymore
       const items =
-        gateOperation.products?.map((gp: any) => {
-          const vp = gateOperation.verification?.products?.find(
-            (p: any) =>
-              p.productId === gp.productId &&
-              (p.quantId || null) === (gp.quantId || null) &&
-              (p.locationId || null) === (gp.locationId || null),
-          );
-          return {
-            productId: gp.productId,
-            quantity: vp ? vp.quantity : 0,
-            quantId: gp.quantId || null,
-            locationId: gp.locationId || null,
-          };
-        }) || [];
+        gateOperation.products?.map((gp: any) => ({
+          productId: gp.productId,
+          quantity: gp.quantity,
+          quantId: gp.quantId || null,
+          locationId: gp.locationId || null,
+        })) || [];
 
       // Populate productDetailsMap cache
       const detailsCache: Record<number, any> = {};
@@ -301,22 +351,50 @@ export default function GateVerificationDetailPage() {
       setProductDetailsMap(detailsCache);
 
       reset({
-        status:
-          gateOperation.verification?.status ||
-          gateOperation.status ||
-          "PENDING",
-        notes: gateOperation.verification?.notes || "",
+        status: gateOperation.status || "PENDING",
+        notes: gateOperation.verificationNotes || "",
         attachmentPaths:
-          gateOperation.verification?.attachments?.map(
+          gateOperation.attachments?.map(
             (a: any) => a.filePath,
           ) || [],
         products: items,
-        poReferences: gateOperation.poReferences || [],
-        soReferences: gateOperation.soReferences || [],
         documentReferenceId: gateOperation.documentReferenceId || null,
       });
     }
   }, [gateOperation, reset]);
+
+  const handleSaveNotesAttachments = async () => {
+    const values = getValues();
+    const notesValue = values.notes;
+    const attachmentPathsValue = values.attachmentPaths;
+
+    setIsNotesDocsSubmitting(true);
+    const toastId = toast.loading("Menyimpan catatan & dokumen pendukung...");
+    try {
+      await updateNotesAttachments(uuid, {
+        notes: notesValue ?? undefined,
+        attachmentPaths: attachmentPathsValue,
+      });
+      toast.success("Catatan & dokumen pendukung berhasil disimpan.", { id: toastId });
+      
+      // Reset react-hook-form defaultValues for these fields to clear isDirty warning
+      reset({
+        ...values,
+        notes: notesValue,
+        attachmentPaths: attachmentPathsValue,
+      });
+
+      refreshDetail();
+      refreshTimeline();
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Gagal menyimpan catatan & dokumen.",
+        { id: toastId },
+      );
+    } finally {
+      setIsNotesDocsSubmitting(false);
+    }
+  };
 
   const onSubmit = async (data: any) => {
     // Validate products list
@@ -364,8 +442,10 @@ export default function GateVerificationDetailPage() {
     const toastId = toast.loading("Memproses verifikasi...");
     try {
       await verifyGateOperation(uuid, payload);
-      toast.success(`Data gerbang berhasil diverifikasi.`, { id: toastId });
-      router.push("/gate-verification");
+      toast.success(`Data gerbang berhasil disimpan.`, { id: toastId });
+      reset(data);
+      refreshDetail();
+      refreshTimeline();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal memproses verifikasi.",
@@ -493,48 +573,6 @@ export default function GateVerificationDetailPage() {
               <span className="text-slate-500 text-xs font-mono">
                 {gateOperation.opNumber} | Driver: {gateOperation.driverName}
               </span>
-              <span className="text-slate-300">|</span>
-              {/* Linked References badge */}
-              <div className="flex items-center space-x-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Referensi ERP:
-                </span>
-                {gateOperation.cardType === "IN" ? (
-                  <div className="flex flex-wrap gap-1">
-                    {poRefs.length > 0 ? (
-                      poRefs.map((ref: string) => (
-                        <span
-                          key={ref}
-                          className="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 rounded text-[10px] font-bold font-mono"
-                        >
-                          {ref}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[10px] text-slate-450 italic font-semibold">
-                        Tidak ada PO
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {soRefs.length > 0 ? (
-                      soRefs.map((ref: string) => (
-                        <span
-                          key={ref}
-                          className="px-2 py-0.5 bg-purple-50 border border-purple-200 text-purple-700 rounded text-[10px] font-bold font-mono"
-                        >
-                          {ref}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[10px] text-slate-450 italic font-semibold">
-                        Tidak ada SO
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -693,6 +731,7 @@ export default function GateVerificationDetailPage() {
                           { id: toastId },
                         );
                         refreshDetail();
+                        refreshTimeline();
                       } catch (err: any) {
                         toast.error(
                           err.response?.data?.message ||
@@ -705,14 +744,14 @@ export default function GateVerificationDetailPage() {
                   />
                 )}
               />
-              {gateOperation.documentReference && gateOperation.documentHistory && (
+              {gateOperation.documentReference && (
                 <button
                   type="button"
                   onClick={() => setIsHistoryOpen(true)}
-                  className="text-blue-600 hover:text-blue-700 font-bold text-xs mt-2 flex items-center hover:underline cursor-pointer"
+                  className="text-blue-600 hover:text-blue-750 font-bold text-xs mt-2 flex items-center hover:underline cursor-pointer"
                 >
                   <FileText className="h-3.5 w-3.5 mr-1" />
-                  View History
+                  Lihat Riwayat Dokumen
                 </button>
               )}
             </div>
@@ -727,7 +766,6 @@ export default function GateVerificationDetailPage() {
             </div>
           </div>
         </div>
-
         {/* Riwayat Progres & Status Verifikasi Timeline */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 md:col-span-4">
           <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
@@ -736,91 +774,88 @@ export default function GateVerificationDetailPage() {
           </h3>
 
           <div className="relative pl-6 border-l-2 border-slate-100 space-y-6">
-            {/* Step 1: Registration */}
-            <div className="relative">
-              <div className="absolute -left-[31px] top-1 bg-emerald-500 border-4 border-white h-4.5 w-4.5 rounded-full shadow-sm" />
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Langkah 1: Registrasi Gerbang
-              </div>
-              <div className="text-sm font-semibold text-slate-800 mt-1">
-                Registrasi Kendaraan Selesai
-              </div>
-              <div className="text-xs text-slate-500 mt-1 flex items-center space-x-4">
-                <span>
-                  Oleh:{" "}
-                  <strong className="text-slate-700">
-                    {gateOperation.createdByUser?.name || "-"}
-                  </strong>
-                </span>
-                <span>
-                  Waktu:{" "}
-                  <strong className="text-slate-700">
-                    {new Date(gateOperation.createdAt).toLocaleString("id-ID")}
-                  </strong>
-                </span>
-              </div>
-              {gateOperation.notes && (
-                <p className="text-xs text-slate-550 italic bg-slate-50 border border-slate-100 rounded-lg p-2.5 mt-1.5 max-w-xl">
-                  Catatan: {gateOperation.notes}
-                </p>
-              )}
-            </div>
+            {timelineHistory && timelineHistory.length > 0 ? (
+              timelineHistory.map((log: any) => {
+                const dateStr = log.timestamp ? new Date(log.timestamp).toLocaleString("id-ID") : "-";
+                const actorName = log.actor?.name || "System";
+                
+                let title = log.action;
+                let description = "";
+                let colorClass = "bg-blue-500";
+                
+                switch (log.action) {
+                  case 'GATE_OPERATION_CREATE':
+                    title = "Registrasi Kendaraan (Gate IN/OUT)";
+                    colorClass = "bg-emerald-500";
+                    description = `Mencatat kendaraan ${log.details?.licensePlate || ""} dengan driver ${log.details?.driverName || ""}. ${log.details?.notes ? `Catatan: "${log.details.notes}"` : ""}`;
+                    break;
+                  case 'GATE_OPERATION_VERIFY':
+                    title = "Simpan Hasil Verifikasi";
+                    colorClass = "bg-blue-500";
+                    description = `Menyimpan data verifikasi. ${log.details?.notes ? `Catatan: "${log.details.notes}"` : ""}`;
+                    break;
+                  case 'GATE_OPERATION_NOTES_ATTACHMENTS_UPDATE':
+                    title = "Simpan Catatan & Dokumen";
+                    colorClass = "bg-indigo-500";
+                    description = `Memperbarui catatan verifikasi & dokumen pendukung. ${log.details?.notes ? `Catatan: "${log.details.notes}"` : ""}`;
+                    break;
+                  case 'GATE_OPERATION_CANCEL':
+                    title = "Verifikasi Dibatalkan";
+                    colorClass = "bg-red-500";
+                    description = `Verifikasi dibatalkan oleh auditor.`;
+                    break;
+                  case 'GATE_OPERATION_CONFIRM':
+                    title = "Verifikasi Dikonfirmasi (CONFIRM)";
+                    colorClass = "bg-emerald-600";
+                    description = `Verifikasi telah selesai dikonfirmasi..`;
+                    break;
+                  case 'GATE_OPERATION_ASSIGN_REFERENCES':
+                    title = "Tautkan Referensi ERP";
+                    colorClass = "bg-indigo-500";
+                    const assignList = log.details?.assignments?.map((a: any) => `item ERP #${a.erpDocumentItemId} (${a.assignedQuantity} Unit)`).join(", ");
+                    description = `Menautkan referensi dokumen ERP ke barang muatan: ${assignList || ""}`;
+                    break;
+                  case 'GATE_OPERATION_UNASSIGN_REFERENCE':
+                    title = "Lepas Referensi ERP";
+                    colorClass = "bg-amber-500";
+                    description = `Melepas referensi ERP ${log.details?.previousReference || ""} dari barang muatan.`;
+                    break;
+                  case 'GATE_OPERATION_CARGO_ADD':
+                    title = "Tambah Barang Muatan";
+                    colorClass = "bg-purple-500";
+                    description = `Menambahkan barang muatan baru. Qty: ${log.details?.quantity || 0}`;
+                    break;
+                  case 'GATE_OPERATION_CARGO_UPDATE':
+                    title = "Ubah Barang Muatan";
+                    colorClass = "bg-sky-500";
+                    description = `Mengubah informasi barang muatan. Qty Baru: ${log.details?.quantity || 0}`;
+                    break;
+                  case 'GATE_OPERATION_CARGO_DELETE':
+                    title = "Hapus Barang Muatan";
+                    colorClass = "bg-rose-500";
+                    description = `Menghapus barang muatan dari daftar verifikasi.`;
+                    break;
+                }
 
-            {/* Step 2: Verification Status */}
-            <div className="relative">
-              <div
-                className={`absolute -left-[31px] top-1 border-4 border-white h-4.5 w-4.5 rounded-full shadow-sm ${
-                  gateOperation.verification
-                    ? gateOperation.verification.status === "COMPLETED"
-                      ? "bg-emerald-500"
-                      : "bg-blue-500"
-                    : "bg-amber-450 animate-pulse"
-                }`}
-              />
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Langkah 2: Audit & Verifikasi Realisasi
-              </div>
-              {gateOperation.verification ? (
-                <>
-                  <div className="text-sm font-semibold text-slate-800 mt-1 flex items-center">
-                    Status:&nbsp;
-                    {getStatusBadge(gateOperation.verification.status)}
+                return (
+                  <div key={log.uuid} className="relative animate-fade-in">
+                    <div className={`absolute -left-[31px] top-1 border-4 border-white h-4.5 w-4.5 rounded-full shadow-sm ${colorClass}`} />
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      {title}
+                    </div>
+                    <div className="text-sm font-semibold text-slate-800 mt-1">
+                      {description}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 flex items-center space-x-4">
+                      <span>Oleh: <strong className="text-slate-700">{actorName}</strong></span>
+                      <span>Waktu: <strong className="text-slate-700">{dateStr}</strong></span>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 mt-1 flex items-center space-x-4">
-                    <span>
-                      Oleh:{" "}
-                      <strong className="text-slate-700">
-                        {gateOperation.verification.verifiedBy?.name ||
-                          "Verifier"}
-                      </strong>
-                    </span>
-                    <span>
-                      Waktu:{" "}
-                      <strong className="text-slate-700">
-                        {new Date(
-                          gateOperation.verification.verifiedAt,
-                        ).toLocaleString("id-ID")}
-                      </strong>
-                    </span>
-                  </div>
-                  {gateOperation.verification.notes && (
-                    <p className="text-xs text-slate-550 italic bg-slate-50 border border-slate-100 rounded-lg p-2.5 mt-1.5 max-w-xl">
-                      Catatan: {gateOperation.verification.notes}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="text-sm font-semibold text-slate-800 mt-1">
-                    Menunggu Verifikasi (Pending)
-                  </div>
-                  <p className="text-xs text-slate-450 mt-1">
-                    Kendaraan sedang mengantre untuk dilakukan pengecekan
-                    realisasi dokumen ERP oleh Auditor/Admin Gudang.
-                  </p>
-                </>
-              )}
-            </div>
+                );
+              })
+            ) : (
+              <p className="text-xs text-slate-400 italic py-2">Memuat riwayat verifikasi...</p>
+            )}
           </div>
         </div>
 
@@ -850,7 +885,6 @@ export default function GateVerificationDetailPage() {
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-3">Nama Produk</th>
-                    <th className="px-4 py-3 text-right">ERP Qty</th>
                     <th className="px-4 py-3 text-right">Cargo Qty</th>
                     <th className="px-4 py-3 text-center">Aksi</th>
                   </tr>
@@ -922,45 +956,7 @@ export default function GateVerificationDetailPage() {
                               )}
                             </div>
 
-                            {/* Linked References list */}
-                            {gateOperation.verification?.references
-                              ?.filter(
-                                (ref: any) =>
-                                  ref.gateItemId === originalItem?.id,
-                              )
-                              ?.map((ref: any) => (
-                                <div
-                                  key={ref.uuid}
-                                  className="flex items-center space-x-2 mt-1.5 text-xs bg-slate-50 border border-slate-100 rounded-lg p-1.5 max-w-md"
-                                >
-                                  <Link2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                  <span className="font-semibold font-mono text-slate-700">
-                                    {ref.erpDocument?.documentNumber}
-                                  </span>
-                                  <span className="text-slate-300">|</span>
-                                  <span className="text-slate-650 font-bold">
-                                    Qty: {ref.assignedQuantity} Unit
-                                  </span>
-                                  <span className="flex-grow" />
-                                  {!isReadOnly && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleUnassignReference(
-                                          ref.uuid,
-                                          ref.erpDocument?.documentNumber,
-                                        )
-                                      }
-                                      className="text-red-650 hover:text-red-750 font-bold text-[10px] uppercase hover:underline ml-2"
-                                    >
-                                      Lepas
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-500">
-                            {erpQty.toLocaleString("id-ID")} {productDetails.uom}
+
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
@@ -1016,261 +1012,148 @@ export default function GateVerificationDetailPage() {
         </div>
 
         {/* Row 3: Catatan Admin & Dokumen Pendukung */}
-        {/* Catatan Admin */}
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 md:col-span-2 self-stretch">
-          <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
-            <FileText className="h-5 w-5 mr-2 text-slate-400 shrink-0" />
-            Catatan Verifikasi
-          </h3>
+        <div className="md:col-span-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            {/* Catatan Admin */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
+                <FileText className="h-5 w-5 mr-2 text-slate-400 shrink-0" />
+                Catatan Verifikasi
+              </h3>
 
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-              Catatan Verifikasi / Keterangan Admin (Opsional)
-            </label>
-            <textarea
-              rows={4}
-              placeholder="Masukkan rincian hasil verifikasi fisik barang, plat nomor, driver, dan kesesuaian data..."
-              {...register("notes")}
-              disabled={isReadOnly}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-550 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-            {errors.notes && (
-              <p className="text-xs text-red-500 mt-1 font-semibold">
-                {errors.notes.message}
-              </p>
-            )}
-          </div>
-        </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Catatan Verifikasi / Keterangan Admin (Opsional)
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Masukkan rincian hasil verifikasi fisik barang, plat nomor, driver, dan kesesuaian data..."
+                  {...register("notes")}
+                  disabled={isNotesDocsReadOnly}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-550 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                {errors.notes && (
+                  <p className="text-xs text-red-500 mt-1 font-semibold">
+                    {errors.notes.message}
+                  </p>
+                )}
+              </div>
+            </div>
 
-        {/* Dokumen Pendukung */}
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 md:col-span-2 self-stretch">
-          <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
-            <Upload className="h-5 w-5 mr-2 text-blue-550 shrink-0" />
-            Dokumen Pendukung
-          </h3>
+            {/* Dokumen Pendukung */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center">
+                <Upload className="h-5 w-5 mr-2 text-blue-550 shrink-0" />
+                Dokumen Pendukung
+              </h3>
 
-          <Controller
-            control={control}
-            name="attachmentPaths"
-            render={({ field }) => (
-              <AttachmentUploader
-                value={field.value || []}
-                onChange={field.onChange}
-                initialAttachments={
-                  gateOperation.verification?.attachments || []
-                }
-                label="Unggah Dokumen Pendukung / Surat Jalan (Multiple)"
-                disabled={isReadOnly}
+              <Controller
+                control={control}
+                name="attachmentPaths"
+                render={({ field }) => (
+                  <AttachmentUploader
+                    value={field.value || []}
+                    onChange={field.onChange}
+                    initialAttachments={
+                      gateOperation.attachments || []
+                    }
+                    label="Unggah Dokumen Pendukung / Surat Jalan (Multiple)"
+                    disabled={isNotesDocsReadOnly}
+                  />
+                )}
               />
-            )}
-          />
+            </div>
+          </div>
+
+          {/* Action button for Notes and Documents */}
+          <div className="flex justify-end pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={handleSaveNotesAttachments}
+              disabled={isNotesDocsSubmitting || isNotesDocsReadOnly}
+              className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed text-white font-bold px-5 py-2.5 rounded-lg shadow-md active:scale-[0.98] transition text-sm cursor-pointer animate-fade-in"
+            >
+              {isNotesDocsSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Simpan Catatan & Dokumen
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="md:col-span-4 flex flex-col sm:flex-row justify-between items-center bg-white border border-slate-200 rounded-xl p-4 shadow-sm gap-3">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => router.push("/gate-verification")}
-              disabled={isSubmitting}
-              className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center"
-            >
-              Kembali
-            </button>
-            {!isReadOnly && (
-              <button
-                type="button"
-                onClick={handleCancelVerification}
-                disabled={isSubmitting}
-                className="border border-red-600 hover:bg-red-50 text-red-600 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center flex items-center justify-center active:scale-[0.98]"
-              >
-                <XCircle className="h-4.5 w-4.5 mr-1.5" />
-                Batalkan Verifikasi
-              </button>
-            )}
-          </div>
-
-          {!isReadOnly && (
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-white font-bold px-6 py-2.5 rounded-lg shadow-md hover:shadow-slate-500/10 active:scale-[0.98] transition text-sm cursor-pointer"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Simpan Hasil Verifikasi
-              </button>
-
-              <button
-                type="button"
-                onClick={handleConfirmVerification}
-                disabled={isSubmitting}
-                className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-lg shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 active:scale-[0.98] transition text-sm cursor-pointer"
-              >
-                <ShieldCheck className="h-4.5 w-4.5 mr-1.5" />
-                Konfirmasi (CONFIRM)
-              </button>
+        <div className="md:col-span-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+          {confirmationRequirements.length > 0 && !isReadOnly && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs space-y-2 shadow-xs">
+              <div className="font-extrabold flex items-center text-amber-900">
+                <Info className="h-4 w-4 mr-2 text-amber-600 shrink-0" />
+                Persyaratan Konfirmasi (CONFIRM) Belum Terpenuhi:
+              </div>
+              <ul className="list-disc pl-5 space-y-1 font-semibold text-amber-800/90">
+                {confirmationRequirements.map((req, idx) => (
+                  <li key={idx}>{req}</li>
+                ))}
+              </ul>
             </div>
           )}
+
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => router.push("/gate-verification")}
+                disabled={isSubmitting}
+                className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center"
+              >
+                Kembali
+              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={handleCancelVerification}
+                  disabled={isSubmitting}
+                  className="border border-red-600 hover:bg-red-50 text-red-600 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center flex items-center justify-center active:scale-[0.98]"
+                >
+                  <XCircle className="h-4.5 w-4.5 mr-1.5" />
+                  Batalkan Verifikasi
+                </button>
+              )}
+            </div>
+
+            {!isReadOnly && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleConfirmVerification}
+                  disabled={isSubmitting || !isConfirmEnabled}
+                  title={confirmationRequirements.join("\n")}
+                  className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed text-white font-bold px-6 py-2.5 rounded-lg shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 active:scale-[0.98] transition text-sm cursor-pointer"
+                >
+                  <ShieldCheck className="h-4.5 w-4.5 mr-1.5" />
+                  Konfirmasi (CONFIRM)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </form>
 
       {/* Document History Drawer */}
-      {isHistoryOpen && gateOperation.documentHistory && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div
-            className="fixed inset-0 bg-black/45 backdrop-blur-xs transition-opacity"
-            onClick={() => setIsHistoryOpen(false)}
-          />
+      <DocumentReferenceHistoryDrawer
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        docRefUuid={gateOperation.documentReference?.uuid}
+        documentNumber={gateOperation.documentReference?.documentNumber}
+        preloadedHistory={gateOperation.documentHistory}
+      />
 
-          <div className="relative w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col z-10 animate-slide-in-right">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-800 flex items-center">
-                  <FileText className="h-5 w-5 mr-2 text-indigo-500 shrink-0" />
-                  Riwayat Realisasi Dokumen ERP
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Dokumen ERP: {gateOperation.documentReference?.documentNumber}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsHistoryOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {/* Other Operations List */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Tiket Terkait
-                </h4>
-                {gateOperation.documentHistory.otherOperations &&
-                gateOperation.documentHistory.otherOperations.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {gateOperation.documentHistory.otherOperations.map(
-                      (op: any, index: number) => (
-                        <Link
-                          key={index}
-                          href={`/gate-verification/${op.uuid}`}
-                          className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 rounded-xl transition group"
-                        >
-                          <div className="space-y-1">
-                            <p className="text-sm font-bold text-slate-800 font-mono group-hover:text-blue-700 transition">
-                              {op.opNumber}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-medium">
-                              Driver: {op.driverName} • {op.licensePlate}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(op.status)}
-                            <ExternalLink className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition shrink-0" />
-                          </div>
-                        </Link>
-                      ),
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-555 italic">
-                    Tidak ada tiket terkait lainnya.
-                  </p>
-                )}
-              </div>
-
-              {/* Realization Summary Per Product */}
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Ringkasan Kuantitas Dokumen ERP
-                </h4>
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-505 text-[10px] font-bold uppercase tracking-wider">
-                        <th className="px-4 py-3">Product</th>
-                        <th className="px-4 py-3">SKU</th>
-                        <th className="px-4 py-3 text-center">UoM</th>
-                        <th className="px-4 py-3 text-right">ERP Qty</th>
-                        <th className="px-4 py-3 text-right">Realized Qty</th>
-                        <th className="px-4 py-3 text-right">Unrealized Qty</th>
-                        <th className="px-4 py-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                      {gateOperation.documentHistory.summary?.map(
-                        (item: any, idx: number) => {
-                          const getBadgeClass = (status: string) => {
-                            switch (status) {
-                              case "COMPLETED":
-                                return "bg-emerald-50 text-emerald-700 border-emerald-200";
-                              case "PARTIAL":
-                                return "bg-blue-50 text-blue-700 border-blue-200";
-                              default:
-                                return "bg-amber-50 text-amber-700 border-amber-200";
-                            }
-                          };
-                          return (
-                            <tr
-                              key={idx}
-                              className="hover:bg-slate-50/20 transition-all duration-150"
-                            >
-                              <td className="px-4 py-3.5 font-bold text-slate-800">
-                                {item.productName}
-                              </td>
-                              <td className="px-4 py-3.5 font-mono text-[11px] text-slate-500">
-                                {item.sku}
-                              </td>
-                              <td className="px-4 py-3.5 text-center font-bold text-slate-655">
-                                {item.uom}
-                              </td>
-                              <td className="px-4 py-3.5 text-right font-semibold text-slate-505">
-                                {item.erpQty.toLocaleString("id-ID")}
-                              </td>
-                              <td className="px-4 py-3.5 text-right font-bold text-slate-800">
-                                {item.realizedQty.toLocaleString("id-ID")}
-                              </td>
-                              <td className="px-4 py-3.5 text-right font-black text-slate-900">
-                                {item.remainingQty.toLocaleString("id-ID")}
-                              </td>
-                              <td className="px-4 py-3.5 text-center">
-                                <span
-                                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getBadgeClass(item.status)}`}
-                                >
-                                  {item.status}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        },
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Assign Reference Drawer */}
-      {selectedItemToAssign && (
-        <AssignReferenceDrawer
-          isOpen={!!selectedItemToAssign}
-          onClose={() => setSelectedItemToAssign(null)}
-          operationUuid={uuid}
-          gateItemId={selectedItemToAssign.gateItemId}
-          productId={selectedItemToAssign.productId}
-          productName={selectedItemToAssign.productName}
-          qtyGate={selectedItemToAssign.qtyGate}
-          onSaved={() => {
-            refreshDetail();
-          }}
-        />
-      )}
 
       {/* Add Cargo Item Drawer */}
       <AddCargoItemDrawer
@@ -1296,6 +1179,7 @@ export default function GateVerificationDetailPage() {
               }
             : null
         }
+        documentReferenceItems={gateOperation?.documentHistory?.summary || undefined}
         onAdd={async (data) => {
           if (editingCargoItem) {
             const toastId = toast.loading(
@@ -1311,6 +1195,7 @@ export default function GateVerificationDetailPage() {
                 id: toastId,
               });
               refreshDetail();
+              refreshTimeline();
             } catch (err: any) {
               toast.error(
                 err.response?.data?.message ||
@@ -1332,6 +1217,7 @@ export default function GateVerificationDetailPage() {
                 id: toastId,
               });
               refreshDetail();
+              refreshTimeline();
             } catch (err: any) {
               toast.error(
                 err.response?.data?.message ||
@@ -1367,271 +1253,7 @@ export default function GateVerificationDetailPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// Drawer Component at the bottom
-function AssignReferenceDrawer({
-  isOpen,
-  onClose,
-  operationUuid,
-  gateItemId,
-  productId,
-  productName,
-  qtyGate,
-  onSaved,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  operationUuid: string;
-  gateItemId: number;
-  productId: number;
-  productName: string;
-  qtyGate: number;
-  onSaved: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 300);
-  const { data: references, isLoading } = useAvailableReferences(
-    operationUuid,
-    productId,
-    gateItemId,
-    debouncedSearch || undefined,
-  );
-  const { assignReferences } = useGate();
-  const [assignedQuantities, setAssignedQuantities] = useState<
-    Record<number, number>
-  >({});
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (references) {
-      const initial: Record<number, number> = {};
-      references.forEach((ref) => {
-        if (ref.currentAssignedQty > 0) {
-          initial[ref.erpDocumentItemId] = ref.currentAssignedQty;
-        }
-      });
-      setAssignedQuantities(initial);
-    }
-  }, [references]);
-
-  if (!isOpen) return null;
-
-  const handleQtyChange = (itemId: number, val: number, maxVal: number) => {
-    const updated = { ...assignedQuantities };
-    if (val <= 0 || isNaN(val)) {
-      delete updated[itemId];
-    } else {
-      updated[itemId] = Math.min(val, maxVal);
-    }
-    setAssignedQuantities(updated);
-  };
-
-  const filteredReferences = references || [];
-
-  const totalAssigned = Object.values(assignedQuantities).reduce(
-    (sum, val) => sum + val,
-    0,
-  );
-  const isOverGateQty = totalAssigned > qtyGate;
-
-  const handleSave = async () => {
-    if (isOverGateQty) {
-      toast.error(
-        `Total assignment (${totalAssigned}) melebihi Qty Gate (${qtyGate}).`,
-      );
-      return;
-    }
-
-    setIsSaving(true);
-    const toastId = toast.loading("Menyimpan assignment referensi ERP...");
-    try {
-      const assignmentsPayload = Object.entries(assignedQuantities).map(
-        ([itemIdStr, qty]) => ({
-          erpDocumentItemId: Number(itemIdStr),
-          assignedQuantity: qty,
-        }),
-      );
-
-      await assignReferences(operationUuid, {
-        gateItemId,
-        assignments: assignmentsPayload,
-      });
-
-      toast.success("Referensi ERP berhasil ditautkan!", { id: toastId });
-      onSaved();
-      onClose();
-    } catch (err: any) {
-      toast.error(
-        err.response?.data?.message || "Gagal menyimpan assignment.",
-        { id: toastId },
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div
-        className="fixed inset-0 bg-black/45 backdrop-blur-xs transition-opacity"
-        onClick={onClose}
-      />
-
-      <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col z-10 animate-slide-in-right">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-extrabold text-slate-800">
-              Assign Referensi ERP
-            </h3>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              {productName} (Qty Gate: {qtyGate})
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cari berdasarkan No. SO/CT (Origin)..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg pl-10 pr-4 py-2 text-xs focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
-            />
-          </div>
-
-          {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
-            </div>
-          ) : filteredReferences.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs italic bg-slate-50 rounded-xl border border-dashed border-slate-200">
-              Tidak ada referensi dokumen ERP yang cocok atau tersedia.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredReferences.map((ref) => {
-                const maxAvailable = ref.remainingQty + ref.currentAssignedQty;
-                const currentVal =
-                  assignedQuantities[ref.erpDocumentItemId] || "";
-                return (
-                  <div
-                    key={ref.erpDocumentItemId}
-                    className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 hover:border-slate-300 transition"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-bold text-slate-800 text-xs font-mono">
-                          {ref.documentNumber}
-                        </div>
-                        <div className="text-[10px] text-slate-450 font-bold mt-0.5">
-                          Partner: {ref.partnerName}
-                        </div>
-                        {ref.scheduledDate && (
-                          <div className="text-[10px] text-slate-400 font-semibold flex items-center mt-1">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {new Date(ref.scheduledDate).toLocaleDateString(
-                              "id-ID",
-                              { dateStyle: "medium" },
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Remaining
-                        </span>
-                        <span className="text-xs font-black text-slate-600">
-                          {ref.remainingQty} Unit
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">
-                        Assigned Quantity:
-                      </span>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          max={maxAvailable}
-                          placeholder="0"
-                          value={currentVal}
-                          onChange={(e) =>
-                            handleQtyChange(
-                              ref.erpDocumentItemId,
-                              parseFloat(e.target.value),
-                              maxAvailable,
-                            )
-                          }
-                          className="w-20 bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-2 py-1 text-xs text-right font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition"
-                        />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase w-10 text-left">
-                          Unit
-                        </span>
-                      </div>
-                    </div>
-                    {Number(currentVal) > maxAvailable && (
-                      <p className="text-[10px] text-red-500 text-right font-semibold">
-                        Maksimal kuantitas tersedia adalah {maxAvailable}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-2 text-xs font-medium text-slate-650">
-          <div className="flex justify-between">
-            <span>Total Assigned:</span>
-            <span
-              className={`font-bold ${isOverGateQty ? "text-red-650" : "text-blue-700"}`}
-            >
-              {totalAssigned} / {qtyGate} Unit
-            </span>
-          </div>
-          {isOverGateQty && (
-            <p className="text-[10px] text-red-500 font-semibold text-right">
-              Peringatan: Total assignment tidak boleh melebihi Qty Gate (
-              {qtyGate})!
-            </p>
-          )}
-        </div>
-
-        <div className="p-4 border-t border-slate-100 bg-white flex items-center justify-end space-x-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-xs transition disabled:opacity-40 cursor-pointer"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving || isOverGateQty}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow-md transition disabled:opacity-40 cursor-pointer"
-          >
-            {isSaving ? "Menyimpan..." : "Simpan Assignment"}
-          </button>
-        </div>
-      </div>
+ 
     </div>
   );
 }

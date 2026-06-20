@@ -33,7 +33,7 @@ export default function DashboardOverviewPage() {
       description: "Ringkasan dasbor dan informasi status pergudangan.",
       modules: [
         {
-          name: "Dashboard / Overview",
+          name: "Dashboard",
           description: "Kembali ke dasbor utama untuk melihat ringkasan status pergudangan.",
           href: "/",
           icon: LayoutDashboard,
@@ -50,7 +50,7 @@ export default function DashboardOverviewPage() {
       modules: [
         {
           name: "Inventory",
-          description: "Lihat status persediaan barang, detail quants lokasi, dan sinkronisasi data Odoo.",
+          description: "Lihat status persediaan barang, detail quants lokasi",
           href: "/inventory",
           icon: Boxes,
           color: "text-blue-600 bg-blue-50 border-blue-100 dark:bg-blue-950/20 dark:border-blue-900/30",
@@ -60,7 +60,7 @@ export default function DashboardOverviewPage() {
         },
         {
           name: "Laporan Mutasi",
-          description: "Unduh data masuk, keluar, saldo persediaan harian, dan drill-down transaksi terkait.",
+          description: "Unduh data masuk, keluar, stok persediaan harian, dan drill-down transaksi terkait.",
           href: "/reports",
           icon: BarChart3,
           color: "text-rose-600 bg-rose-50 border-rose-100 dark:bg-rose-950/20 dark:border-rose-900/30",
@@ -106,7 +106,7 @@ export default function DashboardOverviewPage() {
         },
         {
           name: "Verifikasi Gate",
-          description: "Audit dan verifikasi muatan truk masuk/keluar, dan tautkan ke referensi ERP transfer.",
+          description: "Audit dan verifikasi muatan truk masuk/keluar, dan tautkan to referensi ERP transfer.",
           href: "/gate-verification",
           icon: ClipboardCheck,
           color: "text-teal-600 bg-teal-50 border-teal-100 dark:bg-teal-950/20 dark:border-teal-900/30",

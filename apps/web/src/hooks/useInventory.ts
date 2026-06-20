@@ -24,12 +24,6 @@ export function useInventory(query?: {
     );
   }, []);
 
-  const syncInventory = useCallback(async () => {
-    const res = await api.post(API_ROUTES.inventory.sync);
-    refresh();
-    return res.data;
-  }, [refresh]);
-
   const exportPdf = useCallback(async (searchString = "") => {
     const res = await api.get(
       `${API_ROUTES.inventory.list}/export/pdf?search=${searchString}`,
@@ -53,7 +47,6 @@ export function useInventory(query?: {
     error,
     isLoading,
     refresh,
-    syncInventory,
     exportPdf,
   };
 }

@@ -9,6 +9,7 @@ interface ProductSelectorProps {
   onChange: (productId: number, product?: any) => void;
   error?: string;
   onlyAvailable?: boolean;
+  allowedProductIds?: number[];
 }
 
 export function ProductSelector({
@@ -16,6 +17,7 @@ export function ProductSelector({
   onChange,
   error,
   onlyAvailable,
+  allowedProductIds,
 }: ProductSelectorProps) {
   const [inputValue, setInputValue] = useState("");
   const debouncedSearch = useDebounce(inputValue, 300);
@@ -41,23 +43,28 @@ export function ProductSelector({
   const optionsMap = new Map();
 
   if (selectedProduct) {
-    optionsMap.set(selectedProduct.id, {
-      value: selectedProduct.id,
-      label: `[${selectedProduct.sku}] ${selectedProduct.name} (${selectedProduct.uom || "Unit"})`,
-      product: selectedProduct,
-    });
+    if (!allowedProductIds || allowedProductIds.includes(selectedProduct.id)) {
+      optionsMap.set(selectedProduct.id, {
+        value: selectedProduct.id,
+        label: `[${selectedProduct.sku}] ${selectedProduct.name} (${selectedProduct.uom || "Unit"})`,
+        product: selectedProduct,
+      });
+    }
   }
 
   (products || []).forEach((p: any) => {
-    optionsMap.set(p.id, {
-      value: p.id,
-      label: `${p.name} (${p.uom || "Unit"})`,
-      product: p,
-    });
+    if (!allowedProductIds || allowedProductIds.includes(p.id)) {
+      optionsMap.set(p.id, {
+        value: p.id,
+        label: `${p.name} (${p.uom || "Unit"})`,
+        product: p,
+      });
+    }
   });
 
   const options = Array.from(optionsMap.values());
   const selectedOption = options.find((opt) => opt.value === value) || null;
+
 
   return (
     <div className="w-full">

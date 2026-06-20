@@ -32,6 +32,8 @@ import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import { encrypt } from '../../core/utils/encryption.util';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 
+import { OdooSyncService } from './odoo-sync.service';
+
 @Controller('odoo-accounts')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
@@ -41,6 +43,7 @@ export class OdooController {
     private readonly authService: OdooAuthService,
     private readonly sessionManager: OdooSessionManager,
     private readonly warehouseContext: WarehouseContextService,
+    private readonly odooSyncService: OdooSyncService,
   ) {}
 
   @Post()
@@ -229,6 +232,20 @@ export class OdooController {
 
     const updated = await this.repository.findById(existing.id);
     return this.sanitize(updated);
+  }
+
+  @Post('sync')
+  @CheckPolicies((ability) => ability.can('update', 'Inventory'))
+  @AuditLogAction('ODOO_UNIFIED_SYNC')
+  async sync(@Req() req: any) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    const triggeredBy = req.user?.email || 'System';
+    return this.odooSyncService.triggerSyncAll(warehouseId, triggeredBy);
   }
 
   private sanitize(account: any) {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.ErpDocumentReferenceQuerySchema = exports.AssignReferencesSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -85,9 +85,9 @@ exports.UpdateOdooAccountSchema = zod_1.z.object({
 exports.CardTypeEnum = zod_1.z.enum(["IN", "OUT"]);
 exports.VerificationStatusEnum = zod_1.z.enum([
     "PENDING",
-    "PARTIAL",
-    "COMPLETED",
     "CANCELED",
+    "VERIFIED",
+    "REJECTED",
 ]);
 exports.GateOperationProductSchema = zod_1.z.object({
     productId: zod_1.z.number().int("ID Produk harus berupa angka"),
@@ -119,18 +119,7 @@ exports.CreateGateVerificationSchema = zod_1.z.object({
     }))
         .optional()
         .default([]),
-    poReferences: zod_1.z.array(zod_1.z.string()).optional().default([]),
-    soReferences: zod_1.z.array(zod_1.z.string()).optional().default([]),
     documentReferenceId: zod_1.z.number().int().optional().nullable(),
-});
-exports.AssignReferencesSchema = zod_1.z.object({
-    gateItemId: zod_1.z.number().int(),
-    assignments: zod_1.z.array(zod_1.z.object({
-        erpDocumentItemId: zod_1.z.number().int(),
-        assignedQuantity: zod_1.z
-            .number()
-            .positive("Kuantitas harus lebih besar dari 0"),
-    })),
 });
 exports.ErpDocumentReferenceQuerySchema = zod_1.z.object({
     search: zod_1.z.string().optional(),

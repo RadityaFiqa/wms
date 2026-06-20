@@ -67,9 +67,7 @@ async function main() {
     { action: 'read', subject: 'GateOperation' },
     { action: 'update', subject: 'GateOperation' },
     { action: 'delete', subject: 'GateOperation' },
-    // Gate Verification
-    { action: 'create', subject: 'GateVerification' },
-    { action: 'read', subject: 'GateVerification' },
+
     // File Attachment
     { action: 'create', subject: 'FileAttachment' },
     { action: 'read', subject: 'FileAttachment' },
@@ -147,8 +145,7 @@ async function main() {
         'read:AuditLog',
         'read:GateOperation',
         'update:GateOperation',
-        'create:GateVerification',
-        'read:GateVerification',
+
         'create:FileAttachment',
         'read:FileAttachment',
         'create:DocumentReference',

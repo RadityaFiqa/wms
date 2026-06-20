@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  Query,
   BadRequestException,
   UseGuards,
   UseInterceptors,
@@ -25,14 +26,20 @@ export class ReconciliationController {
 
   @Get()
   @CheckPolicies((ability) => ability.can('read', 'Reconciliation'))
-  async getList() {
+  async getList(
+    @Query('productId') productId?: string,
+    @Query('locationId') locationId?: string,
+  ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
       throw new BadRequestException(
         'Warehouse context (header x-warehouse-id) diperlukan.',
       );
     }
-    return this.service.getReconciliationList(warehouseId);
+    return this.service.getReconciliationList(warehouseId, {
+      productId,
+      locationId,
+    });
   }
 
   @Get(':uuid')

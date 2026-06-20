@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 import { ReconciliationController } from './reconciliation.controller';
@@ -8,7 +8,7 @@ import { StockOpnameService } from './stock-opname.service';
 import { OdooModule } from '../odoo/odoo.module';
 
 @Module({
-  imports: [OdooModule],
+  imports: [forwardRef(() => OdooModule)],
   controllers: [
     InventoryController,
     ReconciliationController,

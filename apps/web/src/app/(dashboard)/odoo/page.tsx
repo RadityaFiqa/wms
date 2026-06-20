@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { UpdateOdooAccountSchema } from "@bulog-wms/schema";
 import { useOdooAccount } from "@/hooks/useOdooAccount";
+import { useErpSyncStatus } from "@/hooks/useErpDocuments";
 import { useAuthStore } from "@/store/auth";
 import { useWarehouse } from "@/hooks/useWarehouse";
 import { toast } from "sonner";
@@ -23,6 +24,8 @@ import {
   EyeOff,
   Save,
   Clock,
+  Database,
+  ArrowDownUp,
 } from "lucide-react";
 
 export default function OdooConfigPage() {
@@ -30,6 +33,7 @@ export default function OdooConfigPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { activeWarehouse } = useAuthStore();
   const { warehouses, isLoading: warehousesLoading } = useWarehouse();
@@ -46,6 +50,8 @@ export default function OdooConfigPage() {
     toggleStatus,
     testConnection: triggerTestConnection,
     refreshSession,
+    syncAll,
+    refresh,
   } = useOdooAccount();
 
   const {
@@ -198,6 +204,54 @@ export default function OdooConfigPage() {
     }
   };
 
+  const { syncStatus, refreshStatus } = useErpSyncStatus();
+  const [lastHandledStatus, setLastHandledStatus] = useState<string | null>(
+    null,
+  );
+
+  const isSyncActive =
+    isSyncing ||
+    syncStatus?.status === "RUNNING" ||
+    syncStatus?.status === "PENDING";
+
+  useEffect(() => {
+    if (!syncStatus) return;
+
+    const currentStatus = syncStatus.status;
+    if (lastHandledStatus === "RUNNING" || lastHandledStatus === "PENDING") {
+      if (currentStatus === "SUCCESS") {
+        toast.success("Sinkronisasi terpadu Odoo selesai!");
+        refresh(); // Refresh configuration/settings data to update counts/times
+      } else if (currentStatus === "FAILED") {
+        toast.error("Gagal melakukan sinkronisasi terpadu Odoo.");
+        refresh();
+      }
+    }
+    setLastHandledStatus(currentStatus);
+  }, [syncStatus?.status, refresh]);
+
+  const handleSyncAll = async () => {
+    if (!activeConfig) return;
+    setIsSyncing(true);
+    const toastId = toast.loading("Memulai sinkronisasi terpadu Odoo...");
+    try {
+      const res = await syncAll();
+      if (res.message === "Sync already in progress") {
+        toast.info("Sinkronisasi Odoo sedang berjalan.", { id: toastId });
+      } else {
+        toast.success("Proses sinkronisasi terpadu telah dimulai di latar belakang.", { id: toastId });
+      }
+      refreshStatus();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Gagal memulai sinkronisasi Odoo.",
+        { id: toastId },
+      );
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const getSessionStatusBadge = () => {
     if (!activeConfig) {
       return (
@@ -320,97 +374,219 @@ export default function OdooConfigPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Connection Status Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-          <div className="flex flex-col items-center text-center pb-4 border-b border-slate-100">
-            <div className="h-20 w-20 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mb-4">
-              <Warehouse className="h-10 w-10" />
+        {/* Left Column: Status & Sync Control */}
+        <div className="space-y-6">
+          {/* Connection Status Card */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+            <div className="flex flex-col items-center text-center pb-4 border-b border-slate-100">
+              <div className="h-20 w-20 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mb-4">
+                <Warehouse className="h-10 w-10" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">
+                {activeWarehouse.name}
+              </h3>
+              <div className="mt-2.5">{getSessionStatusBadge()}</div>
             </div>
-            <h3 className="text-lg font-bold text-slate-800">
-              {activeWarehouse.name}
-            </h3>
-            <div className="mt-2.5">{getSessionStatusBadge()}</div>
+
+            {activeConfig && (
+              <div className="space-y-4">
+                <div className="flex items-center space-x-3">
+                  <Clock className="h-5 w-5 text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Penyegaran Sesi Terakhir
+                    </p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {activeConfig.lastRefreshAt
+                        ? new Date(activeConfig.lastRefreshAt).toLocaleString(
+                            "id-ID",
+                          )
+                        : "-"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  <Clock className="h-5 w-5 text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Kedaluwarsa Sesi
+                    </p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {activeConfig.sessionExpiredAt
+                        ? new Date(activeConfig.sessionExpiredAt).toLocaleString(
+                            "id-ID",
+                          )
+                        : "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeConfig && (
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Status Integrasi
+                  </span>
+                  <button
+                    onClick={handleToggleActive}
+                    className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-lg border transition cursor-pointer ${
+                      activeConfig.isActive
+                        ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100/70"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70"
+                    }`}
+                  >
+                    <Power className="h-3.5 w-3.5 mr-1.5" />
+                    {activeConfig.isActive ? "Nonaktifkan" : "Aktifkan"}
+                  </button>
+                </div>
+
+                {activeConfig.isActive && (
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={handleTestConnection}
+                      disabled={isTesting || isRefreshing}
+                      className="flex-1 flex items-center justify-center border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer"
+                    >
+                      <Activity
+                        className={`h-3.5 w-3.5 mr-1.5 text-blue-500 ${isTesting ? "animate-pulse" : ""}`}
+                      />
+                      Test Koneksi
+                    </button>
+                    <button
+                      onClick={handleManualRefresh}
+                      disabled={isTesting || isRefreshing}
+                      className="flex-1 flex items-center justify-center border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer"
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 mr-1.5 text-indigo-500 ${isRefreshing ? "animate-spin" : ""}`}
+                      />
+                      Refresh Token
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {activeConfig && (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <Clock className="h-5 w-5 text-slate-400 shrink-0" />
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Penyegaran Sesi Terakhir
-                  </p>
-                  <p className="text-sm font-semibold text-slate-700">
-                    {activeConfig.lastRefreshAt
-                      ? new Date(activeConfig.lastRefreshAt).toLocaleString(
-                          "id-ID",
-                        )
-                      : "-"}
-                  </p>
+          {/* Sync Control Card */}
+          {activeConfig && activeConfig.isActive && (
+            <div className="bg-white border border-slate-205 rounded-xl p-6 shadow-sm space-y-6">
+              <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                <Database className="h-6 w-6 text-blue-650" />
+                <h3 className="text-lg font-bold text-slate-800">
+                  Sinkronisasi Data Odoo
+                </h3>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Tarik data dokumen ERP (PO/SO) terbaru dan perbarui kuantitas persediaan stok gudang secara terpadu.
+              </p>
+
+              <div className="space-y-3.5">
+                {/* ERP Documents Sync Details */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center">
+                      <ArrowDownUp className="h-3.5 w-3.5 mr-1 text-blue-500" />
+                      Dokumen ERP (PO/SO)
+                    </span>
+                    {activeConfig.lastSyncDocumentsStatus === "SUCCESS" ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                        Sukses
+                      </span>
+                    ) : activeConfig.lastSyncDocumentsStatus === "FAILED" ? (
+                      <span className="text-[10px] font-bold text-red-750 bg-red-50 px-1.5 py-0.5 rounded border border-red-100" title={activeConfig.lastSyncDocumentsError || ""}>
+                        Gagal
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        Belum Sync
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Terakhir Sync:</span>
+                      <span className="font-semibold text-slate-700">
+                        {activeConfig.lastSyncDocumentsAt
+                          ? new Date(activeConfig.lastSyncDocumentsAt).toLocaleString("id-ID")
+                          : "-"}
+                      </span>
+                    </div>
+                    {activeConfig.lastSyncDocumentsCount !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Synced:</span>
+                        <span className="font-semibold text-slate-700 font-mono">
+                          {activeConfig.lastSyncDocumentsCount} dokumen
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Inventory Stock Sync Details */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center">
+                      <Database className="h-3.5 w-3.5 mr-1 text-indigo-500" />
+                      Persediaan & Stok
+                    </span>
+                    {activeConfig.lastSyncInventoryStatus === "SUCCESS" ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                        Sukses
+                      </span>
+                    ) : activeConfig.lastSyncInventoryStatus === "FAILED" ? (
+                      <span className="text-[10px] font-bold text-red-755 bg-red-50 px-1.5 py-0.5 rounded border border-red-100" title={activeConfig.lastSyncInventoryError || ""}>
+                        Gagal
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        Belum Sync
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Terakhir Sync:</span>
+                      <span className="font-semibold text-slate-700">
+                        {activeConfig.lastSyncInventoryAt
+                          ? new Date(activeConfig.lastSyncInventoryAt).toLocaleString("id-ID")
+                          : "-"}
+                      </span>
+                    </div>
+                    {activeConfig.lastSyncInventoryCount !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Synced:</span>
+                        <span className="font-semibold text-slate-700 font-mono">
+                          {activeConfig.lastSyncInventoryCount} quants
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center space-x-3">
-                <Clock className="h-5 w-5 text-slate-400 shrink-0" />
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Kedaluwarsa Sesi
-                  </p>
-                  <p className="text-sm font-semibold text-slate-700">
-                    {activeConfig.sessionExpiredAt
-                      ? new Date(activeConfig.sessionExpiredAt).toLocaleString(
-                          "id-ID",
-                        )
-                      : "-"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeConfig && (
-            <div className="pt-4 border-t border-slate-100 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Status Integrasi
-                </span>
-                <button
-                  onClick={handleToggleActive}
-                  className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-lg border transition cursor-pointer ${
-                    activeConfig.isActive
-                      ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100/70"
-                      : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70"
-                  }`}
-                >
-                  <Power className="h-3.5 w-3.5 mr-1.5" />
-                  {activeConfig.isActive ? "Nonaktifkan" : "Aktifkan"}
-                </button>
-              </div>
-
-              {activeConfig.isActive && (
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={handleTestConnection}
-                    disabled={isTesting || isRefreshing}
-                    className="flex-1 flex items-center justify-center border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer"
-                  >
-                    <Activity
-                      className={`h-3.5 w-3.5 mr-1.5 text-blue-500 ${isTesting ? "animate-pulse" : ""}`}
-                    />
-                    Test Koneksi
-                  </button>
-                  <button
-                    onClick={handleManualRefresh}
-                    disabled={isTesting || isRefreshing}
-                    className="flex-1 flex items-center justify-center border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer"
-                  >
-                    <RefreshCw
-                      className={`h-3.5 w-3.5 mr-1.5 text-indigo-500 ${isRefreshing ? "animate-spin" : ""}`}
-                    />
-                    Refresh Token
-                  </button>
-                </div>
-              )}
+              {/* Sync Trigger Button */}
+              <button
+                onClick={handleSyncAll}
+                disabled={isSyncActive}
+                className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-blue-500/10 active:scale-[0.98] transition cursor-pointer text-sm min-h-[44px]"
+              >
+                {isSyncActive ? (
+                  <span className="flex items-center">
+                    <RefreshCw className="h-4.5 w-4.5 mr-2 animate-spin" />
+                    Sinkronisasi... {syncStatus?.processedDocuments || 0} / {syncStatus?.totalDocuments || 0}
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <RefreshCw className="h-4.5 w-4.5 mr-2" />
+                    Sinkronisasi Odoo
+                  </span>
+                )}
+              </button>
             </div>
           )}
         </div>

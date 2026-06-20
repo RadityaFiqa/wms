@@ -197,21 +197,6 @@ export class InventoryController {
     return this.service.findDetail(warehouseId, uuid);
   }
 
-  @Post('sync')
-  @CheckPolicies((ability) => ability.can('update', 'Inventory'))
-  @AuditLogAction('INVENTORY_SYNC')
-  async sync(@Req() req: any) {
-    const warehouseId = this.warehouseContext.getWarehouseId();
-    if (!warehouseId) {
-      throw new BadRequestException(
-        'Warehouse context (header x-warehouse-id) diperlukan.',
-      );
-    }
-
-    const triggeredBy = req.user?.email || 'System';
-    return this.service.syncOdooInventory(warehouseId, triggeredBy);
-  }
-
   private async prismaFindAccountByWarehouseId(warehouseId: number) {
     return this.prisma.odooAccount.findUnique({
       where: { warehouseId },

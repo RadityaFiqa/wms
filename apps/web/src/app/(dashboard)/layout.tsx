@@ -128,7 +128,7 @@ export default function DashboardLayout({
       title: "Overview",
       items: [
         {
-          name: "Dashboard / Overview",
+          name: "Dashboard",
           href: "/",
           icon: LayoutDashboard,
           show: true,

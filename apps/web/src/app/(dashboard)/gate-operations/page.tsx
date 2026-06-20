@@ -46,16 +46,16 @@ export default function GateOperationsListPage() {
             Pending
           </span>
         );
-      case "PARTIAL":
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            Partial
-          </span>
-        );
-      case "COMPLETED":
+      case "VERIFIED":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Completed
+            Verified
+          </span>
+        );
+      case "REJECTED":
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+            Rejected
           </span>
         );
       case "CANCELED":
@@ -172,9 +172,9 @@ export default function GateOperationsListPage() {
               >
                 <option value="">Semua Status</option>
                 <option value="PENDING">Pending</option>
-                <option value="PARTIAL">Partial</option>
-                <option value="COMPLETED">Completed</option>
                 <option value="CANCELED">Canceled</option>
+                <option value="VERIFIED">Verified</option>
+                <option value="REJECTED">Rejected</option>
               </select>
             </div>
 

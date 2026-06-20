@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ErpDocumentReferenceService } from './erp-document-reference.service';
 import { ErpDocumentReferenceController } from './erp-document-reference.controller';
 import { PrismaModule } from '../../core/prisma/prisma.module';
@@ -7,7 +7,7 @@ import { WarehouseContextModule } from '../../core/warehouse-context/warehouse-c
 import { AuditLogModule } from '../audit-log/audit-log.module';
 
 @Module({
-  imports: [PrismaModule, OdooModule, WarehouseContextModule, AuditLogModule],
+  imports: [PrismaModule, forwardRef(() => OdooModule), WarehouseContextModule, AuditLogModule],
   controllers: [ErpDocumentReferenceController],
   providers: [ErpDocumentReferenceService],
   exports: [ErpDocumentReferenceService],

@@ -96,19 +96,18 @@ export class ErpDocumentReferenceController {
     return this.service.getSyncStatus(warehouseId);
   }
 
-  @Post('sync')
-  @CheckPolicies((ability) => ability.can('update', 'Inventory'))
-  @AuditLogAction('ERP_DOCUMENT_SYNC')
-  async sync(@Req() req: any) {
+  @Get(':uuid/realization-history')
+  @CheckPolicies((ability) => ability.can('read', 'Inventory'))
+  async getRealizationHistory(
+    @Param('uuid') uuid: string,
+  ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
       throw new BadRequestException(
         'Warehouse context (header x-warehouse-id) diperlukan.',
       );
     }
-
-    const triggeredBy = req.user?.email || 'System';
-    return this.service.triggerSync(warehouseId, triggeredBy);
+    return this.service.getRealizationHistory(warehouseId, uuid);
   }
 
   @Post(':uuid/force-sync')

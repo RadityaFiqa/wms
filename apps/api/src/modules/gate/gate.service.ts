@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
@@ -11,20 +12,57 @@ import * as QRCode from 'qrcode';
 import type {
   CreateGateOperationInput,
   CreateGateVerificationInput,
-  AssignReferencesInput,
 } from '@bulog-wms/schema';
 import { CardType, VerificationStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class GateService {
+  private readonly logger = new Logger(GateService.name);
+  private logoBufferCache: Buffer | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly warehouseContext: WarehouseContextService,
     private readonly storageService: StorageService,
     private readonly configService: ConfigService,
   ) {}
+
+  /**
+   * Safe helper to read and cache the BULOG logo stored in the web public directory.
+   * Falls back to drawing/rendering CSS logo box if missing.
+   */
+  async getLogoBuffer(): Promise<Buffer | null> {
+    if (this.logoBufferCache) {
+      return this.logoBufferCache;
+    }
+    try {
+      const path1 = path.join(__dirname, '..', '..', '..', '..', 'web', 'public', 'logo-bulog.png');
+      const path2 = path.join(process.cwd(), '..', 'web', 'public', 'logo-bulog.png');
+
+      let resolvedPath = '';
+      if (fs.existsSync(path1)) {
+        resolvedPath = path1;
+      } else if (fs.existsSync(path2)) {
+        resolvedPath = path2;
+      }
+
+      if (resolvedPath) {
+        this.logoBufferCache = fs.readFileSync(resolvedPath);
+        this.logger.log(`BULOG logo loaded from disk: ${resolvedPath}`);
+        return this.logoBufferCache;
+      }
+
+      this.logger.warn('BULOG logo file not found in public directories. Using vector fallback.');
+      return null;
+    } catch (err: any) {
+      this.logger.warn(`Failed to read BULOG logo: ${err.message}. Using vector fallback.`);
+      return null;
+    }
+  }
 
   /**
    * Helper to format double dates/times.
@@ -114,6 +152,13 @@ export class GateService {
 
       // 4. Create products associated if any
       if (body.products && body.products.length > 0) {
+        if (docRefId) {
+          await this.validateDocumentReferenceLimits(
+            tx,
+            docRefId,
+            body.products,
+          );
+        }
         for (const prod of body.products) {
           // Validate stack/quant quantity limits
           await this.validateStackQuantity(
@@ -135,7 +180,7 @@ export class GateService {
             },
           });
 
-          if (prod.quantId) {
+          if (prod.quantId && prod.quantId !== null) {
             await this.reserveQuantStock(
               tx,
               body.cardType as CardType,
@@ -146,22 +191,7 @@ export class GateService {
         }
       }
 
-      const createdOp = await tx.gateOperation.findUnique({
-        where: { id: gateOperation.id },
-        include: {
-          attachments: true,
-          documentReference: {
-            include: { items: true },
-          },
-          products: {
-            include: { inventory: true },
-          },
-          createdByUser: {
-            select: { name: true, email: true },
-          },
-        },
-      });
-      return this.mapOperationUrls(createdOp);
+      return { uuid : gateOperation.uuid };
     });
   }
 
@@ -254,18 +284,8 @@ export class GateService {
           createdByUser: {
             select: { name: true, email: true },
           },
-          verification: {
-            include: {
-              attachments: true,
-              verifiedBy: { select: { name: true } },
-              products: {
-                include: {
-                  inventory: true,
-                  quant: true,
-                  location: true,
-                },
-              },
-            },
+          verifiedBy: {
+            select: { name: true, email: true },
           },
         },
       }),
@@ -305,26 +325,8 @@ export class GateService {
             location: true,
           },
         },
-        verification: {
-          include: {
-            attachments: true,
-            verifiedBy: {
-              select: { name: true, email: true },
-            },
-            products: {
-              include: {
-                inventory: true,
-                quant: true,
-                location: true,
-              },
-            },
-            references: {
-              include: {
-                erpDocument: true,
-                erpDocumentItem: true,
-              },
-            },
-          },
+        verifiedBy: {
+          select: { name: true, email: true },
         },
       },
     });
@@ -344,31 +346,25 @@ export class GateService {
           products: {
             include: { inventory: true },
           },
-          verification: {
-            include: {
-              products: { include: { inventory: true } },
-            },
-          },
         },
         orderBy: { createdAt: 'desc' },
       });
 
       const docItemsSummary = await Promise.all(
         item.documentReference.items.map(async (docItem) => {
-          const aggregate = await this.prisma.gateDocumentReference.aggregate({
+          const aggregate = await this.prisma.gateOperationProduct.aggregate({
             where: {
-              erpDocumentItemId: docItem.id,
-              gateVerification: {
-                gateOperation: {
-                  status: { notIn: ['CANCELED', 'REJECTED'] },
-                },
+              inventoryId: docItem.inventoryId,
+              gateOperation: {
+                documentReferenceId: item.documentReferenceId,
+                status: { notIn: ['CANCELED', 'REJECTED'] },
               },
             },
-            _sum: { assignedQuantity: true },
+            _sum: { quantity: true },
           });
 
           const erpQty = docItem.productQty || docItem.quantity || 0;
-          const totalRealized = aggregate._sum.assignedQuantity || 0;
+          const totalRealized = aggregate._sum.quantity || 0;
           const remainingQty = Math.max(0, erpQty - totalRealized);
 
           const inventory = await this.prisma.inventory.findUnique({
@@ -485,377 +481,21 @@ export class GateService {
   }
 
   /**
-   * Get available PO/SO reference documents for a product.
-   */
-  async getAvailableReferences(
-    operationUuid: string,
-    productId: number,
-    gateItemId?: number,
-    search?: string,
-  ) {
-    const gateOperation = await this.prisma.gateOperation.findUnique({
-      where: { uuid: operationUuid },
-      include: { verification: true },
-    });
-
-    if (!gateOperation) {
-      throw new NotFoundException('Gate operation tidak ditemukan.');
-    }
-
-    const whereCondition: any = {
-      warehouseId: gateOperation.warehouseId,
-      items: {
-        some: {
-          inventoryId: productId,
-        },
-      },
-    };
-
-    const andConditions: any[] = [];
-
-    if (gateOperation.cardType === 'IN') {
-      andConditions.push({
-        pickingTypeCode: 'incoming',
-      });
-    } else {
-      andConditions.push({
-        OR: [
-          { pickingTypeCode: 'outgoing' },
-          {
-            pickingTypeCode: 'internal',
-            origin: {
-              startsWith: 'CT',
-            },
-          },
-        ],
-      });
-    }
-
-    if (search) {
-      andConditions.push({
-        origin: {
-          contains: search,
-          mode: 'insensitive',
-        },
-      });
-    }
-
-    if (andConditions.length > 0) {
-      whereCondition.AND = andConditions;
-    }
-
-    // Find all DocumentReference records for this warehouse and pickingType
-    // that contain this product (mapped to inventoryId)
-    const documents = await this.prisma.documentReference.findMany({
-      where: whereCondition,
-      include: {
-        items: {
-          where: {
-            inventoryId: productId,
-          },
-        },
-      },
-      orderBy: [
-        { scheduledDate: 'desc' },
-        { id: 'desc' },
-      ],
-    });
-
-    // Compute remaining quantities and current assigned quantities
-    const results: any[] = [];
-    for (const doc of documents) {
-      for (const item of doc.items) {
-        // 1. Sum up assigned quantities for this document item by other verifications (excluding canceled/rejected ones)
-        const otherAssignments =
-          await this.prisma.gateDocumentReference.aggregate({
-            where: {
-              erpDocumentItemId: item.id,
-              gateVerification: {
-                gateOperationId: {
-                  not: gateOperation.id,
-                },
-                gateOperation: {
-                  status: {
-                    notIn: ['CANCELED', 'REJECTED'],
-                  },
-                },
-              },
-            },
-            _sum: {
-              assignedQuantity: true,
-            },
-          });
-
-        const usedQty = otherAssignments._sum.assignedQuantity || 0;
-        const remainingQty = Math.max(0, item.quantity - usedQty);
-
-        // 2. Get current assigned quantity for this item in this gate operation
-        let currentAssignedQty = 0;
-        if (gateOperation.verification && gateItemId) {
-          const currentAssignment =
-            await this.prisma.gateDocumentReference.findFirst({
-              where: {
-                gateVerificationId: gateOperation.verification.id,
-                gateItemId,
-                erpDocumentItemId: item.id,
-              },
-            });
-          currentAssignedQty = currentAssignment?.assignedQuantity || 0;
-        }
-
-        results.push({
-          erpDocumentId: doc.id,
-          erpDocumentItemId: item.id,
-          documentNumber: doc.documentNumber,
-          scheduledDate: doc.scheduledDate,
-          partnerName: doc.partnerName || doc.purchaseName || 'Tanpa Partner',
-          productName: item.productName,
-          totalQty: item.quantity,
-          remainingQty,
-          currentAssignedQty,
-        });
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Assign ERP PO/SO item references to a gate cargo item.
-   */
-  async assignReferences(
-    operationUuid: string,
-    userId: number,
-    userName: string,
-    body: AssignReferencesInput,
-  ) {
-    const gateOperation = await this.prisma.gateOperation.findUnique({
-      where: { uuid: operationUuid },
-      include: { verification: true },
-    });
-
-    if (!gateOperation) {
-      throw new NotFoundException('Gate operation tidak ditemukan.');
-    }
-
-    if (
-      gateOperation.status === 'VERIFIED' ||
-      gateOperation.status === 'CANCELED'
-    ) {
-      throw new BadRequestException(
-        'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
-      );
-    }
-
-    // Verify that the gateItemId exists and belongs to this gate operation
-    const gateItem = await this.prisma.gateOperationProduct.findFirst({
-      where: {
-        id: body.gateItemId,
-        gateOperationId: gateOperation.id,
-      },
-    });
-
-    if (!gateItem) {
-      throw new BadRequestException('Item Gate Operation tidak ditemukan.');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Ensure GateVerification record exists
-      let verification = gateOperation.verification;
-      if (!verification) {
-        verification = await tx.gateVerification.create({
-          data: {
-            gateOperationId: gateOperation.id,
-            verifiedById: userId,
-            status: 'PENDING',
-            notes: 'Assignment referensi ERP',
-          },
-        });
-      }
-
-      // 2. Validate assignments and check remaining quantities
-      for (const assign of body.assignments) {
-        const docItem = await tx.documentReferenceItem.findUnique({
-          where: { id: assign.erpDocumentItemId },
-          include: { documentReference: true },
-        });
-
-        if (!docItem) {
-          throw new BadRequestException(
-            `Item Dokumen ERP dengan ID ${assign.erpDocumentItemId} tidak ditemukan.`,
-          );
-        }
-
-        // Validate inventoryId matching
-        if (docItem.inventoryId !== gateItem.inventoryId) {
-          throw new BadRequestException(
-            `Produk ${docItem.productName} tidak cocok dengan item Gate Operation.`,
-          );
-        }
-
-        // Compute remaining quantity (excluding current verification, and ignoring CANCELED/REJECTED operations)
-        const otherAssignments = await tx.gateDocumentReference.aggregate({
-          where: {
-            erpDocumentItemId: assign.erpDocumentItemId,
-            gateVerificationId: {
-              not: verification.id,
-            },
-            gateVerification: {
-              gateOperation: {
-                status: {
-                  notIn: ['CANCELED', 'REJECTED'],
-                },
-              },
-            },
-          },
-          _sum: {
-            assignedQuantity: true,
-          },
-        });
-
-        const usedQty = otherAssignments._sum.assignedQuantity || 0;
-        const remainingQty = Math.max(0, docItem.quantity - usedQty);
-
-        if (assign.assignedQuantity > remainingQty) {
-          throw new BadRequestException(
-            `Kuantitas assignment (${assign.assignedQuantity}) melebihi kuantitas tersisa di dokumen ${docItem.documentReference.documentNumber} (${remainingQty}).`,
-          );
-        }
-      }
-
-      // 3. Clear existing assignments for this gateItemId
-      await tx.gateDocumentReference.deleteMany({
-        where: {
-          gateVerificationId: verification.id,
-          gateItemId: body.gateItemId,
-        },
-      });
-
-      // 4. Create new assignments
-      for (const assign of body.assignments) {
-        const docItem = await tx.documentReferenceItem.findUnique({
-          where: { id: assign.erpDocumentItemId },
-        });
-
-        if (!docItem) {
-          throw new BadRequestException(
-            `Item Dokumen ERP dengan ID ${assign.erpDocumentItemId} tidak ditemukan.`,
-          );
-        }
-
-        await tx.gateDocumentReference.create({
-          data: {
-            gateVerificationId: verification.id,
-            gateItemId: body.gateItemId,
-            erpDocumentId: docItem.documentReferenceId,
-            erpDocumentItemId: assign.erpDocumentItemId,
-            inventoryId: gateItem.inventoryId,
-            assignedQuantity: assign.assignedQuantity,
-            createdBy: userName,
-          },
-        });
-      }
-
-      // 5. Update Status and Realisasi quantity for Gate Verification
-      await this.updateGateStatusAndRealisasi(
-        tx,
-        gateOperation.id,
-        verification.id,
-      );
-
-      // Return the updated verification details
-      const result = await tx.gateVerification.findUnique({
-        where: { id: verification.id },
-        include: {
-          attachments: true,
-          references: {
-            include: {
-              erpDocument: true,
-              erpDocumentItem: true,
-            },
-          },
-        },
-      });
-      return this.sanitizeVerification(result);
-    });
-  }
-
-  /**
-   * Unassign an ERP PO/SO item reference from a gate cargo item.
-   */
-  async unassignReference(
-    referenceUuid: string,
-    userId: number,
-    userName: string,
-  ) {
-    const docRef = await this.prisma.gateDocumentReference.findUnique({
-      where: { uuid: referenceUuid },
-      include: {
-        gateVerification: {
-          include: {
-            gateOperation: true,
-          },
-        },
-        erpDocument: true,
-      },
-    });
-
-    if (!docRef) {
-      throw new NotFoundException('Referensi dokumen tidak ditemukan.');
-    }
-
-    const gateOperation = docRef.gateVerification.gateOperation;
-    if (
-      gateOperation.status === 'VERIFIED' ||
-      gateOperation.status === 'CANCELED'
-    ) {
-      throw new BadRequestException(
-        'Operasi gerbang sudah final (VERIFIED/CANCELED) dan tidak dapat diubah.',
-      );
-    }
-
-    const gateOperationId = docRef.gateVerification.gateOperationId;
-    const verificationId = docRef.gateVerificationId;
-    const documentNumber = docRef.erpDocument.documentNumber;
-
-    await this.prisma.$transaction(async (tx) => {
-      // Delete the reference assignment
-      await tx.gateDocumentReference.delete({
-        where: { id: docRef.id },
-      });
-
-      // Recalculate status and realisasi quantity
-      await this.updateGateStatusAndRealisasi(
-        tx,
-        gateOperationId,
-        verificationId,
-      );
-    });
-
-    return {
-      success: true,
-      message: 'Referensi ERP berhasil dilepas.',
-      auditDetails: {
-        previousReference: documentNumber,
-        unassignedBy: userName,
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
-
-  /**
-   * Helper to recalculate GateOperation and GateVerification status and synchronization properties.
+   * Helper to recalculate GateOperation status and synchronization properties.
    */
   private async updateGateStatusAndRealisasi(
     tx: any,
     gateOperationId: number,
-    verificationId: number,
   ) {
     const gateOperation = await tx.gateOperation.findUnique({
       where: { id: gateOperationId },
     });
 
     if (!gateOperation) return;
+
+    if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+      return;
+    }
 
     // 1. Get all Gate Operation Products
     const operationProducts = await tx.gateOperationProduct.findMany({
@@ -868,93 +508,8 @@ export class GateService {
       0,
     );
 
-    // 3. Get all references assigned for this verification
-    const references = await tx.gateDocumentReference.findMany({
-      where: { gateVerificationId: verificationId },
-      include: { erpDocument: true },
-    });
-
-    // 4. Sum up total assigned quantity
-    const totalAssignedQty = references.reduce(
-      (sum: number, r: any) => sum + r.assignedQuantity,
-      0,
-    );
-
-    // 5. Determine new status
-    let newStatus: VerificationStatus = 'PENDING';
-    if (totalAssignedQty > 0) {
-      if (totalAssignedQty >= totalGateQty) {
-        newStatus = 'COMPLETED';
-      } else {
-        newStatus = 'PARTIAL';
-      }
-    }
-
-    // Update list of unique PO/SO numbers
-    const docNumbers = Array.from(
-      new Set(references.map((r: any) => r.erpDocument.documentNumber)),
-    );
-
-    const prevVerification = await tx.gateVerification.findUnique({
-      where: { id: verificationId },
-      select: { status: true },
-    });
-
-    const verificationData: any = {
-      status: newStatus,
-    };
-
-    if (newStatus === 'COMPLETED' && prevVerification?.status !== 'COMPLETED') {
-      verificationData.verifiedAt = new Date();
-    }
-
-    // Update GateOperation and GateVerification status
-    await tx.gateOperation.update({
-      where: { id: gateOperationId },
-      data: {
-        status: newStatus,
-        poReferences: gateOperation.cardType === 'IN' ? docNumbers : [],
-        soReferences: gateOperation.cardType === 'OUT' ? docNumbers : [],
-      },
-    });
-
-    await tx.gateVerification.update({
-      where: { id: verificationId },
-      data: verificationData,
-    });
-
-    // Synchronize GateVerificationProduct for backward compatibility
-    const existingProds = await tx.gateVerificationProduct.findMany({
-      where: { gateVerificationId: verificationId },
-    });
-
-    await tx.gateVerificationProduct.deleteMany({
-      where: { gateVerificationId: verificationId },
-    });
-
-    const productAssignedTotals = new Map<number, number>();
-    for (const ref of references) {
-      const current = productAssignedTotals.get(ref.inventoryId) || 0;
-      productAssignedTotals.set(
-        ref.inventoryId,
-        current + ref.assignedQuantity,
-      );
-    }
-
-    for (const [inventoryId, quantity] of productAssignedTotals.entries()) {
-      const existingMatch = existingProds.find(
-        (p: any) => p.inventoryId === inventoryId,
-      );
-      await tx.gateVerificationProduct.create({
-        data: {
-          gateVerificationId: verificationId,
-          inventoryId,
-          quantity,
-          quantId: existingMatch?.quantId || null,
-          locationId: existingMatch?.locationId || null,
-        },
-      });
-    }
+    // Status gate operation Partial & Completed have been removed.
+    // Status remains PENDING during cargo updates and verification.
   }
 
   /**
@@ -967,7 +522,6 @@ export class GateService {
   ) {
     const gateOperation = await this.prisma.gateOperation.findUnique({
       where: { uuid },
-      include: { verification: true },
     });
 
     if (!gateOperation) {
@@ -984,9 +538,6 @@ export class GateService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Create or update Gate Verification
-      let verification = gateOperation.verification;
-
       // Handle Document Reference Update if provided
       const newDocRefId = (body as any).documentReferenceId;
       if (
@@ -1023,35 +574,19 @@ export class GateService {
               (item: any) => item.inventoryId === gp.inventoryId,
             );
             if (docItem) {
-              const otherAssignments = await tx.gateDocumentReference.aggregate(
-                {
-                  where: {
-                    erpDocumentItemId: docItem.id,
-                    gateVerification: {
-                      gateOperationId: { not: gateOperation.id },
-                      gateOperation: {
-                        status: { notIn: ['CANCELED', 'REJECTED'] },
-                      },
-                    },
+              const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
+                where: {
+                  inventoryId: gp.inventoryId,
+                  gateOperation: {
+                    documentReferenceId: newDocRefId,
+                    id: { not: gateOperation.id },
+                    status: { notIn: ['CANCELED', 'REJECTED'] },
                   },
-                  _sum: { assignedQuantity: true },
                 },
-              );
-              const otherUsed = otherAssignments._sum.assignedQuantity || 0;
-
-              const currentUsed = 0; // we don't have new verification record ID yet, or if verification exists we check existing references
-              let currentAssigned = 0;
-              if (verification) {
-                const currentAssignment =
-                  await tx.gateDocumentReference.aggregate({
-                    where: {
-                      gateVerificationId: verification.id,
-                      inventoryId: gp.inventoryId,
-                    },
-                    _sum: { assignedQuantity: true },
-                  });
-                currentAssigned = currentAssignment._sum.assignedQuantity || 0;
-              }
+                _sum: { quantity: true },
+              });
+              const otherUsed = otherOpsAggregate._sum.quantity || 0;
+              const currentAssigned = gp.quantity;
 
               const totalRealized = otherUsed + currentAssigned;
               if (totalRealized > docItem.quantity) {
@@ -1072,46 +607,34 @@ export class GateService {
         });
       }
 
-      if (!verification) {
-        verification = await tx.gateVerification.create({
-          data: {
-            gateOperationId: gateOperation.id,
-            verifiedById,
-            status: 'PENDING',
-            notes: body.notes,
-          },
-        });
-      } else {
-        verification = await tx.gateVerification.update({
-          where: { id: verification.id },
-          data: {
-            verifiedById,
-            notes: body.notes,
-          },
-        });
-      }
-
-      // Update attachments for verification
-      await tx.fileAttachment.updateMany({
-        where: { gateVerificationId: verification.id },
-        data: { gateVerificationId: null },
+      // Update gate operation verification fields
+      await tx.gateOperation.update({
+        where: { id: gateOperation.id },
+        data: {
+          verifiedById,
+          verificationNotes: body.notes || null,
+          verifiedAt: new Date(),
+        },
       });
 
-      if (body.attachmentPaths && body.attachmentPaths.length > 0) {
+      // Update attachments for verification
+      if (body.attachmentPaths !== undefined) {
+        if (body.attachmentPaths.length > 0) {
+          await tx.fileAttachment.updateMany({
+            where: { filePath: { in: body.attachmentPaths } },
+            data: { gateOperationId: gateOperation.id },
+          });
+        }
         await tx.fileAttachment.updateMany({
-          where: { filePath: { in: body.attachmentPaths } },
-          data: { gateVerificationId: verification.id },
+          where: {
+            gateOperationId: gateOperation.id,
+            filePath: { notIn: body.attachmentPaths },
+          },
+          data: { gateOperationId: null },
         });
       }
 
-      // Recalculate status and references list based on current references table
-      await this.updateGateStatusAndRealisasi(
-        tx,
-        gateOperation.id,
-        verification.id,
-      );
-
-      // Save verification products details with quantId/locationId
+      // Save verification products details directly to GateOperationProduct
       if (body.products && body.products.length > 0) {
         for (const prod of body.products) {
           await this.validateStackQuantity(
@@ -1123,29 +646,41 @@ export class GateService {
             prod.locationId,
             gateOperation.id,
           );
-        }
 
-        await tx.gateVerificationProduct.deleteMany({
-          where: { gateVerificationId: verification.id },
-        });
-
-        for (const prod of body.products) {
-          await tx.gateVerificationProduct.create({
-            data: {
-              gateVerificationId: verification.id,
+          // Find existing GateOperationProduct and update it
+          const existingOpProd = await tx.gateOperationProduct.findFirst({
+            where: {
+              gateOperationId: gateOperation.id,
               inventoryId: prod.productId,
-              quantity: prod.quantity,
-              quantId: prod.quantId || null,
-              locationId: prod.locationId || null,
             },
           });
+
+          if (existingOpProd) {
+            await tx.gateOperationProduct.update({
+              where: { id: existingOpProd.id },
+              data: {
+                quantity: prod.quantity,
+                quantId: prod.quantId || null,
+                locationId: prod.locationId || null,
+              },
+            });
+          }
         }
       }
 
-      const result = await tx.gateVerification.findUnique({
-        where: { id: verification.id },
+      // Recalculate status and references list
+      await this.updateGateStatusAndRealisasi(
+        tx,
+        gateOperation.id,
+      );
+
+      const result = await tx.gateOperation.findUnique({
+        where: { id: gateOperation.id },
         include: {
           attachments: true,
+          verifiedBy: {
+            select: { name: true, email: true },
+          },
           products: {
             include: {
               inventory: true,
@@ -1153,15 +688,9 @@ export class GateService {
               location: true,
             },
           },
-          references: {
-            include: {
-              erpDocument: true,
-              erpDocumentItem: true,
-            },
-          },
         },
       });
-      return this.sanitizeVerification(result);
+      return this.mapOperationUrls(result);
     });
   }
 
@@ -1172,7 +701,6 @@ export class GateService {
     const gateOperation = await this.prisma.gateOperation.findUnique({
       where: { uuid },
       include: {
-        verification: true,
         products: true,
       },
     });
@@ -1182,43 +710,21 @@ export class GateService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      let verification = gateOperation.verification;
-
-      if (!verification) {
-        verification = await tx.gateVerification.create({
-          data: {
-            gateOperationId: gateOperation.id,
-            verifiedById,
-            status: 'CANCELED',
-            notes: 'Dibatalkan oleh Admin',
-          },
-        });
-      } else {
-        verification = await tx.gateVerification.update({
-          where: { id: verification.id },
-          data: {
-            verifiedById,
-            status: 'CANCELED',
-            notes: verification.notes
-              ? `${verification.notes} (Dibatalkan)`
-              : 'Dibatalkan',
-          },
-        });
-      }
-
       const prevStatus = gateOperation.status;
 
       await tx.gateOperation.update({
         where: { id: gateOperation.id },
         data: {
           status: 'CANCELED',
+          verifiedById,
+          verifiedAt: new Date(),
+          verificationNotes: 'Dibatalkan oleh Admin',
         },
       });
 
       // Release Reservations
       if (
         prevStatus !== 'CANCELED' &&
-        prevStatus !== 'COMPLETED' &&
         prevStatus !== 'VERIFIED'
       ) {
         for (const p of gateOperation.products) {
@@ -1233,8 +739,8 @@ export class GateService {
         }
       }
 
-      const result = await tx.gateVerification.findUnique({
-        where: { id: verification.id },
+      const result = await tx.gateOperation.findUnique({
+        where: { id: gateOperation.id },
         include: {
           attachments: true,
           products: {
@@ -1246,7 +752,82 @@ export class GateService {
           },
         },
       });
-      return this.sanitizeVerification(result);
+      return this.mapOperationUrls(result);
+    });
+  }
+
+  /**
+   * Update verification notes and attachments independently.
+   */
+  async updateNotesAttachments(
+    uuid: string,
+    verifiedById: number,
+    body: { notes?: string; attachmentPaths?: string[] },
+  ) {
+    const gateOperation = await this.prisma.gateOperation.findUnique({
+      where: { uuid },
+    });
+
+    if (!gateOperation) {
+      throw new NotFoundException('Gate operation tidak ditemukan.');
+    }
+
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
+      throw new BadRequestException(
+        'Operasi gerbang sudah final/selesai dan catatan tidak dapat diubah.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update gate operation verification notes
+      await tx.gateOperation.update({
+        where: { id: gateOperation.id },
+        data: {
+          verificationNotes: body.notes !== undefined ? body.notes : undefined,
+          verifiedById,
+          verifiedAt: new Date(),
+        },
+      });
+
+      if (body.attachmentPaths !== undefined) {
+        // Link new attachments
+        if (body.attachmentPaths.length > 0) {
+          await tx.fileAttachment.updateMany({
+            where: { filePath: { in: body.attachmentPaths } },
+            data: { gateOperationId: gateOperation.id },
+          });
+        }
+
+        // Unlink removed attachments
+        await tx.fileAttachment.updateMany({
+          where: {
+            gateOperationId: gateOperation.id,
+            filePath: { notIn: body.attachmentPaths },
+          },
+          data: { gateOperationId: null },
+        });
+      }
+
+      const result = await tx.gateOperation.findUnique({
+        where: { id: gateOperation.id },
+        include: {
+          attachments: true,
+          verifiedBy: {
+            select: { name: true, email: true },
+          },
+          products: {
+            include: {
+              inventory: true,
+              quant: true,
+              location: true,
+            },
+          },
+        },
+      });
+      return this.mapOperationUrls(result);
     });
   }
 
@@ -1257,7 +838,6 @@ export class GateService {
     const gateOperation = await this.prisma.gateOperation.findUnique({
       where: { uuid },
       include: {
-        verification: true,
         products: true,
       },
     });
@@ -1276,45 +856,30 @@ export class GateService {
       throw new BadRequestException('Operasi gerbang sudah dibatalkan.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      let verification = gateOperation.verification;
-
-      if (!verification) {
-        verification = await tx.gateVerification.create({
-          data: {
-            gateOperationId: gateOperation.id,
-            verifiedById,
-            status: 'VERIFIED',
-            notes: 'Dikonfirmasi oleh Auditor',
-            verifiedAt: new Date(),
-          },
-        });
-      } else {
-        verification = await tx.gateVerification.update({
-          where: { id: verification.id },
-          data: {
-            verifiedById,
-            status: 'VERIFIED',
-            notes: verification.notes
-              ? `${verification.notes} (Diverifikasi)`
-              : 'Diverifikasi',
-            verifiedAt: new Date(),
-          },
-        });
+    // Enforce all items have location & stack selected before Confirming
+    for (const prod of gateOperation.products) {
+      if (!prod.locationId || !prod.quantId) {
+        throw new BadRequestException(
+          `Semua barang muatan harus memiliki lokasi dan tumpukan (stack) yang dipilih sebelum konfirmasi.`,
+        );
       }
+    }
 
+    return this.prisma.$transaction(async (tx) => {
       await tx.gateOperation.update({
         where: { id: gateOperation.id },
         data: {
           status: 'VERIFIED',
+          verifiedById,
+          verifiedAt: new Date(),
         },
       });
 
       // Process stock reduction on confirmation
       await this.processStockReductionOnCompletion(tx, gateOperation.id);
 
-      const result = await tx.gateVerification.findUnique({
-        where: { id: verification.id },
+      const result = await tx.gateOperation.findUnique({
+        where: { id: gateOperation.id },
         include: {
           attachments: true,
           products: {
@@ -1324,15 +889,9 @@ export class GateService {
               location: true,
             },
           },
-          references: {
-            include: {
-              erpDocument: true,
-              erpDocumentItem: true,
-            },
-          },
         },
       });
-      return this.sanitizeVerification(result);
+      return this.mapOperationUrls(result);
     });
   }
 
@@ -1351,20 +910,6 @@ export class GateService {
       }));
     }
 
-    if (mapped.verification) {
-      if (
-        mapped.verification.attachments &&
-        Array.isArray(mapped.verification.attachments)
-      ) {
-        mapped.verification.attachments = mapped.verification.attachments.map(
-          (attach: any) => ({
-            ...attach,
-            url: this.storageService.getFilePublicUrl(attach.filePath),
-          }),
-        );
-      }
-    }
-
     return this.stripIdField(mapped);
   }
 
@@ -1375,19 +920,16 @@ export class GateService {
       return obj.map((item) => this.stripIdField(item));
     }
     if (typeof obj === 'object') {
-      // Retain 'id' for Inventory, GateOperationProduct, and GateVerificationProduct because they are needed as references in the frontend/API
+      // Retain 'id' for Inventory and GateOperationProduct because they are needed as references in the frontend/API
       const isProduct = 'sku' in obj && 'name' in obj;
       const isGateOpProduct = 'gateOperationId' in obj && 'inventoryId' in obj;
-      const isGateVerificationProduct =
-        'gateVerificationId' in obj && 'inventoryId' in obj;
 
       const newObj: any = {};
       for (const key of Object.keys(obj)) {
         if (
           key === 'id' &&
           !isProduct &&
-          !isGateOpProduct &&
-          !isGateVerificationProduct
+          !isGateOpProduct
         )
           continue;
         newObj[key] = this.stripIdField(obj[key]);
@@ -1401,6 +943,7 @@ export class GateService {
     tx: any,
     documentReferenceId: number,
     products: { productId: number; quantity: number }[],
+    excludeGateOperationId?: number,
   ) {
     for (const prod of products) {
       const docItem = await tx.documentReferenceItem.findFirst({
@@ -1416,10 +959,14 @@ export class GateService {
         );
       }
 
-      const aggregate = await tx.gateOperationProduct.aggregate({
+      const erpQty = docItem.productQty || docItem.quantity || 0;
+
+      // Sum of quantity in OTHER gate operations
+      const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
         where: {
           gateOperation: {
             documentReferenceId,
+            id: excludeGateOperationId ? { not: excludeGateOperationId } : undefined,
             status: {
               notIn: ['CANCELED', 'REJECTED'],
             },
@@ -1431,10 +978,24 @@ export class GateService {
         },
       });
 
-      const usedQty = aggregate._sum.quantity || 0;
-      const remainingQty = Math.max(0, docItem.quantity - usedQty);
+      const otherOpsQty = otherOpsAggregate._sum.quantity || 0;
 
-      if (prod.quantity > remainingQty) {
+      // Sum of quantity in the CURRENT gate operation (excluding the prod item if its ID is known, but here we just want other items of the same product)
+      let currentOpQty = 0;
+      if (excludeGateOperationId) {
+        const currentOpProducts = await tx.gateOperationProduct.findMany({
+          where: {
+            gateOperationId: excludeGateOperationId,
+            inventoryId: prod.productId,
+          },
+        });
+        currentOpQty = currentOpProducts.reduce((sum: number, p: any) => sum + p.quantity, 0);
+      }
+
+      const totalQty = otherOpsQty + currentOpQty + prod.quantity;
+
+      if (totalQty > erpQty) {
+        const remainingQty = Math.max(0, erpQty - otherOpsQty - currentOpQty);
         throw new BadRequestException(
           `Kuantitas barang (${prod.quantity} ${docItem.uom}) melebihi sisa kuantitas pada dokumen ERP untuk ${docItem.productName} (Sisa: ${remainingQty} ${docItem.uom}).`,
         );
@@ -1461,7 +1022,6 @@ export class GateService {
       // Find the gate operation
       const gateOperation = await tx.gateOperation.findUnique({
         where: { uuid: operationUuid },
-        include: { verification: true },
       });
 
       if (!gateOperation) {
@@ -1495,6 +1055,16 @@ export class GateService {
         locationId,
       );
 
+      // Validate document reference limits if linked
+      if (gateOperation.documentReferenceId) {
+        await this.validateDocumentReferenceLimits(
+          tx,
+          gateOperation.documentReferenceId,
+          [{ productId: productId, quantity: quantity }],
+          gateOperation.id,
+        );
+      }
+
       // Check if product is already added in this gate operation
       const existing = await tx.gateOperationProduct.findFirst({
         where: {
@@ -1527,7 +1097,7 @@ export class GateService {
         },
       });
 
-      if (quantId) {
+      if (quantId && quantId !== null) {
         await this.reserveQuantStock(
           tx,
           gateOperation.cardType,
@@ -1536,14 +1106,8 @@ export class GateService {
         );
       }
 
-      // If verification exists, update verification status/totals
-      if (gateOperation.verification) {
-        await this.updateGateStatusAndRealisasi(
-          tx,
-          gateOperation.id,
-          gateOperation.verification.id,
-        );
-      }
+      // Recalculate status and totals
+      await this.updateGateStatusAndRealisasi(tx, gateOperation.id);
 
       return this.stripIdField(cargoItem);
     });
@@ -1556,9 +1120,7 @@ export class GateService {
         where: { uuid: gateOperationProductUuid },
         include: {
           inventory: true,
-          gateOperation: {
-            include: { verification: true },
-          },
+          gateOperation: true,
         },
       });
 
@@ -1590,14 +1152,8 @@ export class GateService {
         );
       }
 
-      // If verification exists, update verification status/totals
-      if (gateOperation.verification) {
-        await this.updateGateStatusAndRealisasi(
-          tx,
-          gateOperation.id,
-          gateOperation.verification.id,
-        );
-      }
+      // Recalculate status and totals
+      await this.updateGateStatusAndRealisasi(tx, gateOperation.id);
 
       return {
         success: true,
@@ -1623,9 +1179,7 @@ export class GateService {
         where: { uuid: cargoItemUuid },
         include: {
           inventory: true,
-          gateOperation: {
-            include: { verification: true },
-          },
+          gateOperation: true,
         },
       });
 
@@ -1671,6 +1225,53 @@ export class GateService {
         gateOperation.id,
       );
 
+      // Validate document reference limits if linked
+      if (gateOperation.documentReferenceId) {
+        const currentOpProducts = await tx.gateOperationProduct.findMany({
+          where: {
+            gateOperationId: gateOperation.id,
+            inventoryId: cargoItem.inventoryId,
+            id: { not: cargoItem.id },
+          },
+        });
+        const currentOpOtherQty = currentOpProducts.reduce((sum: number, p: any) => sum + p.quantity, 0);
+
+        const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
+          where: {
+            gateOperation: {
+              documentReferenceId: gateOperation.documentReferenceId,
+              id: { not: gateOperation.id },
+              status: {
+                notIn: ['CANCELED', 'REJECTED'],
+              },
+            },
+            inventoryId: cargoItem.inventoryId,
+          },
+          _sum: {
+            quantity: true,
+          },
+        });
+        const otherOpsQty = otherOpsAggregate._sum.quantity || 0;
+
+        const docItem = await tx.documentReferenceItem.findFirst({
+          where: {
+            documentReferenceId: gateOperation.documentReferenceId,
+            inventoryId: cargoItem.inventoryId,
+          },
+        });
+
+        if (docItem) {
+          const erpQty = docItem.productQty || docItem.quantity || 0;
+          const totalQty = otherOpsQty + currentOpOtherQty + targetQuantity;
+          if (totalQty > erpQty) {
+            const remainingQty = Math.max(0, erpQty - otherOpsQty - currentOpOtherQty);
+            throw new BadRequestException(
+              `Kuantitas barang (${targetQuantity} ${docItem.uom}) melebihi sisa kuantitas pada dokumen ERP untuk ${docItem.productName} (Sisa: ${remainingQty} ${docItem.uom}).`,
+            );
+          }
+        }
+      }
+
       // 3. Update the cargo item
       const updated = await tx.gateOperationProduct.update({
         where: { id: cargoItem.id },
@@ -1683,11 +1284,12 @@ export class GateService {
           inventory: true,
           quant: true,
           location: true,
+          gateOperation: true,
         },
       });
 
       // 4. Reserve new stock
-      if (quantId) {
+      if (quantId && quantId !== null) {
         await this.reserveQuantStock(
           tx,
           gateOperation.cardType,
@@ -1696,14 +1298,8 @@ export class GateService {
         );
       }
 
-      // 5. If verification exists, update verification status/totals
-      if (gateOperation.verification) {
-        await this.updateGateStatusAndRealisasi(
-          tx,
-          gateOperation.id,
-          gateOperation.verification.id,
-        );
-      }
+      // 5. Recalculate status and totals
+      await this.updateGateStatusAndRealisasi(tx, gateOperation.id);
 
       return this.stripIdField(updated);
     });
@@ -1718,7 +1314,7 @@ export class GateService {
     locationId?: number | null,
     gateOperationId?: number,
   ) {
-    if (quantId) {
+    if (quantId && quantId !== null) {
       const quant = await tx.quant.findUnique({
         where: { id: quantId },
       });
@@ -1729,6 +1325,13 @@ export class GateService {
         throw new BadRequestException(
           'Produk tidak cocok dengan tumpukan yang dipilih.',
         );
+      }
+      if (cardType === 'IN') {
+        if (quantity > quant.quantity) {
+          throw new BadRequestException(
+            `Kuantitas muatan (${quantity}) tidak boleh melebihi kapasitas tumpukan ERP (${quant.quantity}).`,
+          );
+        }
       }
       if (cardType === 'OUT') {
         let reservedByThisOp = 0;
@@ -1742,7 +1345,29 @@ export class GateService {
           });
           reservedByThisOp = existingProduct ? existingProduct.quantity : 0;
         }
-        const totalAvailable = quant.availableQuantity + reservedByThisOp;
+        
+        // Calculate reservations from gate operations created after the quant was synced/created
+        const postSyncReservations = await tx.gateOperationProduct.aggregate({
+          where: {
+            quantId,
+            gateOperation: {
+              cardType: 'OUT',
+              status: {
+                notIn: ['CANCELED', 'REJECTED'],
+              },
+              createdAt: {
+                gt: quant.createdAt,
+              },
+              id: gateOperationId ? { not: gateOperationId } : undefined,
+            },
+          },
+          _sum: {
+            quantity: true,
+          },
+        });
+        const localReservedPostSync = postSyncReservations._sum.quantity || 0;
+        const totalAvailable = quant.availableQuantity + reservedByThisOp - localReservedPostSync;
+
         if (quantity > totalAvailable) {
           throw new BadRequestException(
             `Kuantitas (${quantity}) melebihi kuantitas tersedia di tumpukan (tersedia: ${totalAvailable}).`,
@@ -1763,33 +1388,7 @@ export class GateService {
     quantId: number,
     qty: number,
   ) {
-    if (cardType !== 'OUT') return;
-
-    const quant = await tx.quant.findUnique({
-      where: { id: quantId },
-    });
-    if (!quant) {
-      throw new NotFoundException(
-        `Tumpukan dengan ID ${quantId} tidak ditemukan.`,
-      );
-    }
-
-    const newReserved = quant.reservedQuantity + qty;
-    const newAvailable = quant.quantity - newReserved;
-
-    if (newAvailable < 0) {
-      throw new BadRequestException(
-        `Kuantitas tidak mencukupi untuk dialokasikan. (Tersedia: ${quant.availableQuantity}, Dibutuhkan: ${qty})`,
-      );
-    }
-
-    await tx.quant.update({
-      where: { id: quantId },
-      data: {
-        reservedQuantity: newReserved,
-        availableQuantity: newAvailable,
-      },
-    });
+    // Quant table is read-only for transaction processes.
   }
 
   private async releaseQuantStock(
@@ -1798,65 +1397,17 @@ export class GateService {
     quantId: number,
     qty: number,
   ) {
-    if (cardType !== 'OUT') return;
-
-    const quant = await tx.quant.findUnique({
-      where: { id: quantId },
-    });
-    if (!quant) return; // Quant might have been deleted, ignore
-
-    const newReserved = Math.max(0, quant.reservedQuantity - qty);
-    const newAvailable = quant.quantity - newReserved;
-
-    await tx.quant.update({
-      where: { id: quantId },
-      data: {
-        reservedQuantity: newReserved,
-        availableQuantity: newAvailable,
-      },
-    });
+    // Quant table is read-only for transaction processes.
   }
 
   private async processStockReductionOnCompletion(
     tx: any,
     gateOperationId: number,
   ) {
-    const gateOperation = await tx.gateOperation.findUnique({
-      where: { id: gateOperationId },
-      include: {
-        products: true,
-      },
-    });
-
-    if (!gateOperation || gateOperation.cardType !== 'OUT') {
-      return;
-    }
-
-    for (const p of gateOperation.products) {
-      if (p.quantId) {
-        const quant = await tx.quant.findUnique({
-          where: { id: p.quantId },
-        });
-
-        if (quant) {
-          const newQuantity = Math.max(0, quant.quantity - p.quantity);
-          const newReserved = Math.max(0, quant.reservedQuantity - p.quantity);
-          const newAvailable = newQuantity - newReserved;
-
-          await tx.quant.update({
-            where: { id: p.quantId },
-            data: {
-              quantity: newQuantity,
-              reservedQuantity: newReserved,
-              availableQuantity: newAvailable,
-            },
-          });
-        }
-      }
-    }
+    // Quant table is read-only for transaction processes.
   }
 
-  async generateDeliveryOrderPdf(idOrUuid: string): Promise<Buffer> {
+  async generateDeliveryOrderPdf(idOrUuid: string, userId?: number): Promise<Buffer> {
     const gateOperation = await this.prisma.gateOperation.findFirst({
       where: {
         OR: [
@@ -1873,6 +1424,13 @@ export class GateService {
             inventory: true,
             location: true,
             quant: true,
+          },
+        },
+        verifiedBy: {
+          include: {
+            signatures: {
+              where: { isActive: true },
+            },
           },
         },
       },
@@ -1893,6 +1451,38 @@ export class GateService {
       margin: 1,
     });
 
+    let signatureBuffer: Buffer | null = null;
+    let verifierName = '........................';
+    let activeSig: any = null;
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          signatures: {
+            where: { isActive: true },
+          },
+        },
+      });
+      if (user) {
+        verifierName = user.name;
+        activeSig = user.signatures?.[0];
+      }
+    } else if (gateOperation.verifiedBy) {
+      verifierName = gateOperation.verifiedBy.name;
+      activeSig = gateOperation.verifiedBy.signatures?.[0];
+    }
+
+    if (activeSig?.fileKey) {
+      try {
+        signatureBuffer = await this.storageService.getFileBuffer(activeSig.fileKey);
+      } catch (err: any) {
+        this.logger.warn(`Failed to fetch user signature image from storage: ${err.message}`);
+      }
+    }
+
+    const logoBuffer = await this.getLogoBuffer();
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const buffers: Buffer[] = [];
@@ -1903,13 +1493,17 @@ export class GateService {
 
       // Draw Top Header
       // Logo (Left)
-      doc.rect(40, 40, 50, 40).fill('#1e3a8a');
-      doc
-        .fillColor('#ffffff')
-        .fontSize(11)
-        .font('Helvetica-Bold')
-        .text('BULOG', 45, 48);
-      doc.fontSize(8).text('WMS', 54, 62);
+      if (logoBuffer) {
+        doc.image(logoBuffer, 40, 40, { fit: [70, 40] });
+      } else {
+        doc.rect(40, 40, 50, 40).fill('#1e3a8a');
+        doc
+          .fillColor('#ffffff')
+          .fontSize(11)
+          .font('Helvetica-Bold')
+          .text('BULOG', 45, 48);
+        doc.fontSize(8).text('WMS', 54, 62);
+      }
 
       // Header Text (Center)
       doc
@@ -1936,25 +1530,39 @@ export class GateService {
         label2: string,
         val2: string,
       ) => {
-        doc
-          .font('Helvetica-Bold')
-          .fillColor('#64748b')
-          .text(label1, 40, currentY, { width: 120 });
-        doc
-          .font('Helvetica')
-          .fillColor('#1e293b')
-          .text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
+        doc.font('Helvetica-Bold');
+        const hLabel1 = label1 ? doc.heightOfString(label1, { width: 120 }) : 0;
+        const hLabel2 = label2 ? doc.heightOfString(label2, { width: 110 }) : 0;
 
-        doc
-          .font('Helvetica-Bold')
-          .fillColor('#64748b')
-          .text(label2, 320, currentY, { width: 110 });
-        doc
-          .font('Helvetica')
-          .fillColor('#1e293b')
-          .text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
+        doc.font('Helvetica');
+        const hVal1 = label1 ? doc.heightOfString(`:  ${val1 || '-'}`, { width: 140 }) : 0;
+        const hVal2 = label2 ? doc.heightOfString(`:  ${val2 || '-'}`, { width: 125 }) : 0;
 
-        currentY += 18;
+        const rowHeight = Math.max(hLabel1, hLabel2, hVal1, hVal2, 14);
+
+        if (label1) {
+          doc
+            .font('Helvetica-Bold')
+            .fillColor('#64748b')
+            .text(label1, 40, currentY, { width: 120 });
+          doc
+            .font('Helvetica')
+            .fillColor('#1e293b')
+            .text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
+        }
+
+        if (label2) {
+          doc
+            .font('Helvetica-Bold')
+            .fillColor('#64748b')
+            .text(label2, 320, currentY, { width: 110 });
+          doc
+            .font('Helvetica')
+            .fillColor('#1e293b')
+            .text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
+        }
+
+        currentY += rowHeight + 4;
       };
 
       const dateStr = new Date(gateOperation.createdAt).toLocaleDateString(
@@ -2080,7 +1688,7 @@ export class GateService {
       currentY += 25;
 
       // Signatures
-      if (currentY + 60 > 750) {
+      if (currentY + 80 > 750) {
         doc.addPage();
         currentY = 50;
       }
@@ -2089,16 +1697,29 @@ export class GateService {
         width: 150,
         align: 'center',
       });
-      doc.text('Kepala Gudang', 375, currentY, { width: 150, align: 'center' });
+      doc.text('Mengetahui', 375, currentY, { width: 150, align: 'center' });
 
-      currentY += 50;
+      if (signatureBuffer && activeSig?.fileKey) {
+        const fileKeyLower = activeSig.fileKey.toLowerCase();
+        if (fileKeyLower.endsWith('.png') || fileKeyLower.endsWith('.jpg') || fileKeyLower.endsWith('.jpeg')) {
+          const imageX = 375 + (150 - 100) / 2;
+          try {
+            doc.image(signatureBuffer, imageX, currentY + 15, { fit: [100, 45] });
+          } catch (err: any) {
+            this.logger.warn(`Failed to render signature image in PDF: ${err.message}`);
+          }
+        }
+      }
+
+      currentY += 65;
       doc
         .font('Helvetica-Bold')
         .text(`(  ${gateOperation.driverName}  )`, 70, currentY, {
           width: 150,
           align: 'center',
         });
-      doc.text('(  ........................  )', 375, currentY, {
+
+      doc.font('Helvetica-Bold').text(`(  ${verifierName}  )`, 375, currentY, {
         width: 150,
         align: 'center',
       });
@@ -2107,7 +1728,7 @@ export class GateService {
     });
   }
 
-  async generateDeliveryOrderHtml(idOrUuid: string): Promise<string> {
+  async generateDeliveryOrderHtml(idOrUuid: string, userId?: number): Promise<string> {
     const gateOperation = await this.prisma.gateOperation.findFirst({
       where: {
         OR: [
@@ -2126,6 +1747,13 @@ export class GateService {
             quant: true,
           },
         },
+        verifiedBy: {
+          include: {
+            signatures: {
+              where: { isActive: true },
+            },
+          },
+        },
       },
     });
 
@@ -2139,6 +1767,45 @@ export class GateService {
     const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
 
     const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl);
+    const logoBuffer = await this.getLogoBuffer();
+    const logoUrl = logoBuffer ? `data:image/png;base64,${logoBuffer.toString('base64')}` : null;
+
+    let signatureUrl: string | null = null;
+    let verifierName = '........................';
+    let activeSig: any = null;
+
+    if (gateOperation.verifiedBy) {
+      verifierName = gateOperation.verifiedBy.name;
+      activeSig = gateOperation.verifiedBy.signatures?.[0];
+    } else if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          signatures: {
+            where: { isActive: true },
+          },
+        },
+      });
+      if (user) {
+        verifierName = user.name;
+        activeSig = user.signatures?.[0];
+      }
+    } 
+
+    if (activeSig?.fileKey) {
+      try {
+        const sigBuffer = await this.storageService.getFileBuffer(activeSig.fileKey);
+        let mimeType = 'image/png';
+        if (activeSig.fileKey.toLowerCase().endsWith('.jpg') || activeSig.fileKey.toLowerCase().endsWith('.jpeg')) {
+          mimeType = 'image/jpeg';
+        } else if (activeSig.fileKey.toLowerCase().endsWith('.svg')) {
+          mimeType = 'image/svg+xml';
+        }
+        signatureUrl = `data:${mimeType};base64,${sigBuffer.toString('base64')}`;
+      } catch (err: any) {
+        this.logger.warn(`Failed to fetch user signature image for HTML: ${err.message}`);
+      }
+    }
 
     const dateStr = new Date(gateOperation.createdAt).toLocaleDateString(
       'id-ID',
@@ -2202,6 +1869,12 @@ export class GateService {
             padding-bottom: 15px;
             margin-bottom: 20px;
           }
+          .logo-box-img {
+            width: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+          }
           .logo-box {
             background-color: #1e3a8a;
             color: #ffffff;
@@ -2228,7 +1901,7 @@ export class GateService {
           }
           .qr-box {
             text-align: right;
-            width: 80px;
+            width: 120px;
           }
           .info-grid {
             display: grid;
@@ -2251,6 +1924,7 @@ export class GateService {
           }
           .info-value {
             color: #1e293b;
+            word-break: break-word;
           }
           .cargo-table {
             width: 100%;
@@ -2326,9 +2000,12 @@ export class GateService {
         </div>
         <div class="container">
           <div class="header">
-            <div class="logo-box">
-              BULOG
-              <span class="logo-sub">WMS</span>
+            <div class="logo-box-img">
+              ${
+                logoUrl
+                  ? `<img src="${logoUrl}" style="height: 40px; max-width: 100%; object-fit: contain;" alt="Logo BULOG" />`
+                  : `<div class="logo-box">BULOG<span class="logo-sub">WMS</span></div>`
+              }
             </div>
             <div class="title">SURAT PENGANTAR / SURAT JALAN</div>
             <div class="qr-box">
@@ -2413,9 +2090,15 @@ export class GateService {
               <div class="signature-name">${gateOperation.driverName}</div>
             </div>
             <div class="signature-box">
-              <div>Kepala Gudang</div>
-              <div class="signature-space"></div>
-              <div class="signature-name">&nbsp;</div>
+              <div>Mengetahui</div>
+              <div class="signature-space" style="display: flex; align-items: center; justify-content: center; height: 60px;">
+                ${
+                  signatureUrl
+                    ? `<img src="${signatureUrl}" style="max-height: 55px; max-width: 150px; object-fit: contain;" alt="Signature" />`
+                    : ''
+                }
+              </div>
+              <div class="signature-name">${verifierName}</div>
             </div>
           </div>
         </div>
@@ -2434,5 +2117,59 @@ export class GateService {
       }));
     }
     return this.stripIdField(mapped);
+  }
+
+  async getVerificationHistory(operationUuid: string) {
+    const gateOperation = await this.prisma.gateOperation.findUnique({
+      where: { uuid: operationUuid },
+    });
+
+    if (!gateOperation) {
+      throw new NotFoundException('Gate operation tidak ditemukan.');
+    }
+
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        action: {
+          in: [
+            'GATE_OPERATION_CREATE',
+            'GATE_OPERATION_VERIFY',
+            'GATE_OPERATION_CANCEL',
+            'GATE_OPERATION_CONFIRM',
+            'GATE_OPERATION_ASSIGN_REFERENCES',
+            'GATE_OPERATION_UNASSIGN_REFERENCE',
+            'GATE_OPERATION_CARGO_ADD',
+            'GATE_OPERATION_CARGO_UPDATE',
+            'GATE_OPERATION_CARGO_DELETE',
+            'GATE_OPERATION_NOTES_ATTACHMENTS_UPDATE',
+          ],
+        },
+        details: {
+          contains: operationUuid,
+        },
+      },
+      include: {
+        actor: {
+          select: { name: true, email: true },
+        },
+      },
+      orderBy: { timestamp: 'desc' },
+    });
+
+    return logs.map((log) => {
+      let parsedDetails = null;
+      try {
+        parsedDetails = log.details ? JSON.parse(log.details) : null;
+      } catch (err) {
+        // ignore
+      }
+      return {
+        uuid: log.uuid,
+        action: log.action,
+        timestamp: log.timestamp,
+        actor: log.actor,
+        details: parsedDetails,
+      };
+    });
   }
 }

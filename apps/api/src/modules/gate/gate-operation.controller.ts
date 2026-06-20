@@ -13,6 +13,7 @@ import {
   ForbiddenException,
   Res,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,14 +23,22 @@ import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { AuditLogAction } from '../audit-log/audit-log.decorator';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
-import { CreateGateOperationSchema } from '@bulog-wms/schema';
-import type { CreateGateOperationInput } from '@bulog-wms/schema';
+import {
+  CreateGateOperationSchema,
+  CreateGateVerificationSchema,
+} from '@bulog-wms/schema';
+import type {
+  CreateGateOperationInput,
+  CreateGateVerificationInput,
+} from '@bulog-wms/schema';
 import { GateService } from './gate.service';
 
 @Controller('gate-operations')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class GateOperationController {
+  private readonly logger = new Logger(GateOperationController.name);
+
   constructor(private readonly service: GateService) {}
 
   @Post()
@@ -41,7 +50,12 @@ export class GateOperationController {
     body: CreateGateOperationInput,
   ) {
     const userId = req.user?.id;
-    return this.service.createGateOperation(userId, body);
+    const result = await this.service.createGateOperation(userId, body);
+
+    this.logger.log(`createdOp result result ${JSON.stringify(result, null, 2)}`);
+
+    req.auditDetails = { operationUuid: result.uuid };
+    return result;
   }
 
   @Get()
@@ -107,6 +121,7 @@ export class GateOperationController {
     }
     const result = await this.service.addCargoItem(uuid, body);
     req.auditDetails = {
+      operationUuid: uuid,
       inventory: {
         sku: result.inventory?.sku,
         name: result.inventory?.name,
@@ -144,6 +159,7 @@ export class GateOperationController {
     }
     const result = await this.service.updateCargoItem(cargoUuid, body);
     req.auditDetails = {
+      operationUuid: result.gateOperation?.uuid,
       inventory: {
         sku: result.inventory?.sku,
         name: result.inventory?.name,
@@ -175,6 +191,7 @@ export class GateOperationController {
     }
     const result = await this.service.deleteCargoItem(cargoUuid);
     req.auditDetails = {
+      operationUuid: result.deletedItem?.gateOperation?.uuid,
       deletedItem: {
         sku: result.deletedItem?.inventory?.sku,
         name: result.deletedItem?.inventory?.name,
@@ -188,8 +205,13 @@ export class GateOperationController {
 
   @Get(':id/delivery-order')
   @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
-  async getDeliveryOrderPdf(@Param('id') id: string, @Res() res: Response) {
-    const pdfBuffer = await this.service.generateDeliveryOrderPdf(id);
+  async getDeliveryOrderPdf(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const userId = req.user?.id;
+    const pdfBuffer = await this.service.generateDeliveryOrderPdf(id, userId);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="surat-jalan-${id}.pdf"`,
@@ -200,8 +222,13 @@ export class GateOperationController {
 
   @Get(':id/delivery-order-preview')
   @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
-  async getDeliveryOrderPreview(@Param('id') id: string, @Res() res: Response) {
-    const html = await this.service.generateDeliveryOrderHtml(id);
+  async getDeliveryOrderPreview(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const userId = req.user?.id;
+    const html = await this.service.generateDeliveryOrderHtml(id, userId);
     res.set({
       'Content-Type': 'text/html',
     });
@@ -212,5 +239,65 @@ export class GateOperationController {
   @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
   async findOne(@Param('uuid') uuid: string) {
     return this.service.getGateOperationByUuid(uuid);
+  }
+
+
+
+  @Post(':uuid/verify')
+  @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
+  @AuditLogAction('GATE_OPERATION_VERIFY')
+  async verify(
+    @Param('uuid') uuid: string,
+    @Req() req: any,
+    @Body(new ZodValidationPipe(CreateGateVerificationSchema))
+    body: CreateGateVerificationInput,
+  ) {
+    const userId = req.user?.id;
+    return this.service.verifyGateOperation(uuid, userId, body);
+  }
+
+  @Post(':uuid/cancel')
+  @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
+  @AuditLogAction('GATE_OPERATION_CANCEL')
+  async cancel(@Param('uuid') uuid: string, @Req() req: any) {
+    const userId = req.user?.id;
+    return this.service.cancelGateVerification(uuid, userId);
+  }
+
+  @Put(':uuid/notes-attachments')
+  @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
+  @AuditLogAction('GATE_OPERATION_NOTES_ATTACHMENTS_UPDATE')
+  async updateNotesAttachments(
+    @Param('uuid') uuid: string,
+    @Req() req: any,
+    @Body() body: { notes?: string; attachmentPaths?: string[] },
+  ) {
+    const userId = req.user?.id;
+    req.auditDetails = {
+      operationUuid: uuid,
+      notes: body.notes,
+    };
+    return this.service.updateNotesAttachments(uuid, userId, body);
+  }
+
+  @Post(':uuid/confirm')
+  @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
+  @AuditLogAction('GATE_OPERATION_CONFIRM')
+  async confirm(
+    @Param('uuid') uuid: string,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id;
+    return this.service.confirmGateVerification(uuid, userId);
+  }
+
+
+
+  @Get(':uuid/history')
+  @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
+  async getVerificationHistory(
+    @Param('uuid') uuid: string,
+  ) {
+    return this.service.getVerificationHistory(uuid);
   }
 }

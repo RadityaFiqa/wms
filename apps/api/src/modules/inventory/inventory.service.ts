@@ -293,286 +293,7 @@ export class InventoryService {
       // 5. DB Transaction to save results locally
       await this.prisma.$transaction(
         async (tx) => {
-          // --- Batch Sync Products ---
-          const allProductIds = products.map((p: any) => p.id);
-          const existingInv = await tx.inventory.findMany({
-            where: { id: { in: allProductIds } },
-            select: { id: true, sku: true, name: true, uom: true, warehouseId: true },
-          });
-          const existingMap = new Map(existingInv.map(p => [p.id, p]));
-
-          const productsToCreate: any[] = [];
-          const productsToUpdate: any[] = [];
-
-          for (const record of products) {
-            const odooProdId = record.id;
-            const rawSku = record.default_code;
-            const productName = record.name || record.display_name || 'Unnamed Product';
-            const sku =
-              rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
-                ? rawSku.trim()
-                : `OP-${odooProdId}`;
-            const uom = record.uom_id?.display_name || 'Unit';
-
-            const existing = existingMap.get(odooProdId);
-            if (!existing) {
-              productsToCreate.push({
-                id: odooProdId,
-                sku,
-                name: productName,
-                uom,
-                warehouseId,
-              });
-            } else if (
-              existing.sku !== sku ||
-              existing.name !== productName ||
-              existing.uom !== uom ||
-              existing.warehouseId !== warehouseId
-            ) {
-              productsToUpdate.push({
-                id: odooProdId,
-                sku,
-                name: productName,
-                uom,
-                warehouseId,
-              });
-            }
-          }
-
-          if (productsToCreate.length > 0) {
-            await tx.inventory.createMany({
-              data: productsToCreate,
-              skipDuplicates: true,
-            });
-          }
-
-          for (const item of productsToUpdate) {
-            await tx.inventory.update({
-              where: { id: item.id },
-              data: {
-                sku: item.sku,
-                name: item.name,
-                uom: item.uom,
-                warehouseId: item.warehouseId,
-              },
-            });
-          }
-
-          // Safety check: process any products from stock.quant records that might not be in the products list
-          const quantProductIds = records.map((r: any) => r.product_id?.id).filter(Boolean);
-          const finalExistingInv = await tx.inventory.findMany({
-            where: { id: { in: quantProductIds } },
-            select: { id: true },
-          });
-          const finalExistingInvIds = new Set(finalExistingInv.map(p => p.id));
-
-          for (const record of records) {
-            const odooProd = record.product_id;
-            if (!odooProd || finalExistingInvIds.has(odooProd.id)) continue;
-
-            const odooProdId = odooProd.id;
-            const rawSku = odooProd.default_code;
-            const productName = odooProd.display_name || 'Unnamed Product';
-            const sku =
-              rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
-                ? rawSku.trim()
-                : `OP-${odooProdId}`;
-            const uom = odooProd.uom_id?.display_name || 'Unit';
-
-            await tx.inventory.upsert({
-              where: { id: odooProdId },
-              update: {
-                sku,
-                name: productName,
-                uom,
-                warehouseId,
-              },
-              create: {
-                id: odooProdId,
-                sku,
-                name: productName,
-                uom,
-                warehouseId,
-              },
-            });
-            finalExistingInvIds.add(odooProdId);
-          }
-
-          // --- Batch Sync Locations ---
-          const allLocIds = locations.map((l: any) => l.id);
-          const existingLocs = await tx.location.findMany({
-            where: { id: { in: allLocIds } },
-            select: { id: true, displayName: true, warehouseId: true },
-          });
-          const existingLocMap = new Map(existingLocs.map(l => [l.id, l]));
-
-          const locsToCreate: any[] = [];
-          const locsToUpdate: any[] = [];
-
-          for (const record of locations) {
-            const odooLocId = record.id;
-            const displayName = record.complete_name || record.display_name || 'Unnamed Location';
-
-            const existing = existingLocMap.get(odooLocId);
-            if (!existing) {
-              locsToCreate.push({
-                id: odooLocId,
-                displayName,
-                warehouseId,
-              });
-            } else if (
-              existing.displayName !== displayName ||
-              existing.warehouseId !== warehouseId
-            ) {
-              locsToUpdate.push({
-                id: odooLocId,
-                displayName,
-                warehouseId,
-              });
-            }
-          }
-
-          if (locsToCreate.length > 0) {
-            await tx.location.createMany({
-              data: locsToCreate,
-              skipDuplicates: true,
-            });
-          }
-
-          for (const item of locsToUpdate) {
-            await tx.location.update({
-              where: { id: item.id },
-              data: {
-                displayName: item.displayName,
-                warehouseId: item.warehouseId,
-              },
-            });
-          }
-
-          // Safety check: collect unique locations from stock.quant records and Upsert them
-          const quantLocIds = records.map((r: any) => r.location_id?.id).filter(Boolean);
-          const finalExistingLoc = await tx.location.findMany({
-            where: { id: { in: quantLocIds } },
-            select: { id: true },
-          });
-          const finalExistingLocIds = new Set(finalExistingLoc.map(l => l.id));
-
-          const uniqueQuantLocations = new Map<number, string>();
-          for (const record of records) {
-            const odooLoc = record.location_id;
-            if (odooLoc && !finalExistingLocIds.has(odooLoc.id)) {
-              uniqueQuantLocations.set(
-                odooLoc.id,
-                odooLoc.display_name || 'Unnamed Location',
-              );
-            }
-          }
-
-          for (const [odooLocId, displayName] of uniqueQuantLocations.entries()) {
-            await tx.location.upsert({
-              where: { id: odooLocId },
-              update: {
-                displayName,
-              },
-              create: {
-                id: odooLocId,
-                displayName,
-                warehouseId,
-              },
-            });
-          }
-
-          // Re-query locations to get correct IDs inside this warehouse
-          const allLocations = await tx.location.findMany({
-            where: { warehouseId },
-          });
-
-          // Clear old quants inside this warehouse's locations
-          const locationIds = allLocations.map((l) => l.id);
-          await tx.quant.deleteMany({
-            where: {
-              locationId: { in: locationIds },
-            },
-          });
-
-          // Prepare bulk quants
-          const quantsToCreate: any[] = [];
-          for (const record of records) {
-            const odooProd = record.product_id;
-            const odooLoc = record.location_id;
-            if (!odooProd || !odooLoc || !record.id) continue;
-
-            const odooProdId = odooProd.id;
-            const odooLocId = odooLoc.id;
-
-            const lotName = record.lot_id
-              ? record.lot_id.display_name || null
-              : null;
-            const quantity = Number(record.quantity) || 0.0;
-            const reservedQuantity = Number(record.reserved_quantity) || 0.0;
-            const availableQuantity = Number(record.available_quantity) || 0.0;
-            const secondaryUnitQty =
-              record.sh_secondary_unit_qty !== undefined
-                ? Number(record.sh_secondary_unit_qty) || 0.0
-                : 0.0;
-
-            quantsToCreate.push({
-              id: record.id,
-              inventoryId: odooProdId,
-              locationId: odooLocId,
-              quantity,
-              reservedQuantity,
-              availableQuantity,
-              secondaryUnitQty,
-              lotName,
-            });
-          }
-
-          // Bulk Insert Quants
-          if (quantsToCreate.length > 0) {
-            await tx.quant.createMany({
-              data: quantsToCreate,
-              skipDuplicates: true,
-            });
-
-            // Recalculate and apply active local reservations!
-            const activeReservations = await tx.gateOperationProduct.groupBy({
-              by: ['quantId'],
-              where: {
-                gateOperation: {
-                  cardType: 'OUT',
-                  status: { in: ['PENDING', 'PARTIAL'] },
-                },
-                quantId: { not: null },
-              },
-              _sum: {
-                quantity: true,
-              },
-            });
-
-            for (const res of activeReservations) {
-              if (res.quantId && res._sum.quantity) {
-                const localReserved = res._sum.quantity;
-                const quant = await tx.quant.findUnique({
-                  where: { id: res.quantId },
-                });
-                if (quant) {
-                  const newReserved = quant.reservedQuantity + localReserved;
-                  const newAvailable = Math.max(
-                    0,
-                    quant.quantity - newReserved,
-                  );
-                  await tx.quant.update({
-                    where: { id: res.quantId },
-                    data: {
-                      reservedQuantity: newReserved,
-                      availableQuantity: newAvailable,
-                    },
-                  });
-                }
-              }
-            }
-          }
+          await this.saveInventorySyncData(tx, warehouseId, products, locations, records);
         },
         { timeout: 900_000 },
       );
@@ -608,6 +329,259 @@ export class InventoryService {
         })
         .catch((e) => console.error('Failed to log sync status error', e));
       throw err;
+    }
+  }
+
+  public async saveInventorySyncData(
+    tx: any,
+    warehouseId: number,
+    products: any[],
+    locations: any[],
+    records: any[], // quants
+  ) {
+    // --- Batch Sync Products ---
+    const allProductIds = products.map((p: any) => p.id);
+    const existingInv = await tx.inventory.findMany({
+      where: { id: { in: allProductIds } },
+      select: { id: true, sku: true, name: true, uom: true, warehouseId: true },
+    });
+    const existingMap = new Map<number, typeof existingInv[number]>(existingInv.map(p => [p.id, p]));
+
+    const productsToCreate: any[] = [];
+    const productsToUpdate: any[] = [];
+
+    for (const record of products) {
+      const odooProdId = record.id;
+      const rawSku = record.default_code;
+      const productName = record.name || record.display_name || 'Unnamed Product';
+      const sku =
+        rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
+          ? rawSku.trim()
+          : `OP-${odooProdId}`;
+      const uom = record.uom_id?.display_name || 'Unit';
+
+      const existing = existingMap.get(odooProdId);
+      if (!existing) {
+        productsToCreate.push({
+          id: odooProdId,
+          sku,
+          name: productName,
+          uom,
+          warehouseId,
+        });
+      } else if (
+        existing.sku !== sku ||
+        existing.name !== productName ||
+        existing.uom !== uom ||
+        existing.warehouseId !== warehouseId
+      ) {
+        productsToUpdate.push({
+          id: odooProdId,
+          sku,
+          name: productName,
+          uom,
+          warehouseId,
+        });
+      }
+    }
+
+    if (productsToCreate.length > 0) {
+      await tx.inventory.createMany({
+        data: productsToCreate,
+        skipDuplicates: true,
+      });
+    }
+
+    for (const item of productsToUpdate) {
+      await tx.inventory.update({
+        where: { id: item.id },
+        data: {
+          sku: item.sku,
+          name: item.name,
+          uom: item.uom,
+          warehouseId: item.warehouseId,
+        },
+      });
+    }
+
+    // Safety check: process any products from stock.quant records that might not be in the products list
+    const quantProductIds = records.map((r: any) => r.product_id?.id).filter(Boolean);
+    const finalExistingInv = await tx.inventory.findMany({
+      where: { id: { in: quantProductIds } },
+      select: { id: true },
+    });
+    const finalExistingInvIds = new Set(finalExistingInv.map(p => p.id));
+
+    for (const record of records) {
+      const odooProd = record.product_id;
+      if (!odooProd || finalExistingInvIds.has(odooProd.id)) continue;
+
+      const odooProdId = odooProd.id;
+      const rawSku = odooProd.default_code;
+      const productName = odooProd.display_name || 'Unnamed Product';
+      const sku =
+        rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
+          ? rawSku.trim()
+          : `OP-${odooProdId}`;
+      const uom = odooProd.uom_id?.display_name || 'Unit';
+
+      await tx.inventory.upsert({
+        where: { id: odooProdId },
+        update: {
+          sku,
+          name: productName,
+          uom,
+          warehouseId,
+        },
+        create: {
+          id: odooProdId,
+          sku,
+          name: productName,
+          uom,
+          warehouseId,
+        },
+      });
+      finalExistingInvIds.add(odooProdId);
+    }
+
+    // --- Batch Sync Locations ---
+    const allLocIds = locations.map((l: any) => l.id);
+    const existingLocs = await tx.location.findMany({
+      where: { id: { in: allLocIds } },
+      select: { id: true, displayName: true, warehouseId: true },
+    });
+    const existingLocMap = new Map<number, typeof existingLocs[number]>(existingLocs.map(l => [l.id, l]));
+
+    const locsToCreate: any[] = [];
+    const locsToUpdate: any[] = [];
+
+    for (const record of locations) {
+      const odooLocId = record.id;
+      const displayName = record.complete_name || record.display_name || 'Unnamed Location';
+
+      const existing = existingLocMap.get(odooLocId);
+      if (!existing) {
+        locsToCreate.push({
+          id: odooLocId,
+          displayName,
+          warehouseId,
+        });
+      } else if (
+        existing.displayName !== displayName ||
+        existing.warehouseId !== warehouseId
+      ) {
+        locsToUpdate.push({
+          id: odooLocId,
+          displayName,
+          warehouseId,
+        });
+      }
+    }
+
+    if (locsToCreate.length > 0) {
+      await tx.location.createMany({
+        data: locsToCreate,
+        skipDuplicates: true,
+      });
+    }
+
+    for (const item of locsToUpdate) {
+      await tx.location.update({
+        where: { id: item.id },
+        data: {
+          displayName: item.displayName,
+          warehouseId: item.warehouseId,
+        },
+      });
+    }
+
+    // Safety check: collect unique locations from stock.quant records and Upsert them
+    const quantLocIds = records.map((r: any) => r.location_id?.id).filter(Boolean);
+    const finalExistingLoc = await tx.location.findMany({
+      where: { id: { in: quantLocIds } },
+      select: { id: true },
+    });
+    const finalExistingLocIds = new Set(finalExistingLoc.map(l => l.id));
+
+    const uniqueQuantLocations = new Map<number, string>();
+    for (const record of records) {
+      const odooLoc = record.location_id;
+      if (odooLoc && !finalExistingLocIds.has(odooLoc.id)) {
+        uniqueQuantLocations.set(
+          odooLoc.id,
+          odooLoc.display_name || 'Unnamed Location',
+        );
+      }
+    }
+
+    for (const [odooLocId, displayName] of uniqueQuantLocations.entries()) {
+      await tx.location.upsert({
+        where: { id: odooLocId },
+        update: {
+          displayName,
+        },
+        create: {
+          id: odooLocId,
+          displayName,
+          warehouseId,
+        },
+      });
+    }
+
+    // Re-query locations to get correct IDs inside this warehouse
+    const allLocations = await tx.location.findMany({
+      where: { warehouseId },
+    });
+
+    // Clear old quants inside this warehouse's locations
+    const locationIds = allLocations.map((l) => l.id);
+    await tx.quant.deleteMany({
+      where: {
+        locationId: { in: locationIds },
+      },
+    });
+
+    // Prepare bulk quants
+    const quantsToCreate: any[] = [];
+    for (const record of records) {
+      const odooProd = record.product_id;
+      const odooLoc = record.location_id;
+      if (!odooProd || !odooLoc || !record.id) continue;
+
+      const odooProdId = odooProd.id;
+      const odooLocId = odooLoc.id;
+
+      const lotName = record.lot_id
+        ? record.lot_id.display_name || null
+        : null;
+      const quantity = Number(record.quantity) || 0.0;
+      const reservedQuantity = Number(record.reserved_quantity) || 0.0;
+      const availableQuantity = Number(record.available_quantity) || 0.0;
+      const secondaryUnitQty =
+        record.sh_secondary_unit_qty !== undefined
+          ? Number(record.sh_secondary_unit_qty) || 0.0
+          : 0.0;
+
+      quantsToCreate.push({
+        id: record.id,
+        inventoryId: odooProdId,
+        locationId: odooLocId,
+        quantity,
+        reservedQuantity,
+        availableQuantity,
+        secondaryUnitQty,
+        lotName,
+      });
+    }
+
+    // Bulk Insert Quants
+    if (quantsToCreate.length > 0) {
+      await tx.quant.createMany({
+        data: quantsToCreate,
+        skipDuplicates: true,
+      });
+
+
     }
   }
 

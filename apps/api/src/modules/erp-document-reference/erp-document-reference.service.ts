@@ -4,10 +4,10 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma/prisma.service';
-import { OdooClient } from '../odoo/odoo-client';
-import { OdooSessionManager } from '../odoo/odoo-session.manager';
-import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
+import { PrismaService } from '@/core/prisma/prisma.service';
+import { OdooClient } from '@/modules/odoo/odoo-client';
+import { OdooSessionManager } from '@/modules/odoo/odoo-session.manager';
+import { WarehouseContextService } from '@/core/warehouse-context/warehouse-context.service';
 import { getLocalStartOfDay, getLocalEndOfDay } from '@/core/utils/date';
 
 @Injectable()
@@ -61,6 +61,49 @@ export class ErpDocumentReferenceService {
       `[SYNC-TRIGGER] Warehouse ${warehouseId} — triggered by ${createdBy}`,
     );
 
+    // Check if there is already a running/pending sync for this warehouse
+    const activeSync = await this.prisma.odooSyncLog.findFirst({
+      where: {
+        warehouseId,
+        status: { in: ['PENDING', 'RUNNING'] },
+      },
+    });
+
+    if (activeSync) {
+      // Check if it has been running for more than 15 minutes (stuck sync)
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+      if (activeSync.createdAt < fifteenMinutesAgo) {
+        this.logger.warn(
+          `[SYNC-TRIGGER] Found stuck sync log ID ${activeSync.id} (started at ${activeSync.createdAt}). Marking as FAILED.`,
+        );
+        await this.prisma.odooSyncLog.update({
+          where: { id: activeSync.id },
+          data: {
+            status: 'FAILED',
+            errorMessage: 'Sync timed out / server restarted.',
+            finishedAt: new Date(),
+          },
+        });
+      } else {
+        return { message: 'Sync already in progress' };
+      }
+    }
+
+    // Validate that OdooAccount exists and is active BEFORE starting the background job
+    const account = await this.prisma.odooAccount.findUnique({
+      where: { warehouseId },
+    });
+
+    if (!account) {
+      throw new NotFoundException(
+        'Akun Odoo untuk gudang aktif ini belum dikonfigurasi.',
+      );
+    }
+
+    if (!account.isActive) {
+      throw new BadRequestException('Akun Odoo untuk gudang ini tidak aktif.');
+    }
+
     // 1. Create the sync log entry in DB
     const log = await this.prisma.odooSyncLog.create({
       data: {
@@ -92,32 +135,17 @@ export class ErpDocumentReferenceService {
    * Fetch current sync status and progress metrics.
    */
   async getSyncStatus(warehouseId: number) {
-    const latestLog = await this.prisma.odooSyncLog.findFirst({
+    const lastSync = await this.prisma.odooSyncLog.findFirst({
       where: { warehouseId },
-      orderBy: { startedAt: 'desc' },
-    });
-
-    if (!latestLog) {
-      return {
-        status: 'SUCCESS',
-        processedDocuments: 0,
-        totalDocuments: 0,
-        startedAt: null,
-        lastSyncAt: null,
-      };
-    }
-
-    const lastSuccess = await this.prisma.odooSyncLog.findFirst({
-      where: { warehouseId, status: 'SUCCESS' },
-      orderBy: { finishedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
 
     return {
-      status: latestLog.status,
-      processedDocuments: latestLog.processedDocuments,
-      totalDocuments: latestLog.totalDocuments,
-      startedAt: latestLog.startedAt,
-      lastSyncAt: lastSuccess?.finishedAt || null,
+      status: lastSync?.status || null,
+      processedDocuments: lastSync?.processedDocuments ?? 0,
+      totalDocuments: lastSync?.totalDocuments ?? 0,
+      startedAt: lastSync?.createdAt || null,
+      lastSyncAt: lastSync?.updatedAt || null,
     };
   }
 
@@ -178,17 +206,32 @@ export class ErpDocumentReferenceService {
       throw new BadRequestException(errorMsg);
     }
 
+    const odooReference = account.warehouse?.odooReference;
+    if (!odooReference) {
+      const errorMsg = 'Referensi Odoo untuk gudang ini belum dikonfigurasi.';
+      this.logger.error(`[SYNC-JOB] ${errorMsg}`);
+      await this.prisma.odooSyncLog.update({
+        where: { id: logId },
+        data: {
+          status: 'FAILED',
+          errorMessage: errorMsg,
+          finishedAt: new Date(),
+        },
+      });
+      throw new BadRequestException(errorMsg);
+    }
+
+    const domain = [['picking_type_id.warehouse_id.code', '=', odooReference]];
+
     this.logger.log(
-      `[SYNC-JOB] OdooAccount found: ID=${account.id}, baseUrl=${account.baseUrl}, lastOffset=${account.lastDocumentsOffset}`,
+      `[SYNC-JOB] OdooAccount found: ID=${account.id}, baseUrl=${account.baseUrl}, lastOffset=${account.lastDocumentsOffset}, odooReference=${odooReference}`,
     );
 
     // 2. Fetch PO & SO documents in Odoo using pagination
     const limit = 100;
-    let offset = account.lastDocumentsOffset ?? 0;
-    let syncedCount = 0;
 
     // Best-effort: Get total count matching domain for progress bar calculation
-    let totalDocuments = offset;
+    let totalDocuments = 0;
     try {
       const totalCount = await this.safeOdooCall(
         warehouseId,
@@ -196,18 +239,28 @@ export class ErpDocumentReferenceService {
         'search_count',
         [],
         {
-          domain: [],
+          domain,
         },
       );
 
-      totalDocuments = totalCount?.result;
+      totalDocuments = totalCount;
+
       this.logger.log(
-        `[SYNC-JOB] Total matching documents in Odoo: ${totalCount}`,
+        `[SYNC-JOB] Total matching documents in Odoo for warehouse ${odooReference}: ${totalCount}`,
       );
     } catch (err: any) {
       this.logger.warn(
         `[SYNC-JOB] Failed to fetch total document count: ${err.message}`,
       );
+    }
+
+    let offset = account.lastDocumentsOffset ?? 0;
+    // Reset offset if it exceeds totalDocuments to prevent syncing nothing
+    if (offset > totalDocuments) {
+      this.logger.log(
+        `[SYNC-JOB] Offset ${offset} exceeds total documents ${totalDocuments}. Resetting offset to 0.`,
+      );
+      offset = 0;
     }
 
     // Update log total count
@@ -217,6 +270,7 @@ export class ErpDocumentReferenceService {
     });
 
     try {
+      let syncedCount = 0;
       while (true) {
         this.logger.log(
           `[SYNC-JOB] Fetching PO documents: offset=${offset}, limit=${limit}`,
@@ -228,7 +282,7 @@ export class ErpDocumentReferenceService {
           'web_search_read',
           [],
           {
-            domain: [],
+            domain,
             specification: {
               id: {},
               name: {},
@@ -259,7 +313,7 @@ export class ErpDocumentReferenceService {
             },
             offset,
             limit,
-            order: 'scheduled_date desc',
+            order: 'scheduled_date asc',
             count_limit: 999_999,
           },
         );
@@ -284,6 +338,8 @@ export class ErpDocumentReferenceService {
 
         syncedCount += records.length;
         offset += records.length;
+
+        console.log(`offset`, offset)
 
         // Update OdooAccount offset
         await this.prisma.odooAccount.update({
@@ -556,7 +612,7 @@ export class ErpDocumentReferenceService {
         skip,
         take: limit,
         orderBy: [
-          { scheduledDate: 'desc' },
+          { scheduledDate: { sort: 'desc', nulls: 'last' } },
           { id: 'desc' },
         ],
         include: {
@@ -752,7 +808,7 @@ export class ErpDocumentReferenceService {
     return this.sanitizeDocReference(updatedDoc);
   }
 
-  private async upsertDocumentRecord(
+  public async upsertDocumentRecord(
     tx: any,
     record: any,
     warehouseId: number,
@@ -1128,5 +1184,100 @@ export class ErpDocumentReferenceService {
 
       throw err;
     }
+  }
+
+  private stripIdField(obj: any): any {
+    if (obj === null || obj === undefined) return obj;
+    if (obj instanceof Date) return obj;
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.stripIdField(item));
+    }
+    if (typeof obj === 'object') {
+      const isProduct = 'sku' in obj && 'name' in obj;
+      const isGateOpProduct = 'gateOperationId' in obj && 'inventoryId' in obj;
+
+      const newObj: any = {};
+      for (const key of Object.keys(obj)) {
+        if (
+          key === 'id' &&
+          !isProduct &&
+          !isGateOpProduct
+        )
+          continue;
+        newObj[key] = this.stripIdField(obj[key]);
+      }
+      return newObj;
+    }
+    return obj;
+  }
+
+  async getRealizationHistory(warehouseId: number, uuid: string) {
+    const doc = await this.prisma.documentReference.findFirst({
+      where: { warehouseId, uuid },
+      include: { items: true },
+    });
+
+    if (!doc) {
+      throw new NotFoundException('Dokumen ERP tidak ditemukan.');
+    }
+
+    const otherOps = await this.prisma.gateOperation.findMany({
+      where: {
+        documentReferenceId: doc.id,
+      },
+      include: {
+        products: {
+          include: { inventory: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const docItemsSummary = await Promise.all(
+      doc.items.map(async (docItem) => {
+        const aggregate = await this.prisma.gateOperationProduct.aggregate({
+          where: {
+            inventoryId: docItem.inventoryId,
+            gateOperation: {
+              documentReferenceId: doc.id,
+              status: { notIn: ['CANCELED', 'REJECTED'] },
+            },
+          },
+          _sum: { quantity: true },
+        });
+
+        const erpQty = docItem.productQty || 0;
+        const totalRealized = aggregate._sum.quantity || 0;
+        const remainingQty = Math.max(0, erpQty - totalRealized);
+
+        const inventory = await this.prisma.inventory.findUnique({
+          where: { id: docItem.inventoryId },
+          select: { sku: true },
+        });
+
+        let status = 'PENDING';
+        if (totalRealized >= erpQty) {
+          status = 'COMPLETED';
+        } else if (totalRealized > 0) {
+          status = 'PARTIAL';
+        }
+
+        return {
+          productId: docItem.inventoryId,
+          productName: docItem.productName,
+          sku: inventory?.sku || docItem.analyticAccountName || '',
+          uom: docItem.uom,
+          erpQty,
+          realizedQty: totalRealized,
+          remainingQty,
+          status,
+        };
+      }),
+    );
+
+    return this.stripIdField({
+      otherOperations: otherOps,
+      summary: docItemsSummary,
+    });
   }
 }

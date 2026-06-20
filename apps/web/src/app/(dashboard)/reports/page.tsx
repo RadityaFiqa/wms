@@ -1,23 +1,20 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useReports, useReportDetail } from "@/hooks/useReports";
+import React, { useState } from "react";
+import { useReports } from "@/hooks/useReports";
 import { useProducts } from "@/hooks/useInventory";
 import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
 import {
   BarChart3,
-  Calendar,
-  FileText,
   Download,
-  Search,
+  FileText,
   Filter,
-  ArrowRightLeft,
-  X,
-  ExternalLink,
   ChevronRight,
   TrendingDown,
   TrendingUp,
+  MapPin,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -43,6 +40,7 @@ export default function ReportsPage() {
   const [productId, setProductId] = useState("");
   const [category, setCategory] = useState("");
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
+  
   const toggleRow = (idx: number) => {
     setExpandedRows((prev) => ({
       ...prev,
@@ -90,7 +88,7 @@ export default function ReportsPage() {
             Laporan Mutasi Persediaan
           </h1>
           <p className="text-slate-500 mt-1 text-sm">
-            Pantau pergerakan saldo awal, stok masuk, keluar, dan saldo akhir
+            Pantau pergerakan stok awal, stok masuk, keluar, dan stok akhir
             harian produk untuk gudang:{" "}
             <span className="font-semibold text-blue-600">
               {activeWarehouse?.name || "Belum Dipilih"}
@@ -103,7 +101,7 @@ export default function ReportsPage() {
           <button
             onClick={handleExportCsv}
             disabled={isLoading || reportData.length === 0}
-            className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50"
+            className="flex items-center justify-center bg-white border border-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50"
           >
             <Download className="h-4.5 w-4.5 mr-2 text-slate-500" />
             Ekspor Excel
@@ -122,7 +120,7 @@ export default function ReportsPage() {
 
       {/* Filters Card */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center gap-2 font-bold text-sm text-slate-700 dark:text-slate-350">
+        <div className="flex items-center gap-2 font-bold text-sm text-slate-700 dark:text-slate-300">
           <Filter className="h-4.5 w-4.5 text-slate-500" />
           <span>Atur Kriteria Laporan</span>
         </div>
@@ -136,7 +134,7 @@ export default function ReportsPage() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
             />
           </div>
 
@@ -149,7 +147,7 @@ export default function ReportsPage() {
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
             />
           </div>
 
@@ -161,7 +159,7 @@ export default function ReportsPage() {
             <select
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
             >
               <option value="">Semua Produk</option>
               {products.map((p: any) => (
@@ -182,7 +180,7 @@ export default function ReportsPage() {
               placeholder="Ketik Kategori (misal: Beras)"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
             />
           </div>
         </div>
@@ -194,14 +192,12 @@ export default function ReportsPage() {
           <table className="w-full text-left border-collapse table-layout-fixed">
             <thead className="bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
               <tr className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[20%]">Tanggal</th>
-                <th className="px-6 py-4 w-[40%]">Produk</th>
-                <th className="px-6 py-4 text-right w-[20%]">
-                  Incoming (Masuk)
-                </th>
-                <th className="px-6 py-4 text-right w-[20%]">
-                  Outgoing (Keluar)
-                </th>
+                <th className="px-6 py-4 w-[15%]">Tanggal</th>
+                <th className="px-6 py-4 w-[29%]">Produk</th>
+                <th className="px-6 py-4 text-right w-[14%]">Stock Awal</th>
+                <th className="px-6 py-4 text-right w-[14%]">Masuk</th>
+                <th className="px-6 py-4 text-right w-[14%]">Keluar</th>
+                <th className="px-6 py-4 text-right w-[14%]">Stock Akhir</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -220,12 +216,18 @@ export default function ReportsPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-12 ml-auto"></div>
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-12 ml-auto"></div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-12 ml-auto"></div>
+                    </td>
                   </tr>
                 ))
               ) : reportData.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={6}
                     className="px-6 py-16 text-center text-slate-400 font-medium"
                   >
                     Tidak ada data mutasi persediaan untuk periode dan kriteria
@@ -242,7 +244,7 @@ export default function ReportsPage() {
                     <React.Fragment key={idx}>
                       <tr
                         onClick={() => toggleRow(idx)}
-                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800/80 transition text-slate-700 dark:text-slate-350 cursor-pointer ${
+                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800/80 transition text-slate-700 dark:text-slate-300 cursor-pointer ${
                           isExpanded ? "bg-slate-50/20 dark:bg-slate-800/10" : ""
                         }`}
                       >
@@ -268,15 +270,21 @@ export default function ReportsPage() {
                             {row.product.sku}
                           </div>
                         </td>
+                        <td className="px-6 py-4 text-right font-semibold text-slate-600 dark:text-slate-400">
+                          {row.openingStock.toLocaleString("id-ID")}{" "}
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            {row.product.uom}
+                          </span>
+                        </td>
                         <td
                           className={`px-6 py-4 text-right font-extrabold ${
                             hasIncoming
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-slate-400 dark:text-slate-600"
+                              ? "text-emerald-650 dark:text-emerald-400"
+                              : "text-slate-400"
                           }`}
                         >
                           {hasIncoming ? (
-                            <span className="flex items-center justify-end gap-1.5">
+                            <span className="flex items-center justify-end gap-1">
                               +{row.incoming.toLocaleString("id-ID")}
                               <TrendingUp className="h-3.5 w-3.5" />
                             </span>
@@ -287,12 +295,12 @@ export default function ReportsPage() {
                         <td
                           className={`px-6 py-4 text-right font-extrabold ${
                             hasOutgoing
-                              ? "text-red-655 dark:text-red-400"
-                              : "text-slate-400 dark:text-slate-600"
+                              ? "text-red-650 dark:text-red-400"
+                              : "text-slate-400"
                           }`}
                         >
                           {hasOutgoing ? (
-                            <span className="flex items-center justify-end gap-1.5">
+                            <span className="flex items-center justify-end gap-1">
                               -{row.outgoing.toLocaleString("id-ID")}
                               <TrendingDown className="h-3.5 w-3.5" />
                             </span>
@@ -300,96 +308,209 @@ export default function ReportsPage() {
                             "0"
                           )}
                         </td>
+                        <td className="px-6 py-4 text-right font-bold text-slate-805 dark:text-slate-105">
+                          {row.closingStock.toLocaleString("id-ID")}{" "}
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            {row.product.uom}
+                          </span>
+                        </td>
                       </tr>
                       {isExpanded && (
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={6}
                             className="bg-slate-50/30 dark:bg-slate-900/30 px-8 py-4 border-b border-slate-100 dark:border-slate-800/80"
                           >
-                            <div className="bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
-                              <div className="bg-slate-100/70 dark:bg-slate-800/50 px-4 py-2.5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
-                                <span className="font-bold text-slate-700 dark:text-slate-350 text-xs uppercase tracking-wider">
-                                  Rincian Transaksi Truk Gerbang (Gate Operations)
-                                </span>
-                              </div>
-                              {row.transactions && row.transactions.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left border-collapse">
-                                    <thead>
-                                      <tr className="bg-slate-50/30 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                        <th className="px-5 py-3">Nomor Operasi</th>
-                                        <th className="px-5 py-3 text-center">Tipe</th>
-                                        <th className="px-5 py-3">Driver & Plat</th>
-                                        <th className="px-5 py-3">Dokumen Referensi</th>
-                                        <th className="px-5 py-3 text-right">Kuantitas</th>
-                                        <th className="px-5 py-3 text-center">Aksi</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                                      {row.transactions.map((tx: any, txIdx: number) => (
-                                        <tr
-                                          key={txIdx}
-                                          className="hover:bg-slate-50/20 dark:hover:bg-slate-800/10 transition bg-white dark:bg-slate-900/40"
-                                        >
-                                          <td className="px-5 py-3 font-mono font-bold text-slate-800 dark:text-slate-250">
-                                            {tx.opNumber}
-                                          </td>
-                                          <td className="px-5 py-3 text-center">
-                                            <span
-                                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                                tx.cardType === "IN"
-                                                  ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
-                                                  : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
-                                              }`}
-                                            >
-                                              {tx.cardType === "IN" ? "Masuk" : "Keluar"}
-                                            </span>
-                                          </td>
-                                          <td className="px-5 py-3 text-slate-700 dark:text-slate-300">
-                                            <strong className="font-bold">{tx.driverName}</strong> ({tx.licensePlate})
-                                          </td>
-                                          <td className="px-5 py-3">
-                                            <span className="font-mono text-[10px] text-slate-650 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/40 dark:border-slate-700/40">
-                                              {tx.referenceDocument}
-                                            </span>
-                                          </td>
-                                          <td
-                                            className={`px-5 py-3 text-right font-bold text-sm ${
-                                              tx.cardType === "IN"
-                                                ? "text-emerald-600 dark:text-emerald-400"
-                                                : "text-red-655 dark:text-red-400"
-                                            }`}
-                                          >
-                                            {tx.cardType === "IN" ? "+" : "-"}
-                                            {tx.quantity.toLocaleString("id-ID")}{" "}
-                                            <span className="text-slate-400 font-normal text-[10px] ml-0.5">
-                                              {row.product.uom}
-                                            </span>
-                                          </td>
-                                          <td className="px-5 py-3 text-center">
-                                            {tx.uuid ? (
-                                              <Link
-                                                href={`/gate-operations/${tx.uuid}`}
-                                                className="inline-flex items-center justify-center p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition cursor-pointer"
-                                                title="Lihat Detail Operasi Gerbang"
-                                              >
-                                                <ExternalLink className="h-4.5 w-4.5" />
-                                              </Link>
-                                            ) : (
-                                              <span className="text-slate-350">-</span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-slate-450 italic p-4 text-center">
-                                  Tidak ada data transaksi terperinci.
-                                </p>
-                              )}
+                            <div className="space-y-6">
+                              {row.locations.map((loc: any, locIdx: number) => {
+                                const hasLocIn = loc.inOperations && loc.inOperations.length > 0;
+                                const hasLocOut = loc.outOperations && loc.outOperations.length > 0;
+
+                                return (
+                                  <div
+                                    key={locIdx}
+                                    className="bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs"
+                                  >
+                                    {/* Location Header and Summary */}
+                                    <div className="bg-slate-100/70 dark:bg-slate-800/50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 dark:border-slate-800">
+                                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                        <MapPin className="h-4.5 w-4.5 text-blue-500 shrink-0" />
+                                        {loc.locationName}
+                                      </span>
+                                      
+                                      <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                                        <span className="bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-350 px-2 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
+                                          Stok Awal: {loc.openingStock.toLocaleString("id-ID")} {row.product.uom}
+                                        </span>
+                                        <span className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-100/30 dark:border-emerald-900/20">
+                                          Total Masuk: +{loc.totalIn.toLocaleString("id-ID")} {row.product.uom}
+                                        </span>
+                                        <span className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 px-2 py-0.5 rounded border border-red-100/30 dark:border-red-900/20">
+                                          Total Keluar: -{loc.totalOut.toLocaleString("id-ID")} {row.product.uom}
+                                        </span>
+                                        <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded border border-blue-100/30 dark:border-blue-900/20">
+                                          Stok Akhir: {loc.closingStock.toLocaleString("id-ID")} {row.product.uom}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Gate Operations Lists */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-slate-800">
+                                      {/* Incoming operations (IN) */}
+                                      <div className="p-4 space-y-2">
+                                        <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
+                                          <TrendingUp className="h-4 w-4 text-emerald-555 shrink-0" />
+                                          Transaksi Masuk (IN Gate Operations)
+                                        </h4>
+                                        {hasLocIn ? (
+                                          <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
+                                            <table className="w-full text-left border-collapse text-xs">
+                                              <thead>
+                                                <tr className="bg-slate-50/50 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                  <th className="px-3 py-2 w-[18%]">Waktu</th>
+                                                  <th className="px-3 py-2 w-[17%]">No. Tiket</th>
+                                                  <th className="px-3 py-2 w-[22%]">Driver & Plat</th>
+                                                  <th className="px-3 py-2 w-[12%]">Stack</th>
+                                                  <th className="px-3 py-2 w-[11%]">Status</th>
+                                                  <th className="px-3 py-2 w-[12%]">Ref Dokumen</th>
+                                                  <th className="px-3 py-2 text-right w-[8%]">Qty</th>
+                                                  <th className="px-3 py-2 text-center w-[8%]">Detail</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                {loc.inOperations.map((tx: any, txIdx: number) => (
+                                                  <tr key={txIdx} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/10 transition">
+                                                    <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">
+                                                      {new Date(tx.createdAt).toLocaleString("id-ID", {
+                                                        day: "numeric",
+                                                        month: "short",
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                      })}
+                                                    </td>
+                                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px]">
+                                                      {tx.opNumber}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-slate-650 dark:text-slate-350 text-[11px]">
+                                                      {tx.driverName} ({tx.licensePlate})
+                                                    </td>
+                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
+                                                      {tx.stack || "-"}
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                                        tx.status === "VERIFIED"
+                                                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-450"
+                                                          : "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-450"
+                                                      }`}>
+                                                        {tx.status}
+                                                      </span>
+                                                    </td>
+                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
+                                                      {tx.referenceDocument || "-"}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-bold text-emerald-600 dark:text-emerald-450 text-[11px]">
+                                                      +{tx.quantity.toLocaleString("id-ID")}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-center">
+                                                      <Link
+                                                        href={`/gate-operations/${tx.uuid}`}
+                                                        className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-450 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
+                                                      >
+                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                      </Link>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        ) : (
+                                          <p className="text-xs text-slate-400 italic py-4 text-center">
+                                            Tidak ada transaksi masuk di lokasi ini.
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      {/* Outgoing operations (OUT) */}
+                                      <div className="p-4 space-y-2">
+                                        <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
+                                          <TrendingDown className="h-4 w-4 text-red-555 shrink-0" />
+                                          Transaksi Keluar (OUT Gate Operations)
+                                        </h4>
+                                        {hasLocOut ? (
+                                          <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
+                                            <table className="w-full text-left border-collapse text-xs">
+                                              <thead>
+                                                <tr className="bg-slate-50/50 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                  <th className="px-3 py-2 w-[18%]">Waktu</th>
+                                                  <th className="px-3 py-2 w-[17%]">No. Tiket</th>
+                                                  <th className="px-3 py-2 w-[22%]">Driver & Plat</th>
+                                                  <th className="px-3 py-2 w-[12%]">Stack</th>
+                                                  <th className="px-3 py-2 w-[11%]">Status</th>
+                                                  <th className="px-3 py-2 w-[12%]">Ref Dokumen</th>
+                                                  <th className="px-3 py-2 text-right w-[8%]">Qty</th>
+                                                  <th className="px-3 py-2 text-center w-[8%]">Detail</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                {loc.outOperations.map((tx: any, txIdx: number) => (
+                                                  <tr key={txIdx} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/10 transition">
+                                                    <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">
+                                                      {new Date(tx.createdAt).toLocaleString("id-ID", {
+                                                        day: "numeric",
+                                                        month: "short",
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                      })}
+                                                    </td>
+                                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px]">
+                                                      {tx.opNumber}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-slate-650 dark:text-slate-350 text-[11px]">
+                                                      {tx.driverName} ({tx.licensePlate})
+                                                    </td>
+                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
+                                                      {tx.stack || "-"}
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                                        tx.status === "VERIFIED"
+                                                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-450"
+                                                          : "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-450"
+                                                      }`}>
+                                                        {tx.status}
+                                                      </span>
+                                                    </td>
+                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
+                                                      {tx.referenceDocument || "-"}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-bold text-red-650 dark:text-red-450 text-[11px]">
+                                                      -{tx.quantity.toLocaleString("id-ID")}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-center">
+                                                      <Link
+                                                        href={`/gate-operations/${tx.uuid}`}
+                                                        className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-455 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
+                                                      >
+                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                      </Link>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        ) : (
+                                          <p className="text-xs text-slate-400 italic py-4 text-center">
+                                            Tidak ada transaksi keluar di lokasi ini.
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </td>
                         </tr>

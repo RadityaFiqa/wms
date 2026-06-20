@@ -151,7 +151,7 @@ export declare const UpdateOdooAccountSchema: z.ZodObject<{
 }>;
 export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
 export declare const CardTypeEnum: z.ZodEnum<["IN", "OUT"]>;
-export declare const VerificationStatusEnum: z.ZodEnum<["PENDING", "PARTIAL", "COMPLETED", "CANCELED"]>;
+export declare const VerificationStatusEnum: z.ZodEnum<["PENDING", "CANCELED", "VERIFIED", "REJECTED"]>;
 export declare const GateOperationProductSchema: z.ZodObject<{
     productId: z.ZodNumber;
     quantity: z.ZodNumber;
@@ -226,7 +226,7 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
 }>;
 export type CreateGateOperationInput = z.infer<typeof CreateGateOperationSchema>;
 export declare const CreateGateVerificationSchema: z.ZodObject<{
-    status: z.ZodEnum<["PENDING", "PARTIAL", "COMPLETED", "CANCELED"]>;
+    status: z.ZodEnum<["PENDING", "CANCELED", "VERIFIED", "REJECTED"]>;
     notes: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
     attachmentPaths: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     products: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -245,11 +245,9 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
     }>, "many">>>;
-    poReferences: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
-    soReferences: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELED";
+    status: "PENDING" | "CANCELED" | "VERIFIED" | "REJECTED";
     attachmentPaths: string[];
     products: {
         productId: number;
@@ -257,12 +255,10 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
     }[];
-    poReferences: string[];
-    soReferences: string[];
     notes?: string | null | undefined;
     documentReferenceId?: number | null | undefined;
 }, {
-    status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELED";
+    status: "PENDING" | "CANCELED" | "VERIFIED" | "REJECTED";
     notes?: string | null | undefined;
     attachmentPaths?: string[] | undefined;
     products?: {
@@ -272,36 +268,8 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         locationId?: number | null | undefined;
     }[] | undefined;
     documentReferenceId?: number | null | undefined;
-    poReferences?: string[] | undefined;
-    soReferences?: string[] | undefined;
 }>;
 export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
-export declare const AssignReferencesSchema: z.ZodObject<{
-    gateItemId: z.ZodNumber;
-    assignments: z.ZodArray<z.ZodObject<{
-        erpDocumentItemId: z.ZodNumber;
-        assignedQuantity: z.ZodNumber;
-    }, "strip", z.ZodTypeAny, {
-        erpDocumentItemId: number;
-        assignedQuantity: number;
-    }, {
-        erpDocumentItemId: number;
-        assignedQuantity: number;
-    }>, "many">;
-}, "strip", z.ZodTypeAny, {
-    gateItemId: number;
-    assignments: {
-        erpDocumentItemId: number;
-        assignedQuantity: number;
-    }[];
-}, {
-    gateItemId: number;
-    assignments: {
-        erpDocumentItemId: number;
-        assignedQuantity: number;
-    }[];
-}>;
-export type AssignReferencesInput = z.infer<typeof AssignReferencesSchema>;
 export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     search: z.ZodOptional<z.ZodString>;
     page: z.ZodOptional<z.ZodNumber>;

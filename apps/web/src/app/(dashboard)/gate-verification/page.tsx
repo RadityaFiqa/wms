@@ -42,7 +42,7 @@ export default function GateVerificationListPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [cardType, setCardType] = useState("");
-  const [status, setStatus] = useState("PENDING,PARTIAL");
+  const [status, setStatus] = useState("PENDING");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
@@ -79,16 +79,16 @@ export default function GateVerificationListPage() {
             Pending
           </span>
         );
-      case "PARTIAL":
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            Partial
-          </span>
-        );
-      case "COMPLETED":
+      case "VERIFIED":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Completed
+            Verified
+          </span>
+        );
+      case "REJECTED":
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+            Rejected
           </span>
         );
       case "CANCELED":
@@ -179,13 +179,10 @@ export default function GateVerificationListPage() {
                 }}
                 className="bg-transparent border-none text-sm text-slate-600 focus:outline-none py-1.5 cursor-pointer font-medium"
               >
-                <option value="PENDING,PARTIAL">
-                  Antrean (Pending/Partial)
-                </option>
-                <option value="PENDING">Pending</option>
-                <option value="PARTIAL">Partial</option>
-                <option value="COMPLETED">Completed</option>
+                <option value="PENDING">Pending (Antrean)</option>
                 <option value="CANCELED">Canceled</option>
+                <option value="VERIFIED">Verified</option>
+                <option value="REJECTED">Rejected</option>
                 <option value="">Semua Status</option>
               </select>
             </div>
@@ -413,7 +410,7 @@ function GateVerificationRow({
             className="inline-flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition cursor-pointer"
           >
             <ShieldCheck className="h-4 w-4 mr-1.5" />
-            {item.status === "COMPLETED" || item.status === "CANCELED"
+            {item.status === "VERIFIED" || item.status === "CANCELED" || item.status === "REJECTED"
               ? "Detail"
               : "Verifikasi"}
           </Link>
@@ -430,7 +427,6 @@ function GateVerificationRow({
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-2">Nama Produk</th>
-                    <th className="px-4 py-2 text-right">ERP Qty</th>
                     <th className="px-4 py-2 text-right">Cargo Qty</th>
                   </tr>
                 </thead>
@@ -454,9 +450,6 @@ function GateVerificationRow({
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-right font-black text-slate-500">
-                          {r.qtyErp.toLocaleString("id-ID")} {r.uom}
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-black text-blue-700 bg-blue-50/5">
                           {r.qtyCargo.toLocaleString("id-ID")} {r.uom}
                         </td>
                       </tr>

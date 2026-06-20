@@ -7,46 +7,31 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 31.8s
-  Running TypeScript ...
-  Finished TypeScript in 33.1s ...
-  Collecting page data using 7 workers ...
-  Generating static pages using 7 workers (0/22) ...
-  Generating static pages using 7 workers (5/22) 
-  Generating static pages using 7 workers (10/22) 
-  Generating static pages using 7 workers (16/22) 
-✓ Generating static pages using 7 workers (22/22) in 4.8s
-  Finalizing page optimization ...
+Turbopack build encountered 1 warnings:
+[next]/internal/font/google/geist_a71539c9.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap
 
-Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ○ /audit-logs
-├ ƒ /document-verification/[token]
-├ ○ /erp-documents
-├ ƒ /erp-documents/[uuid]
-├ ○ /forgot-password
-├ ○ /gate-operations
-├ ƒ /gate-operations/[uuid]
-├ ○ /gate-operations/new
-├ ○ /gate-verification
-├ ƒ /gate-verification/[uuid]
-├ ○ /inventory
-├ ○ /login
-├ ○ /odoo
-├ ○ /profile
-├ ○ /reconciliation
-├ ○ /reports
-├ ○ /reset-password
-├ ○ /roles
-├ ƒ /sign-document/[type]/[uuid]
-├ ○ /signed-documents
-├ ○ /stock-opname
-├ ƒ /stock-opname/[uuid]
-├ ○ /users
-└ ○ /warehouses
+Import trace:
+  Server Component:
+    [next]/internal/font/google/geist_a71539c9.module.css
+    [next]/internal/font/google/geist_a71539c9.js
+    ./apps/web/src/app/layout.tsx
 
 
-○  (Static)   prerendered as static content
-ƒ  (Dynamic)  server-rendered on demand
 
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+[next]/internal/font/google/geist_a71539c9.module.css
+next/font: error:
+Failed to fetch `Geist` from Google Fonts.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/geist_a71539c9.module.css
+    [next]/internal/font/google/geist_a71539c9.js
+    ./apps/web/src/app/layout.tsx
+
+
+    at ignore-listed frames
+ ELIFECYCLE  Command failed with exit code 1.

@@ -39,6 +39,7 @@ interface AddCargoItemDrawerProps {
     uom: string;
     uuid?: string;
   } | null;
+  documentReferenceItems?: any[];
 }
 
 export function AddCargoItemDrawer({
@@ -47,6 +48,7 @@ export function AddCargoItemDrawer({
   cardType,
   onAdd,
   editData,
+  documentReferenceItems,
 }: AddCargoItemDrawerProps) {
   // 1. Component State
   const [selectedProduct, setSelectedProduct] = useState<{
@@ -64,6 +66,20 @@ export function AddCargoItemDrawer({
   const [selectedStack, setSelectedStack] = useState<any>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const allowedProductIds = useMemo(() => {
+    if (!documentReferenceItems) return undefined;
+    return documentReferenceItems.map((item: any) => item.productId || item.inventoryId).filter(Boolean);
+  }, [documentReferenceItems]);
+
+  const erpItem = useMemo(() => {
+    if (!documentReferenceItems || !selectedProduct) return null;
+    return documentReferenceItems.find(
+      (item: any) =>
+        item.productId === selectedProduct.id ||
+        item.inventoryId === selectedProduct.id,
+    );
+  }, [documentReferenceItems, selectedProduct]);
 
   // 2. Data Fetching
   const { locations: allWarehouseLocations } = useWarehouseLocations();
@@ -283,10 +299,21 @@ export function AddCargoItemDrawer({
       }
     }
 
-    return null;
-  }, [quantity, selectedStack, selectedQuantId, cardType]);
+    if (erpItem) {
+      let allowedQty = erpItem.remainingQty;
+      if (editData && editData.productId === selectedProduct?.id) {
+        allowedQty += editData.quantity;
+      }
+      if (quantity > allowedQty) {
+        return `Kuantitas melebihi sisa kuantitas pada dokumen ERP (Sisa: ${allowedQty} ${selectedProduct?.uom || "Unit"}).`;
+      }
+    }
 
-  const isValid = selectedProduct && (cardType === "IN" ? !!selectedLocationId : !!selectedQuantId) && !validationError;
+    return null;
+  }, [quantity, selectedStack, selectedQuantId, cardType, erpItem, editData, selectedProduct]);
+
+  const isStep2Completed = cardType === "IN" ? !!selectedLocationId : !!selectedQuantId;
+  const isValid = selectedProduct && isStep2Completed && !validationError;
 
   const handleAddSubmit = async () => {
     if (!isValid || !selectedProduct) return;
@@ -380,6 +407,7 @@ export function AddCargoItemDrawer({
               <ProductSelector
                 value={selectedProduct?.id || 0}
                 onlyAvailable={cardType === "OUT"}
+                allowedProductIds={allowedProductIds}
                 onChange={(id, productData) => {
                   if (productData) {
                     setSelectedProduct({
@@ -535,7 +563,7 @@ export function AddCargoItemDrawer({
           {/* STEP 3: Input Quantity */}
           <div
             className={`bg-white border rounded-xl p-4 space-y-3 shadow-xs transition ${
-              selectedQuantId
+              isStep2Completed
                 ? "border-slate-200 opacity-100"
                 : "border-slate-150 opacity-60"
             }`}
@@ -543,7 +571,7 @@ export function AddCargoItemDrawer({
             <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
               <span
                 className={`flex items-center justify-center h-5 w-5 rounded-full text-xs font-bold ${
-                  selectedQuantId
+                  isStep2Completed
                     ? "bg-blue-100 text-blue-700"
                     : "bg-slate-200 text-slate-550"
                 }`}
@@ -555,7 +583,7 @@ export function AddCargoItemDrawer({
               </h4>
             </div>
 
-            {!selectedQuantId ? (
+            {!isStep2Completed ? (
               <p className="text-[11px] text-slate-400 italic font-medium">
                 Pilih lokasi & tumpukan terlebih dahulu.
               </p>
@@ -589,9 +617,13 @@ export function AddCargoItemDrawer({
                 ) : (
                   <div className="text-[11px] font-semibold text-green-700 flex items-center">
                     <Check className="h-3.5 w-3.5 mr-1 shrink-0" />
-                    {selectedStack
-                      ? `Kuantitas valid (Tersedia: ${selectedStack.availableQuantity} ${selectedProduct?.uom || "Unit"})`
-                      : "Kuantitas input valid."}
+                    {erpItem ? (
+                      `Kuantitas valid (Sisa Dokumen ERP: ${erpItem.remainingQty} ${selectedProduct?.uom || "Unit"})`
+                    ) : selectedStack && cardType === "OUT" ? (
+                      `Kuantitas valid (Tersedia: ${selectedStack.availableQuantity} ${selectedProduct?.uom || "Unit"})`
+                    ) : (
+                      "Kuantitas input valid."
+                    )}
                   </div>
                 )}
               </div>

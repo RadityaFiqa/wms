@@ -101,9 +101,9 @@ export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
 export const CardTypeEnum = z.enum(["IN", "OUT"]);
 export const VerificationStatusEnum = z.enum([
   "PENDING",
-  "PARTIAL",
-  "COMPLETED",
   "CANCELED",
+  "VERIFIED",
+  "REJECTED",
 ]);
 
 export const GateOperationProductSchema = z.object({
@@ -143,26 +143,12 @@ export const CreateGateVerificationSchema = z.object({
     )
     .optional()
     .default([]),
-  poReferences: z.array(z.string()).optional().default([]),
-  soReferences: z.array(z.string()).optional().default([]),
   documentReferenceId: z.number().int().optional().nullable(),
 });
 export type CreateGateVerificationInput = z.infer<
   typeof CreateGateVerificationSchema
 >;
 
-export const AssignReferencesSchema = z.object({
-  gateItemId: z.number().int(),
-  assignments: z.array(
-    z.object({
-      erpDocumentItemId: z.number().int(),
-      assignedQuantity: z
-        .number()
-        .positive("Kuantitas harus lebih besar dari 0"),
-    }),
-  ),
-});
-export type AssignReferencesInput = z.infer<typeof AssignReferencesSchema>;
 
 export const ErpDocumentReferenceQuerySchema = z.object({
   search: z.string().optional(),
