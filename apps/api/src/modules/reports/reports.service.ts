@@ -89,7 +89,11 @@ export class ReportsService {
     });
 
     // Fetch all current quants to use as a fallback if no previous snapshot exists
-    const currentQuants = await this.prisma.quant.findMany();
+    const currentQuants = await this.prisma.quant.findMany({
+      where: {
+        quantity: { gt: 0 },
+      },
+    });
 
     // Fetch previous snapshots to get previous closing stock (start of yesterday - 1 day, i.e., start of day before yesterday)
     const dayBeforeYesterday = new Date(
@@ -402,6 +406,7 @@ export class ReportsService {
         quants: {
           where: {
             location: { warehouseId },
+            quantity: { gt: 0 },
           },
         },
       },
@@ -871,6 +876,7 @@ export class ReportsService {
       where: {
         inventoryId: inventory.id,
         location: { warehouseId },
+        quantity: { gt: 0 },
       },
     });
 

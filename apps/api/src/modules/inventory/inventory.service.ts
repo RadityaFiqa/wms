@@ -533,16 +533,22 @@ export class InventoryService {
       where: { warehouseId },
     });
 
-    // Clear old quants inside this warehouse's locations
     const locationIds = allLocations.map((l) => l.id);
-    await tx.quant.deleteMany({
+
+    // Get existing quants in these locations
+    const existingQuants = await tx.quant.findMany({
       where: {
         locationId: { in: locationIds },
       },
+      select: { id: true },
     });
+    const existingQuantIds = new Set<number>(existingQuants.map((q: any) => q.id));
 
-    // Prepare bulk quants
+    // Prepare quants to create and update
     const quantsToCreate: any[] = [];
+    const quantsToUpdate: any[] = [];
+    const incomingQuantIds = new Set<number>();
+
     for (const record of records) {
       const odooProd = record.product_id;
       const odooLoc = record.location_id;
@@ -550,6 +556,8 @@ export class InventoryService {
 
       const odooProdId = odooProd.id;
       const odooLocId = odooLoc.id;
+      const quantId = record.id;
+      incomingQuantIds.add(quantId);
 
       const lotName = record.lot_id
         ? record.lot_id.display_name || null
@@ -562,8 +570,8 @@ export class InventoryService {
           ? Number(record.sh_secondary_unit_qty) || 0.0
           : 0.0;
 
-      quantsToCreate.push({
-        id: record.id,
+      const quantData = {
+        id: quantId,
         inventoryId: odooProdId,
         locationId: odooLocId,
         quantity,
@@ -571,17 +579,58 @@ export class InventoryService {
         availableQuantity,
         secondaryUnitQty,
         lotName,
+      };
+
+      if (existingQuantIds.has(quantId)) {
+        quantsToUpdate.push(quantData);
+      } else {
+        quantsToCreate.push(quantData);
+      }
+    }
+
+    // Update existing quants that are still present
+    if (quantsToUpdate.length > 0) {
+      await Promise.all(
+        quantsToUpdate.map((quant) =>
+          tx.quant.update({
+            where: { id: quant.id },
+            data: {
+              inventoryId: quant.inventoryId,
+              locationId: quant.locationId,
+              quantity: quant.quantity,
+              reservedQuantity: quant.reservedQuantity,
+              availableQuantity: quant.availableQuantity,
+              secondaryUnitQty: quant.secondaryUnitQty,
+              lotName: quant.lotName,
+            },
+          }),
+        ),
+      );
+    }
+
+    // Set quants that are NOT in the incoming list to 0 quantity instead of deleting them,
+    // to preserve their references in GateOperationProduct (due to ON DELETE SET NULL)
+    const quantIdsToZero = [...existingQuantIds].filter((id) => !incomingQuantIds.has(id));
+    if (quantIdsToZero.length > 0) {
+      await tx.quant.updateMany({
+        where: {
+          id: { in: quantIdsToZero },
+        },
+        data: {
+          quantity: 0.0,
+          reservedQuantity: 0.0,
+          availableQuantity: 0.0,
+          secondaryUnitQty: 0.0,
+        },
       });
     }
 
-    // Bulk Insert Quants
+    // Bulk Insert new Quants
     if (quantsToCreate.length > 0) {
       await tx.quant.createMany({
         data: quantsToCreate,
         skipDuplicates: true,
       });
-
-
     }
   }
 
@@ -634,6 +683,9 @@ export class InventoryService {
             where: {
               location: {
                 warehouseId,
+              },
+              quantity: {
+                gt: 0,
               },
             },
             include: {
@@ -725,6 +777,9 @@ export class InventoryService {
             location: {
               warehouseId,
             },
+            quantity: {
+              gt: 0,
+            },
           },
           include: {
             location: true,
@@ -798,6 +853,7 @@ export class InventoryService {
       quants: {
         some: {
           location: { warehouseId },
+          quantity: { gt: 0 },
         },
       },
     };
@@ -817,6 +873,9 @@ export class InventoryService {
           where: {
             location: {
               warehouseId,
+            },
+            quantity: {
+              gt: 0,
             },
           },
           include: {
