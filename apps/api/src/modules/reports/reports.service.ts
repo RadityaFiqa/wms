@@ -88,6 +88,90 @@ export class ReportsService {
       },
     });
 
+    // Fetch all completed Document References in the system (up to the snapshot end date)
+    const completedDocs = await this.prisma.documentReference.findMany({
+      where: {
+        state: 'done',
+        OR: [
+          { dateDone: { lte: end } },
+          { dateDone: null, updatedAt: { lte: end } },
+        ],
+        gateOperations: {
+          some: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+        },
+      },
+      include: {
+        items: true,
+        gateOperations: {
+          where: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+          include: {
+            products: true,
+          },
+        },
+      },
+    });
+
+    const locationAdjustmentsMap = new Map<string, number>();
+
+    for (const doc of completedDocs) {
+      const pickingTypeCode = doc.pickingTypeCode;
+      if (pickingTypeCode !== 'incoming' && pickingTypeCode !== 'outgoing') {
+        continue;
+      }
+
+      // Group gate operations products by inventoryId
+      const docGateProductsMap = new Map<number, { total: number; locations: Map<number, number> }>();
+      for (const op of doc.gateOperations) {
+        for (const gp of op.products) {
+          const current = docGateProductsMap.get(gp.inventoryId) || { total: 0, locations: new Map<number, number>() };
+          current.total += gp.quantity;
+          if (gp.locationId) {
+            current.locations.set(gp.locationId, (current.locations.get(gp.locationId) || 0) + gp.quantity);
+          }
+          docGateProductsMap.set(gp.inventoryId, current);
+        }
+      }
+
+      for (const item of doc.items) {
+        const invId = item.inventoryId;
+        const erpQty = item.productQty;
+        const gateInfo = docGateProductsMap.get(invId) || { total: 0, locations: new Map<number, number>() };
+        const sumGateQty = gateInfo.total;
+
+        if (sumGateQty !== erpQty) {
+          let adjustment = 0;
+          if (pickingTypeCode === 'incoming') {
+            adjustment = sumGateQty - erpQty;
+          } else if (pickingTypeCode === 'outgoing') {
+            adjustment = erpQty - sumGateQty;
+          }
+
+          if (adjustment !== 0) {
+            // Distribute adjustment to locations
+            if (gateInfo.locations.size > 0) {
+              for (const [locId, gpQty] of gateInfo.locations.entries()) {
+                const proportion = gpQty / sumGateQty;
+                const locAdj = adjustment * proportion;
+                const key = `${locId}_${invId}`;
+                locationAdjustmentsMap.set(
+                  key,
+                  (locationAdjustmentsMap.get(key) || 0) + locAdj,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Fetch all current quants to use as a fallback if no previous snapshot exists
     const currentQuants = await this.prisma.quant.findMany({
       where: {
@@ -180,7 +264,8 @@ export class ReportsService {
         pendingOpRefs.length > 0 ? pendingOpRefs.join(', ') : null;
 
       // 3. closingStock
-      const closingStock = erpStock + pendingInQty - pendingOutQty;
+      const adjustmentQty = locationAdjustmentsMap.get(key) || 0;
+      const closingStock = erpStock + pendingInQty - pendingOutQty + adjustmentQty;
 
       // 4. openingStock
       const prevSnap = prevSnapsMap.get(key);
@@ -382,6 +467,106 @@ export class ReportsService {
     const dateRangeStart = start;
     const dateRangeEnd = end;
 
+    // Fetch all completed Document References in the system (up to TODAY)
+    const allCompletedDocs = await this.prisma.documentReference.findMany({
+      where: {
+        warehouseId,
+        state: 'done',
+        gateOperations: {
+          some: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+        },
+      },
+      include: {
+        items: true,
+        gateOperations: {
+          where: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+          include: {
+            products: true,
+          },
+        },
+      },
+    });
+
+    const cumulativeLocationAdjustmentsMap = new Map<string, number>(); // Key: `${locationId}_${inventoryId}`
+    const completedDocsAdjustments: any[] = [];
+
+    for (const doc of allCompletedDocs) {
+      const pickingTypeCode = doc.pickingTypeCode;
+      if (pickingTypeCode !== 'incoming' && pickingTypeCode !== 'outgoing') {
+        continue;
+      }
+
+      // Group gate operations products by inventoryId
+      const docGateProductsMap = new Map<number, { total: number; locations: Map<number, number> }>();
+      for (const op of doc.gateOperations) {
+        for (const gp of op.products) {
+          const current = docGateProductsMap.get(gp.inventoryId) || { total: 0, locations: new Map<number, number>() };
+          current.total += gp.quantity;
+          if (gp.locationId) {
+            current.locations.set(gp.locationId, (current.locations.get(gp.locationId) || 0) + gp.quantity);
+          }
+          docGateProductsMap.set(gp.inventoryId, current);
+        }
+      }
+
+      const docDate = doc.dateDone || doc.updatedAt || doc.createdAt;
+      const docDateStr = formatDateInTimezone(docDate, timezone);
+      const isWithinDateRange = docDate >= start && docDate <= end;
+
+      for (const item of doc.items) {
+        const invId = item.inventoryId;
+        const erpQty = item.productQty;
+        const gateInfo = docGateProductsMap.get(invId) || { total: 0, locations: new Map<number, number>() };
+        const sumGateQty = gateInfo.total;
+
+        if (sumGateQty !== erpQty) {
+          let adjustment = 0;
+          if (pickingTypeCode === 'incoming') {
+            adjustment = sumGateQty - erpQty;
+          } else if (pickingTypeCode === 'outgoing') {
+            adjustment = erpQty - sumGateQty;
+          }
+
+          if (adjustment !== 0) {
+            // Distribute to cumulative location map (for today's stock tracker)
+            if (gateInfo.locations.size > 0) {
+              for (const [locId, gpQty] of gateInfo.locations.entries()) {
+                const proportion = gpQty / sumGateQty;
+                const locAdj = adjustment * proportion;
+                const key = `${locId}_${invId}`;
+                cumulativeLocationAdjustmentsMap.set(
+                  key,
+                  (cumulativeLocationAdjustmentsMap.get(key) || 0) + locAdj,
+                );
+              }
+            }
+
+            if (isWithinDateRange) {
+              movedProductIdsSet.add(invId);
+              completedDocsAdjustments.push({
+                doc,
+                invId,
+                erpQty,
+                sumGateQty,
+                adjustment,
+                docDate,
+                docDateStr,
+                gateInfo,
+              });
+            }
+          }
+        }
+      }
+    }
+
     for (const op of gateOps) {
       const opDate = op.verifiedAt || op.createdAt;
       if (opDate && opDate >= dateRangeStart && opDate <= dateRangeEnd) {
@@ -459,9 +644,16 @@ export class ReportsService {
           }
         }
       }
+      // Also add locations of completed document gate operations for this product!
+      for (const adjInfo of completedDocsAdjustments) {
+        if (adjInfo.invId !== prod.id) continue;
+        for (const [locId] of adjInfo.gateInfo.locations.entries()) {
+          activeLocationIds.add(locId);
+        }
+      }
 
       // Get current physical stock for this product at each location in this warehouse
-      // Formula: realStock = erpStock (Quant quantity) + pendingInQty - pendingOutQty
+      // Formula: realStock = erpStock (Quant quantity) + pendingInQty - pendingOutQty + cumulativeAdjustment
       const currentStockTrackerMap = new Map<number, number>();
       for (const locId of activeLocationIds) {
         const q = prod.quants.find((quant) => quant.locationId === locId);
@@ -482,7 +674,8 @@ export class ReportsService {
           }
         }
 
-        const realStock = erpStock + pendingInQty - pendingOutQty;
+        const adj = cumulativeLocationAdjustmentsMap.get(`${locId}_${prod.id}`) || 0;
+        const realStock = erpStock + pendingInQty - pendingOutQty + adj;
         currentStockTrackerMap.set(locId, realStock);
       }
 
@@ -517,12 +710,14 @@ export class ReportsService {
             opNumber: op.opNumber,
             driverName: op.driverName,
             licensePlate: op.licensePlate,
+            clientPartner: op.clientPartner || '-',
             cardType: op.cardType,
             quantity: opProd.quantity,
             referenceDocument: op.documentReference?.documentNumber || '-',
             status: op.status,
             createdAt: op.verifiedAt || op.createdAt,
             stack: opProd.quant?.lotName || '-',
+            type: 'GATE_OPERATION',
           };
 
           if (op.cardType === 'IN') {
@@ -534,6 +729,104 @@ export class ReportsService {
           }
 
           locationTransactionsMap.set(key, current);
+        }
+      }
+
+      // Add completed document adjustments to locationTransactionsMap
+      for (const adjInfo of completedDocsAdjustments) {
+        if (adjInfo.invId !== prod.id) continue;
+
+        const docDateStr = adjInfo.docDateStr;
+        const doc = adjInfo.doc;
+        const erpQty = adjInfo.erpQty;
+        const sumGateQty = adjInfo.sumGateQty;
+        const adjustment = adjInfo.adjustment;
+        const gateInfo = adjInfo.gateInfo;
+
+        if (gateInfo.locations.size > 0) {
+          for (const [locId, gpQty] of gateInfo.locations.entries()) {
+            const proportion = gpQty / sumGateQty;
+            const locAdjustment = adjustment * proportion;
+            if (locAdjustment === 0) continue;
+
+            const key = `${docDateStr}_${locId}`;
+            const current = locationTransactionsMap.get(key) || {
+              incoming: 0,
+              outgoing: 0,
+              inList: [],
+              outList: [],
+            };
+
+            const txDetail = {
+              uuid: doc.uuid,
+              opNumber: doc.documentNumber,
+              driverName: 'Penyesuaian Fisik',
+              licensePlate: 'ERP Reconciliation',
+              clientPartner: doc.partnerName || 'Penyesuaian Fisik',
+              cardType: locAdjustment > 0 ? 'IN' : 'OUT',
+              quantity: Math.abs(locAdjustment),
+              referenceDocument: doc.documentNumber,
+              status: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+              createdAt: adjInfo.docDate,
+              stack: '-',
+              type: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+              erpQty,
+              totalGateQty: sumGateQty,
+              adjustmentQty: adjustment,
+              reason: 'Partial physical realization after ERP completion',
+            };
+
+            if (locAdjustment > 0) {
+              current.incoming += locAdjustment;
+              current.inList.push(txDetail);
+            } else {
+              current.outgoing += Math.abs(locAdjustment);
+              current.outList.push(txDetail);
+            }
+
+            locationTransactionsMap.set(key, current);
+          }
+        } else {
+          const fallbackLoc = dbLocations[0];
+          if (fallbackLoc) {
+            const locId = fallbackLoc.id;
+            const key = `${docDateStr}_${locId}`;
+            const current = locationTransactionsMap.get(key) || {
+              incoming: 0,
+              outgoing: 0,
+              inList: [],
+              outList: [],
+            };
+
+            const txDetail = {
+              uuid: doc.uuid,
+              opNumber: doc.documentNumber,
+              driverName: 'Penyesuaian Fisik',
+              licensePlate: 'ERP Reconciliation',
+              clientPartner: doc.partnerName || 'Penyesuaian Fisik',
+              cardType: adjustment > 0 ? 'IN' : 'OUT',
+              quantity: Math.abs(adjustment),
+              referenceDocument: doc.documentNumber,
+              status: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+              createdAt: adjInfo.docDate,
+              stack: '-',
+              type: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+              erpQty,
+              totalGateQty: sumGateQty,
+              adjustmentQty: adjustment,
+              reason: 'Partial physical realization after ERP completion',
+            };
+
+            if (adjustment > 0) {
+              current.incoming += adjustment;
+              current.inList.push(txDetail);
+            } else {
+              current.outgoing += Math.abs(adjustment);
+              current.outList.push(txDetail);
+            }
+
+            locationTransactionsMap.set(key, current);
+          }
         }
       }
 
@@ -702,6 +995,10 @@ export class ReportsService {
       throw new NotFoundException('Produk tidak ditemukan.');
     }
 
+    const dbLocations = await this.prisma.location.findMany({
+      where: { warehouseId },
+    });
+
     const timezone = this.warehouseContext.getTimezone();
     const start = getLocalStartOfDay(query.date, timezone);
     const end = getLocalEndOfDay(query.date, timezone);
@@ -791,7 +1088,7 @@ export class ReportsService {
     const unreconciledGateOps = gateOps.flatMap((op) => {
       return op.products.map((opProd) => ({
         documentNumber: op.opNumber,
-        partnerName: op.driverName + ' (' + op.licensePlate + ')',
+        partnerName: op.clientPartner || op.driverName + ' (' + op.licensePlate + ')',
         pickingTypeCode: op.cardType === 'IN' ? 'incoming' : 'outgoing',
         quantity: opProd.quantity,
         scheduledDate: op.verifiedAt || op.createdAt,
@@ -799,14 +1096,140 @@ export class ReportsService {
       }));
     });
 
+    // Fetch all completed Document References for this product (up to TODAY)
+    const allCompletedDocs = await this.prisma.documentReference.findMany({
+      where: {
+        warehouseId,
+        state: 'done',
+        items: {
+          some: {
+            inventoryId: inventory.id,
+          },
+        },
+        gateOperations: {
+          some: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+        },
+      },
+      include: {
+        items: {
+          where: {
+            inventoryId: inventory.id,
+          },
+        },
+        gateOperations: {
+          where: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+          include: {
+            products: {
+              where: {
+                inventoryId: inventory.id,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const cumulativeLocationAdjustmentsMap = new Map<string, number>(); // Key: `${locationId}_${inventoryId}`
+    const completedDocsAdjustments: any[] = [];
+    const adjustmentTransactionsOnTargetDay: any[] = [];
+
+    for (const doc of allCompletedDocs) {
+      const pickingTypeCode = doc.pickingTypeCode;
+      if (pickingTypeCode !== 'incoming' && pickingTypeCode !== 'outgoing') {
+        continue;
+      }
+
+      const item = doc.items[0];
+      if (!item) continue;
+
+      const erpQty = item.productQty;
+      const locQties = new Map<number, number>();
+      let sumGateQty = 0;
+
+      for (const op of doc.gateOperations) {
+        for (const gp of op.products) {
+          sumGateQty += gp.quantity;
+          if (gp.locationId) {
+            locQties.set(gp.locationId, (locQties.get(gp.locationId) || 0) + gp.quantity);
+          }
+        }
+      }
+
+      if (sumGateQty !== erpQty) {
+        let adjustment = 0;
+        if (pickingTypeCode === 'incoming') {
+          adjustment = sumGateQty - erpQty;
+        } else if (pickingTypeCode === 'outgoing') {
+          adjustment = erpQty - sumGateQty;
+        }
+
+        if (adjustment !== 0) {
+          // Distribute to cumulative location map (for today's stock tracker)
+          if (locQties.size > 0) {
+            for (const [locId, gpQty] of locQties.entries()) {
+              const proportion = gpQty / sumGateQty;
+              const locAdj = adjustment * proportion;
+              const key = `${locId}_${inventory.id}`;
+              cumulativeLocationAdjustmentsMap.set(
+                key,
+                (cumulativeLocationAdjustmentsMap.get(key) || 0) + locAdj,
+              );
+            }
+          }
+
+          const docDate = doc.dateDone || doc.updatedAt || doc.createdAt;
+          const docDateStr = formatDateInTimezone(docDate, timezone);
+          const isWithinRangeStr = docDate >= start && docDate <= today;
+
+          const gateInfo = { locations: locQties };
+
+          if (isWithinRangeStr) {
+            completedDocsAdjustments.push({
+              doc,
+              erpQty,
+              sumGateQty,
+              adjustment,
+              docDate,
+              docDateStr,
+              gateInfo,
+            });
+
+            if (docDate >= start && docDate <= end) {
+              adjustmentTransactionsOnTargetDay.push({
+                documentNumber: doc.documentNumber,
+                partnerName: doc.partnerName || 'Partial physical realization after ERP completion',
+                pickingTypeCode: adjustment > 0 ? 'incoming' : 'outgoing',
+                quantity: Math.abs(adjustment),
+                scheduledDate: docDate,
+                type: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+                erpQty,
+                gateQty: sumGateQty,
+                adjustmentQty: adjustment,
+              });
+            }
+          }
+        }
+      }
+    }
+
     const incomingTransactions = [
       ...erpTransactions.filter((tx) => tx.pickingTypeCode === 'incoming'),
       ...unreconciledGateOps.filter((tx) => tx.pickingTypeCode === 'incoming'),
+      ...adjustmentTransactionsOnTargetDay.filter((tx) => tx.pickingTypeCode === 'incoming'),
     ];
 
     const outgoingTransactions = [
       ...erpTransactions.filter((tx) => tx.pickingTypeCode === 'outgoing'),
       ...unreconciledGateOps.filter((tx) => tx.pickingTypeCode === 'outgoing'),
+      ...adjustmentTransactionsOnTargetDay.filter((tx) => tx.pickingTypeCode === 'outgoing'),
     ];
 
     // 3. Calculate opening stock and closing stock for this product on this day
@@ -912,6 +1335,12 @@ export class ReportsService {
         }
       }
     }
+    // Also add locations of completed document gate operations for this product!
+    for (const adjInfo of completedDocsAdjustments) {
+      for (const [locId] of adjInfo.gateInfo.locations.entries()) {
+        activeLocationIds.add(locId);
+      }
+    }
 
     const locationTransactionsMap = new Map<
       string,
@@ -942,6 +1371,50 @@ export class ReportsService {
       }
     }
 
+    // Add completed document adjustments to locationTransactionsMap for backward calculations
+    for (const adjInfo of completedDocsAdjustments) {
+      const docDateStr = adjInfo.docDateStr;
+      const sumGateQty = adjInfo.sumGateQty;
+      const adjustment = adjInfo.adjustment;
+      const gateInfo = adjInfo.gateInfo;
+
+      if (gateInfo.locations.size > 0) {
+        for (const [locId, gpQty] of gateInfo.locations.entries()) {
+          const proportion = gpQty / sumGateQty;
+          const locAdjustment = adjustment * proportion;
+          if (locAdjustment === 0) continue;
+
+          const key = `${docDateStr}_${locId}`;
+          const current = locationTransactionsMap.get(key) || {
+            incoming: 0,
+            outgoing: 0,
+          };
+          if (locAdjustment > 0) {
+            current.incoming += locAdjustment;
+          } else {
+            current.outgoing += Math.abs(locAdjustment);
+          }
+          locationTransactionsMap.set(key, current);
+        }
+      } else {
+        const fallbackLoc = dbLocations[0];
+        if (fallbackLoc) {
+          const locId = fallbackLoc.id;
+          const key = `${docDateStr}_${locId}`;
+          const current = locationTransactionsMap.get(key) || {
+            incoming: 0,
+            outgoing: 0,
+          };
+          if (adjustment > 0) {
+            current.incoming += adjustment;
+          } else {
+            current.outgoing += Math.abs(adjustment);
+          }
+          locationTransactionsMap.set(key, current);
+        }
+      }
+    }
+
     const currentStockTrackerMap = new Map<number, number>();
     for (const locId of activeLocationIds) {
       const q = quants.find((quant) => quant.locationId === locId);
@@ -962,7 +1435,8 @@ export class ReportsService {
         }
       }
 
-      const realStock = erpStock + pendingInQty - pendingOutQty;
+      const adj = cumulativeLocationAdjustmentsMap.get(`${locId}_${inventory.id}`) || 0;
+      const realStock = erpStock + pendingInQty - pendingOutQty + adj;
       currentStockTrackerMap.set(locId, realStock);
     }
 

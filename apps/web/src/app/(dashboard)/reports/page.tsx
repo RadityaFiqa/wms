@@ -354,159 +354,144 @@ export default function ReportsPage() {
                                       </div>
                                     </div>
 
-                                    {/* Gate Operations Lists */}
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-slate-800">
-                                      {/* Incoming operations (IN) */}
-                                      <div className="p-4 space-y-2">
-                                        <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
-                                          <TrendingUp className="h-4 w-4 text-emerald-555 shrink-0" />
-                                          Transaksi Masuk (IN Gate Operations)
-                                        </h4>
-                                        {hasLocIn ? (
-                                          <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
-                                            <table className="w-full text-left border-collapse text-xs">
-                                              <thead>
-                                                <tr className="bg-slate-50/50 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                  <th className="px-3 py-2 w-[18%]">Waktu</th>
-                                                  <th className="px-3 py-2 w-[17%]">No. Tiket</th>
-                                                  <th className="px-3 py-2 w-[22%]">Driver & Plat</th>
-                                                  <th className="px-3 py-2 w-[12%]">Stack</th>
-                                                  <th className="px-3 py-2 w-[11%]">Status</th>
-                                                  <th className="px-3 py-2 w-[12%]">Ref Dokumen</th>
-                                                  <th className="px-3 py-2 text-right w-[8%]">Qty</th>
-                                                  <th className="px-3 py-2 text-center w-[8%]">Detail</th>
-                                                </tr>
-                                              </thead>
-                                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                {loc.inOperations.map((tx: any, txIdx: number) => (
-                                                  <tr key={txIdx} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/10 transition">
-                                                    <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">
-                                                      {new Date(tx.createdAt).toLocaleString("id-ID", {
-                                                        day: "numeric",
-                                                        month: "short",
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                      })}
-                                                    </td>
-                                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px]">
-                                                      {tx.opNumber}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-slate-650 dark:text-slate-350 text-[11px]">
-                                                      {tx.driverName} ({tx.licensePlate})
-                                                    </td>
-                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
-                                                      {tx.stack || "-"}
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                                                        tx.status === "VERIFIED"
-                                                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-450"
-                                                          : "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-450"
-                                                      }`}>
-                                                        {tx.status}
-                                                      </span>
-                                                    </td>
-                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
-                                                      {tx.referenceDocument || "-"}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-bold text-emerald-600 dark:text-emerald-450 text-[11px]">
-                                                      +{tx.quantity.toLocaleString("id-ID")}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center">
-                                                      <Link
-                                                        href={`/gate-operations/${tx.uuid}`}
-                                                        className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-450 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
-                                                      >
-                                                        <ExternalLink className="h-3.5 w-3.5" />
-                                                      </Link>
-                                                    </td>
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                          </div>
-                                        ) : (
-                                          <p className="text-xs text-slate-400 italic py-4 text-center">
-                                            Tidak ada transaksi masuk di lokasi ini.
-                                          </p>
-                                        )}
-                                      </div>
+                                    {/* Combined Gate Operations List */}
+                                    <div className="p-4 space-y-2">
+                                      <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
+                                        <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                                        Daftar Transaksi Gate Operations (Masuk / Keluar)
+                                      </h4>
+                                      {(() => {
+                                        const allOps = [
+                                          ...(loc.inOperations || []),
+                                          ...(loc.outOperations || []),
+                                        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-                                      {/* Outgoing operations (OUT) */}
-                                      <div className="p-4 space-y-2">
-                                        <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
-                                          <TrendingDown className="h-4 w-4 text-red-555 shrink-0" />
-                                          Transaksi Keluar (OUT Gate Operations)
-                                        </h4>
-                                        {hasLocOut ? (
+                                        if (allOps.length === 0) {
+                                          return (
+                                            <p className="text-xs text-slate-400 italic py-4 text-center">
+                                              Tidak ada transaksi di lokasi ini.
+                                            </p>
+                                          );
+                                        }
+
+                                        return (
                                           <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
                                             <table className="w-full text-left border-collapse text-xs">
                                               <thead>
                                                 <tr className="bg-slate-50/50 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                  <th className="px-3 py-2 w-[18%]">Waktu</th>
-                                                  <th className="px-3 py-2 w-[17%]">No. Tiket</th>
-                                                  <th className="px-3 py-2 w-[22%]">Driver & Plat</th>
-                                                  <th className="px-3 py-2 w-[12%]">Stack</th>
-                                                  <th className="px-3 py-2 w-[11%]">Status</th>
-                                                  <th className="px-3 py-2 w-[12%]">Ref Dokumen</th>
+                                                  <th className="px-3 py-2 w-[15%]">Waktu</th>
+                                                  <th className="px-3 py-2 w-[15%]">No. Tiket</th>
+                                                  <th className="px-3 py-2 text-center w-[12%]">Tipe</th>
+                                                  <th className="px-3 py-2 w-[22%]">Client / Partner</th>
+                                                  <th className="px-3 py-2 w-[10%]">Stack</th>
+                                                  <th className="px-3 py-2 w-[10%]">Status</th>
+                                                  <th className="px-3 py-2 w-[10%]">Ref Dokumen</th>
                                                   <th className="px-3 py-2 text-right w-[8%]">Qty</th>
                                                   <th className="px-3 py-2 text-center w-[8%]">Detail</th>
                                                 </tr>
                                               </thead>
                                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                {loc.outOperations.map((tx: any, txIdx: number) => (
-                                                  <tr key={txIdx} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/10 transition">
-                                                    <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">
-                                                      {new Date(tx.createdAt).toLocaleString("id-ID", {
-                                                        day: "numeric",
-                                                        month: "short",
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                      })}
-                                                    </td>
-                                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px]">
-                                                      {tx.opNumber}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-slate-650 dark:text-slate-350 text-[11px]">
-                                                      {tx.driverName} ({tx.licensePlate})
-                                                    </td>
-                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
-                                                      {tx.stack || "-"}
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                                                        tx.status === "VERIFIED"
-                                                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-450"
-                                                          : "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-450"
+                                                {allOps.map((tx: any, txIdx: number) => {
+                                                  const isIncoming = tx.cardType === "IN";
+                                                  return (
+                                                    <tr key={txIdx} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/10 transition">
+                                                      <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">
+                                                        {new Date(tx.createdAt).toLocaleString("id-ID", {
+                                                          day: "numeric",
+                                                          month: "short",
+                                                          hour: "2-digit",
+                                                          minute: "2-digit",
+                                                        })}
+                                                      </td>
+                                                      <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px]">
+                                                        {tx.opNumber}
+                                                      </td>
+                                                      <td className="px-3 py-2 text-center">
+                                                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                                          isIncoming
+                                                            ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100/40 dark:border-emerald-900/30"
+                                                            : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100/40 dark:border-red-900/30"
+                                                        }`}>
+                                                          {isIncoming ? (
+                                                            <>
+                                                              <TrendingUp className="h-3 w-3" />
+                                                              Masuk
+                                                            </>
+                                                          ) : (
+                                                            <>
+                                                              <TrendingDown className="h-3 w-3" />
+                                                              Keluar
+                                                            </>
+                                                          )}
+                                                        </span>
+                                                      </td>
+                                                      <td className="px-3 py-2 text-slate-650 dark:text-slate-350 text-[11px]">
+                                                        {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
+                                                          <div className="space-y-0.5">
+                                                            <div className="font-semibold text-blue-600 dark:text-blue-455">
+                                                              {tx.clientPartner || tx.driverName}
+                                                            </div>
+                                                            <div className="text-[9px] text-slate-400">
+                                                              ERP: {tx.erpQty} | Gate: {tx.totalGateQty} (Selisih: {tx.adjustmentQty})
+                                                            </div>
+                                                          </div>
+                                                        ) : (
+                                                          <span>{tx.clientPartner || `${tx.driverName} (${tx.licensePlate})`}</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
+                                                        {tx.stack || "-"}
+                                                      </td>
+                                                      <td className="px-3 py-2">
+                                                        {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
+                                                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                                            tx.type === "ADJUSTMENT_IN"
+                                                              ? "bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400 border border-purple-100/40 dark:border-purple-900/30"
+                                                              : "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100/40 dark:border-indigo-900/30"
+                                                          }`}>
+                                                            {tx.type}
+                                                          </span>
+                                                        ) : (
+                                                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                                            tx.status === "VERIFIED"
+                                                              ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-455"
+                                                              : "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-455"
+                                                          }`}>
+                                                            {tx.status}
+                                                          </span>
+                                                        )}
+                                                      </td>
+                                                      <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
+                                                        {tx.referenceDocument || "-"}
+                                                      </td>
+                                                      <td className={`px-3 py-2 text-right font-bold text-[11px] ${
+                                                        isIncoming
+                                                          ? "text-emerald-600 dark:text-emerald-455"
+                                                          : "text-red-650 dark:text-red-455"
                                                       }`}>
-                                                        {tx.status}
-                                                      </span>
-                                                    </td>
-                                                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
-                                                      {tx.referenceDocument || "-"}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-bold text-red-650 dark:text-red-450 text-[11px]">
-                                                      -{tx.quantity.toLocaleString("id-ID")}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center">
-                                                      <Link
-                                                        href={`/gate-operations/${tx.uuid}`}
-                                                        className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-455 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
-                                                      >
-                                                        <ExternalLink className="h-3.5 w-3.5" />
-                                                      </Link>
-                                                    </td>
-                                                  </tr>
-                                                ))}
+                                                        {isIncoming ? "+" : "-"}
+                                                        {tx.quantity.toLocaleString("id-ID")}
+                                                      </td>
+                                                      <td className="px-3 py-2 text-center">
+                                                        {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
+                                                          <span className="text-slate-400">-</span>
+                                                        ) : (
+                                                          <Link
+                                                            href={`/gate-operations/${tx.uuid}`}
+                                                            className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-455 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
+                                                          >
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                          </Link>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
                                               </tbody>
                                             </table>
                                           </div>
-                                        ) : (
-                                          <p className="text-xs text-slate-400 italic py-4 text-center">
-                                            Tidak ada transaksi keluar di lokasi ini.
-                                          </p>
-                                        )}
-                                      </div>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                 );

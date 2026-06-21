@@ -88,6 +88,88 @@ export class ReconciliationService {
       }
     }
 
+    const inventoryDbIds = inventories.map((inv) => inv.id);
+
+    // Fetch completed Document References to compute adjustmentQty
+    const completedDocs = await this.prisma.documentReference.findMany({
+      where: {
+        warehouseId,
+        state: 'done',
+        items: {
+          some: {
+            inventoryId: { in: inventoryDbIds },
+          },
+        },
+        gateOperations: {
+          some: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+        },
+      },
+      include: {
+        items: {
+          where: {
+            inventoryId: { in: inventoryDbIds },
+          },
+        },
+        gateOperations: {
+          where: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+          include: {
+            products: {
+              where: {
+                inventoryId: { in: inventoryDbIds },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const adjustmentsMap = new Map<number, number>();
+    for (const doc of completedDocs) {
+      const pickingTypeCode = doc.pickingTypeCode;
+      if (pickingTypeCode !== 'incoming' && pickingTypeCode !== 'outgoing') {
+        continue;
+      }
+
+      const docGateProductsMap = new Map<number, number>();
+      for (const op of doc.gateOperations) {
+        for (const gp of op.products) {
+          docGateProductsMap.set(
+            gp.inventoryId,
+            (docGateProductsMap.get(gp.inventoryId) || 0) + gp.quantity,
+          );
+        }
+      }
+
+      for (const item of doc.items) {
+        const invId = item.inventoryId;
+        const erpQty = item.productQty;
+        const sumGateQty = docGateProductsMap.get(invId) || 0;
+
+        if (sumGateQty !== erpQty) {
+          let adjustment = 0;
+          if (pickingTypeCode === 'incoming') {
+            adjustment = sumGateQty - erpQty;
+          } else if (pickingTypeCode === 'outgoing') {
+            adjustment = erpQty - sumGateQty;
+          }
+          if (adjustment !== 0) {
+            adjustmentsMap.set(
+              invId,
+              (adjustmentsMap.get(invId) || 0) + adjustment,
+            );
+          }
+        }
+      }
+    }
+
     // 3. Map unassigned quantities by product
     const pendingQuantitiesMap = new Map<
       number,
@@ -118,10 +200,11 @@ export class ReconciliationService {
         outgoing: 0,
       };
       const erpStock = inv.quants.reduce((sum, q) => sum + q.quantity, 0);
+      const adjustmentQty = adjustmentsMap.get(inv.id) || 0;
 
       // physicalAdjustment = incoming - outgoing
       const physicalAdjustment = pending.incoming - pending.outgoing;
-      const calculatedPhysical = erpStock + physicalAdjustment;
+      const calculatedPhysical = erpStock + physicalAdjustment + adjustmentQty;
       const stockDifference = erpStock - calculatedPhysical;
 
       // Backward compatibility fields
@@ -138,6 +221,7 @@ export class ReconciliationService {
         },
         erpStock,
         physicalAdjustment,
+        adjustmentQty,
         calculatedPhysical,
         stockDifference,
         pendingIncoming: pending.incoming,
@@ -151,7 +235,8 @@ export class ReconciliationService {
       .filter(
         (row) =>
           row.erpStock > 0 ||
-          relatedProductIds.has(row.productId),
+          relatedProductIds.has(row.productId) ||
+          (adjustmentsMap.get(row.productId) || 0) !== 0,
       )
       .sort((a, b) => a.product.name.localeCompare(b.product.name));
   }
@@ -222,7 +307,109 @@ export class ReconciliationService {
       },
     });
 
-    // Identify all unique locations for this product (having quants or contributing gate operations)
+    // Fetch completed Document References for this product to calculate adjustments
+    const completedDocs = await this.prisma.documentReference.findMany({
+      where: {
+        warehouseId,
+        state: 'done',
+        items: {
+          some: {
+            inventoryId: inventory.id,
+          },
+        },
+        gateOperations: {
+          some: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+        },
+      },
+      include: {
+        items: {
+          where: {
+            inventoryId: inventory.id,
+          },
+        },
+        gateOperations: {
+          where: {
+            status: {
+              notIn: ['CANCELED', 'REJECTED'],
+            },
+          },
+          include: {
+            products: {
+              where: {
+                inventoryId: inventory.id,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const locationAdjustmentsMap = new Map<number, number>();
+    const adjustmentDetails: any[] = [];
+    let totalAdjustmentQty = 0;
+
+    for (const doc of completedDocs) {
+      const pickingTypeCode = doc.pickingTypeCode;
+      if (pickingTypeCode !== 'incoming' && pickingTypeCode !== 'outgoing') {
+        continue;
+      }
+
+      const item = doc.items[0];
+      if (!item) continue;
+
+      const erpQty = item.productQty;
+      const locQties = new Map<number, number>();
+      let sumGateQty = 0;
+
+      for (const op of doc.gateOperations) {
+        for (const gp of op.products) {
+          sumGateQty += gp.quantity;
+          if (gp.locationId) {
+            locQties.set(gp.locationId, (locQties.get(gp.locationId) || 0) + gp.quantity);
+          }
+        }
+      }
+
+      if (sumGateQty !== erpQty) {
+        let adjustment = 0;
+        if (pickingTypeCode === 'incoming') {
+          adjustment = sumGateQty - erpQty;
+        } else if (pickingTypeCode === 'outgoing') {
+          adjustment = erpQty - sumGateQty;
+        }
+
+        if (adjustment !== 0) {
+          totalAdjustmentQty += adjustment;
+          adjustmentDetails.push({
+            documentNumber: doc.documentNumber,
+            productName: item.productName,
+            erpQty,
+            totalGateOperationQty: sumGateQty,
+            difference: sumGateQty - erpQty,
+            adjustmentQty: adjustment,
+            type: pickingTypeCode === 'incoming' ? 'IN' : 'OUT',
+          });
+
+          // Proportional distribution of adjustment to locations
+          if (locQties.size > 0) {
+            for (const [locId, gpQty] of locQties.entries()) {
+              const proportion = gpQty / sumGateQty;
+              const locAdj = adjustment * proportion;
+              locationAdjustmentsMap.set(
+                locId,
+                (locationAdjustmentsMap.get(locId) || 0) + locAdj,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // Identify all unique locations for this product (having quants, contributing gate operations, or completed documents gate operations)
     const uniqueLocationIds = new Set<number>();
     for (const q of inventory.quants) {
       uniqueLocationIds.add(q.locationId);
@@ -231,6 +418,15 @@ export class ReconciliationService {
       for (const p of op.products) {
         if (p.locationId) {
           uniqueLocationIds.add(p.locationId);
+        }
+      }
+    }
+    for (const doc of completedDocs) {
+      for (const op of doc.gateOperations) {
+        for (const gp of op.products) {
+          if (gp.locationId) {
+            uniqueLocationIds.add(gp.locationId);
+          }
         }
       }
     }
@@ -247,6 +443,7 @@ export class ReconciliationService {
           cardType: op.cardType,
           driverName: op.driverName,
           licensePlate: op.licensePlate,
+          clientPartner: op.clientPartner || '-',
           createdAt: op.createdAt,
           quantity: p.quantity,
           documentNumber: op.documentReference?.documentNumber || '-',
@@ -276,8 +473,9 @@ export class ReconciliationService {
         }
       }
 
+      const adjustmentQty = locationAdjustmentsMap.get(locId) || 0;
       const physicalAdjustment = pendingIncoming - pendingOutgoing;
-      const calculatedPhysical = erpQty + physicalAdjustment;
+      const calculatedPhysical = erpQty + physicalAdjustment + adjustmentQty;
       const stockDifference = erpQty - calculatedPhysical;
 
       return {
@@ -286,6 +484,7 @@ export class ReconciliationService {
         locationName: loc?.displayName || `Lokasi #${locId}`,
         erpQty,
         physicalAdjustment,
+        adjustmentQty,
         calculatedPhysical,
         stockDifference,
         pendingIncoming,
@@ -309,8 +508,8 @@ export class ReconciliationService {
     }
 
     const physicalAdjustment = totalIncoming - totalOutgoing;
-    const calculatedPhysical = totalErpStock + physicalAdjustment;
-    const stockDifference = totalErpStock - physicalAdjustment;
+    const calculatedPhysical = totalErpStock + physicalAdjustment + totalAdjustmentQty;
+    const stockDifference = totalErpStock - calculatedPhysical;
 
     const pendingGateQty = totalOutgoing - totalIncoming;
     const expectedStock = totalErpStock - pendingGateQty;
@@ -324,11 +523,13 @@ export class ReconciliationService {
       },
       erpStock: totalErpStock,
       physicalAdjustment,
+      adjustmentQty: totalAdjustmentQty,
       calculatedPhysical,
       stockDifference,
       pendingGateQty,
       expectedStock,
       locations: locationsBreakdown.sort((a, b) => a.locationName.localeCompare(b.locationName)),
+      adjustmentDetails,
     };
   }
 }

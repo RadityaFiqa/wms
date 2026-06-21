@@ -70,17 +70,20 @@ export default function ReconciliationPage() {
           </p>
           <div className="space-y-1 font-mono text-[11px] sm:text-xs">
             <p className="bg-blue-100/50 dark:bg-blue-900/20 px-2 py-1 rounded inline-block">
-              Calculated Physical = ERP Stock + Physical Stock Adjustment (Pending IN - Pending OUT)
+              Calculated Physical = ERP Stock + Pending Adj (Pending IN - Pending OUT) + Adjustment Qty
             </p>
             <br />
             <p className="bg-blue-100/50 dark:bg-blue-900/20 px-2 py-1 rounded inline-block mt-1">
-              Stock Difference = ERP Stock - Physical Stock Adjustment
+              Stock Difference = ERP Stock - Calculated Physical
             </p>
           </div>
           <p className="mt-2 text-slate-500 dark:text-slate-450 text-xs">
-            * Physical Stock Adjustment adalah pergerakan kargo masuk (IN) atau
+            * <strong>Pending Adj</strong> adalah pergerakan kargo masuk (IN) atau
             keluar (OUT) pintu gerbang yang <strong>belum</strong> ditautkan ke referensi ERP,
             atau ditautkan ke dokumen ERP yang statusnya <strong>bukan</strong> `"done"`.
+          </p>
+          <p className="mt-1 text-slate-500 dark:text-slate-450 text-xs">
+            * <strong>Adjustment Qty</strong> adalah total selisih kuantitas pada dokumen ERP yang sudah `"done"` tetapi realisasi fisiknya parsial (berbeda dari kuantitas dokumen).
           </p>
         </div>
       </div>
@@ -138,11 +141,12 @@ export default function ReconciliationPage() {
           <table className="w-full text-left border-collapse table-layout-fixed">
             <thead className="bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
               <tr className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[30%]">Produk</th>
-                <th className="px-6 py-4 text-right w-[17%]">ERP Stock</th>
-                <th className="px-6 py-4 text-right w-[17%]">Adjustment</th>
-                <th className="px-6 py-4 text-right w-[18%]">Calculated Physical</th>
-                <th className="px-6 py-4 text-right w-[18%]">Stock Difference</th>
+                <th className="px-6 py-4 w-[25%]">Produk</th>
+                <th className="px-6 py-4 text-right w-[14%]">ERP Stock</th>
+                <th className="px-6 py-4 text-right w-[14%]">Pending Adj</th>
+                <th className="px-6 py-4 text-right w-[15%]">Adjustment Qty</th>
+                <th className="px-6 py-4 text-right w-[16%]">Calculated Physical</th>
+                <th className="px-6 py-4 text-right w-[16%]">Stock Difference</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -164,12 +168,15 @@ export default function ReconciliationPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-16 ml-auto"></div>
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-16 ml-auto"></div>
+                    </td>
                   </tr>
                 ))
               ) : reconciliationData.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-6 py-16 text-center text-slate-400 font-medium"
                   >
                     Tidak ada data rekonsiliasi yang tersedia.
@@ -225,6 +232,24 @@ export default function ReconciliationPage() {
                             <span className="text-slate-400">-</span>
                           )}
                         </td>
+                        <td className="px-6 py-4 text-right font-semibold">
+                          {row.adjustmentQty !== 0 ? (
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
+                                row.adjustmentQty > 0
+                                  ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                                  : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
+                              }`}
+                            >
+                              {row.adjustmentQty > 0
+                                ? `+${row.adjustmentQty.toLocaleString("id-ID")}`
+                                : row.adjustmentQty.toLocaleString("id-ID")}{" "}
+                              {row.product.uom}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-right font-black text-slate-900 dark:text-slate-100">
                           {row.calculatedPhysical.toLocaleString("id-ID")}{" "}
                           <span className="text-slate-450 text-[10px] font-normal ml-0.5">
@@ -247,7 +272,7 @@ export default function ReconciliationPage() {
                       {isExpanded && (
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={6}
                             className="bg-slate-50/30 dark:bg-slate-900/30 px-8 py-4 border-b border-slate-100 dark:border-slate-800/80"
                           >
                             <ReconciliationRowDetail
@@ -335,11 +360,12 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/30 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-5 py-3 w-[30%]">Lokasi</th>
-                <th className="px-5 py-3 text-right w-[15%]">ERP Qty</th>
-                <th className="px-5 py-3 text-right w-[15%]">Adjustment</th>
-                <th className="px-5 py-3 text-right w-[20%]">Calculated Physical</th>
-                <th className="px-5 py-3 text-right w-[20%]">Stock Difference</th>
+                <th className="px-5 py-3 w-[25%]">Lokasi</th>
+                <th className="px-5 py-3 text-right w-[13%]">ERP Qty</th>
+                <th className="px-5 py-3 text-right w-[13%]">Pending Adj</th>
+                <th className="px-5 py-3 text-right w-[15%]">Adjustment Qty</th>
+                <th className="px-5 py-3 text-right w-[17%]">Calculated Physical</th>
+                <th className="px-5 py-3 text-right w-[17%]">Stock Difference</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
@@ -390,6 +416,23 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                           <span className="text-slate-400">-</span>
                         )}
                       </td>
+                      <td className="px-5 py-3 text-right font-medium">
+                        {loc.adjustmentQty !== 0 ? (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              loc.adjustmentQty > 0
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-red-650 dark:text-red-400"
+                            }`}
+                          >
+                            {loc.adjustmentQty > 0
+                              ? `+${loc.adjustmentQty.toLocaleString("id-ID")}`
+                              : loc.adjustmentQty.toLocaleString("id-ID")}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-right font-bold text-slate-800 dark:text-slate-200">
                         {loc.calculatedPhysical.toLocaleString("id-ID")}{" "}
                         <span className="text-slate-400 text-[9px] font-normal">
@@ -412,7 +455,7 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                     {isLocExpanded && hasOps && (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="bg-slate-50/20 dark:bg-slate-900/10 px-8 py-3"
                         >
                           <div className="border border-slate-200 dark:border-slate-700/80 rounded-xl overflow-hidden">
@@ -426,7 +469,7 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                                 <tr className="bg-slate-50/10 border-b border-slate-100 dark:border-slate-700/80 text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">
                                   <th className="px-4 py-2">Nomor Tiket</th>
                                   <th className="px-4 py-2 text-center">Tipe</th>
-                                  <th className="px-4 py-2">Driver & Plat</th>
+                                  <th className="px-4 py-2">Client / Partner</th>
                                   <th className="px-4 py-2">Ref Dokumen (State)</th>
                                   <th className="px-4 py-2 text-right">Kuantitas</th>
                                   <th className="px-4 py-2 text-center">Aksi</th>
@@ -453,7 +496,7 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                                       </span>
                                     </td>
                                     <td className="px-4 py-2 text-slate-700 dark:text-slate-350">
-                                      {op.driverName} ({op.licensePlate})
+                                      {op.clientPartner || "-"}
                                     </td>
                                     <td className="px-4 py-2">
                                       <span className="font-mono text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
@@ -502,6 +545,101 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
           </table>
         </div>
       )}
+
+      {/* Rincian Penyesuaian Dokumen ERP Selesai (Adjustment Details) */}
+      <div className="bg-slate-100/70 dark:bg-slate-800/50 px-4 py-2.5 flex items-center justify-between border-t border-b border-slate-200 dark:border-slate-800 mt-6">
+        <span className="font-bold text-slate-700 dark:text-slate-350 text-xs uppercase tracking-wider flex items-center gap-1.5">
+          <Info className="h-4.5 w-4.5 text-blue-500 shrink-0" />
+          Rincian Penyesuaian Dokumen ERP Selesai (Partial Realization)
+        </span>
+        <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100/40 dark:border-blue-900/30">
+          {detailData.adjustmentDetails?.length || 0} Dokumen
+        </span>
+      </div>
+      {!detailData.adjustmentDetails || detailData.adjustmentDetails.length === 0 ? (
+        <p className="text-xs text-slate-400 italic p-4 text-center">
+          Tidak ada penyesuaian dokumen selesai untuk produk ini.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50/30 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                <th className="px-5 py-3">Nomor Dokumen</th>
+                <th className="px-5 py-3">Produk</th>
+                <th className="px-5 py-3 text-center">Tipe</th>
+                <th className="px-5 py-3 text-right">ERP Qty</th>
+                <th className="px-5 py-3 text-right">Total Gate Qty</th>
+                <th className="px-5 py-3 text-right">Selisih</th>
+                <th className="px-5 py-3 text-right">Penyesuaian</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+              {detailData.adjustmentDetails.map((adj: any, adjIdx: number) => (
+                <tr
+                  key={adjIdx}
+                  className="hover:bg-slate-50/20 dark:hover:bg-slate-800/10 transition bg-white dark:bg-slate-900/40"
+                >
+                  <td className="px-5 py-3 font-mono font-bold text-slate-800 dark:text-slate-300">
+                    {adj.documentNumber}
+                  </td>
+                  <td className="px-5 py-3 text-slate-700 dark:text-slate-350">
+                    {adj.productName}
+                  </td>
+                  <td className="px-5 py-3 text-center">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                        adj.type === "IN"
+                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400"
+                          : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {adj.type === "IN" ? "Masuk" : "Keluar"}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-300">
+                    {adj.erpQty.toLocaleString("id-ID")}{" "}
+                    <span className="text-slate-400 text-[9px]">
+                      {detailData.product.uom}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-300">
+                    {adj.totalGateOperationQty.toLocaleString("id-ID")}{" "}
+                    <span className="text-slate-400 text-[9px]">
+                      {detailData.product.uom}
+                    </span>
+                  </td>
+                  <td
+                    className={`px-5 py-3 text-right font-bold ${
+                      adj.difference !== 0 ? "text-amber-600" : "text-slate-400"
+                    }`}
+                  >
+                    {adj.difference > 0 ? "+" : ""}
+                    {adj.difference.toLocaleString("id-ID")}{" "}
+                    <span className="text-slate-400 text-[9px]">
+                      {detailData.product.uom}
+                    </span>
+                  </td>
+                  <td
+                    className={`px-5 py-3 text-right font-extrabold ${
+                      adj.adjustmentQty > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-650 dark:text-red-400"
+                    }`}
+                  >
+                    {adj.adjustmentQty > 0 ? "+" : ""}
+                    {adj.adjustmentQty.toLocaleString("id-ID")}{" "}
+                    <span className="text-slate-400 text-[9px]">
+                      {detailData.product.uom}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
