@@ -40,14 +40,20 @@ export class GateService {
       return this.logoBufferCache;
     }
     try {
-      const path1 = path.join(__dirname, '..', '..', '..', '..', 'web', 'public', 'logo-bulog.png');
-      const path2 = path.join(process.cwd(), '..', 'web', 'public', 'logo-bulog.png');
+      const paths = [
+        path.join(__dirname, '..', '..', 'assets', 'logo-bulog.png'),
+        path.join(process.cwd(), 'src', 'assets', 'logo-bulog.png'),
+        path.join(process.cwd(), 'dist', 'assets', 'logo-bulog.png'),
+        path.join(process.cwd(), 'apps', 'api', 'src', 'assets', 'logo-bulog.png'),
+        path.join(process.cwd(), 'apps', 'api', 'dist', 'assets', 'logo-bulog.png'),
+      ];
 
       let resolvedPath = '';
-      if (fs.existsSync(path1)) {
-        resolvedPath = path1;
-      } else if (fs.existsSync(path2)) {
-        resolvedPath = path2;
+      for (const p of paths) {
+        if (fs.existsSync(p)) {
+          resolvedPath = p;
+          break;
+        }
       }
 
       if (resolvedPath) {
@@ -56,7 +62,7 @@ export class GateService {
         return this.logoBufferCache;
       }
 
-      this.logger.warn('BULOG logo file not found in public directories. Using vector fallback.');
+      this.logger.warn('BULOG logo file not found in API assets. Using vector fallback.');
       return null;
     } catch (err: any) {
       this.logger.warn(`Failed to read BULOG logo: ${err.message}. Using vector fallback.`);
