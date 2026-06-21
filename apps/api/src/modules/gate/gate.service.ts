@@ -1446,10 +1446,8 @@ export class GateService {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
 
-    const appDomain = this.configService.get<string>('APP_DOMAIN') || 'localhost:3001';
-    const useSSL = this.configService.get<string>('FRONTEND_USE_SSL') === 'true';
-    const protocol = useSSL ? 'https' : 'http';
-    const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
+    const appDomain = this.configService.get<string>('FRONTEND_URL');
+    const verificationUrl = `${appDomain}/gate-operations/${gateOperation.uuid}`;
 
     const qrCodeBuffer = await QRCode.toBuffer(verificationUrl, {
       type: 'png',
