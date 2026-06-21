@@ -1033,7 +1033,7 @@ export class ReportsService {
           .fillColor('#1e293b')
           .fontSize(11)
           .font('Helvetica-Bold')
-          .text('LAPORAN MUTASI PERSSEDIAAN HARIAN', 20, 20, {
+          .text('LAPORAN MUTASI STOK HARIAN', 20, 20, {
             align: 'center',
             width: 555,
           });
@@ -1071,7 +1071,17 @@ export class ReportsService {
         for (const loc of row.locations) {
           if (loc.totalIn === 0 && loc.totalOut === 0) continue;
 
-          if (currentY + 18 > 800) {
+          // Calculate dynamic height for the row based on content text height
+          doc.font('Helvetica-Bold').fontSize(6.8);
+          const productNameHeight = doc.heightOfString(row.product.name, { width: 110 });
+
+          doc.font('Helvetica').fontSize(6.8);
+          const locationNameHeight = doc.heightOfString(loc.locationName, { width: 85 });
+
+          const maxTextHeight = Math.max(productNameHeight, locationNameHeight);
+          const rowHeight = Math.max(maxTextHeight + 8, 16); // padding 4pt top/bottom, min height 16
+
+          if (currentY + rowHeight > 800) {
             doc.addPage();
             currentY = drawHeader();
           }
@@ -1081,12 +1091,10 @@ export class ReportsService {
           doc.fillColor('#1e293b').font('Helvetica-Bold');
           doc.text(`${row.product.name}`, 85, currentY + 4, {
             width: 110,
-            ellipsis: true,
           });
           doc.fillColor('#475569').font('Helvetica');
           doc.text(`${loc.locationName}`, 200, currentY + 4, {
             width: 85,
-            ellipsis: true,
           });
 
           // Stok Awal
@@ -1126,11 +1134,11 @@ export class ReportsService {
           );
 
           doc
-            .moveTo(20, currentY + 16)
-            .lineTo(575, currentY + 16)
+            .moveTo(20, currentY + rowHeight)
+            .lineTo(575, currentY + rowHeight)
             .lineWidth(0.15)
             .stroke('#e2e8f0');
-          currentY += 16;
+          currentY += rowHeight;
         }
       }
 
