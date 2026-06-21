@@ -6,7 +6,11 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import PDFDocument from 'pdfkit';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
-import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
+import {
+  getLocalStartOfDay,
+  getLocalEndOfDay,
+  formatDateInTimezone,
+} from '@/core/utils/date';
 import { Cron } from '@nestjs/schedule';
 
 @Injectable()
@@ -27,7 +31,9 @@ export class ReportsService {
     const start = getLocalStartOfDay(dateStr, tz);
     const end = getLocalEndOfDay(dateStr, tz);
 
-    console.log(`[Cron] Running daily location stock snapshot for date: ${dateStr}`);
+    console.log(
+      `[Cron] Running daily location stock snapshot for date: ${dateStr}`,
+    );
 
     // Fetch all internal locations
     const locations = await this.prisma.location.findMany({
@@ -86,9 +92,14 @@ export class ReportsService {
     const currentQuants = await this.prisma.quant.findMany();
 
     // Fetch previous snapshots to get previous closing stock (start of yesterday - 1 day, i.e., start of day before yesterday)
-    const dayBeforeYesterday = new Date(yesterday.getTime() - 24 * 60 * 60 * 1000);
+    const dayBeforeYesterday = new Date(
+      yesterday.getTime() - 24 * 60 * 60 * 1000,
+    );
     const dayBeforeYesterdayStr = formatDateInTimezone(dayBeforeYesterday, tz);
-    const dayBeforeYesterdayStart = getLocalStartOfDay(dayBeforeYesterdayStr, tz);
+    const dayBeforeYesterdayStart = getLocalStartOfDay(
+      dayBeforeYesterdayStr,
+      tz,
+    );
 
     const prevSnaps = await this.prisma.dailyLocationStockSnapshot.findMany({
       where: {
@@ -97,7 +108,7 @@ export class ReportsService {
     });
 
     // Map of locationId_inventoryId to previous snapshot
-    const prevSnapsMap = new Map<string, typeof prevSnaps[number]>();
+    const prevSnapsMap = new Map<string, (typeof prevSnaps)[number]>();
     for (const snap of prevSnaps) {
       prevSnapsMap.set(`${snap.locationId}_${snap.inventoryId}`, snap);
     }
@@ -149,10 +160,10 @@ export class ReportsService {
       const pendingOpRefs: string[] = [];
 
       for (const op of allPendingOps) {
-        const matchingProduct = op.products.find(
+        const matchingProducts = op.products.filter(
           (p) => p.locationId === locationId && p.inventoryId === inventoryId,
         );
-        if (matchingProduct) {
+        for (const matchingProduct of matchingProducts) {
           if (op.cardType === 'IN') {
             pendingInQty += matchingProduct.quantity;
           } else {
@@ -161,7 +172,8 @@ export class ReportsService {
           pendingOpRefs.push(op.opNumber);
         }
       }
-      const gateOpRefsStr = pendingOpRefs.length > 0 ? pendingOpRefs.join(', ') : null;
+      const gateOpRefsStr =
+        pendingOpRefs.length > 0 ? pendingOpRefs.join(', ') : null;
 
       // 3. closingStock
       const closingStock = erpStock + pendingInQty - pendingOutQty;
@@ -181,10 +193,10 @@ export class ReportsService {
 
       for (const op of yesterdayOps) {
         const isOut = op.cardType === 'OUT';
-        const matchingProduct = op.products.find(
+        const matchingProducts = op.products.filter(
           (p) => p.locationId === locationId && p.inventoryId === inventoryId,
         );
-        if (matchingProduct) {
+        for (const matchingProduct of matchingProducts) {
           if (isOut) {
             totalOut += matchingProduct.quantity;
           } else {
@@ -194,7 +206,9 @@ export class ReportsService {
       }
 
       // 6. stackStr
-      const stacks = Array.from(new Set(matchingQuants.map((q) => q.lotName).filter(Boolean)));
+      const stacks = Array.from(
+        new Set(matchingQuants.map((q) => q.lotName).filter(Boolean)),
+      );
       const stackStr = stacks.join(', ') || null;
 
       // Persist the daily snapshot
@@ -236,15 +250,18 @@ export class ReportsService {
       });
     }
 
-    console.log(`[Cron] Completed daily stock snapshots for ${uniqueKeys.size} location-product quants.`);
+    console.log(
+      `[Cron] Completed daily stock snapshots for ${uniqueKeys.size} location-product quants.`,
+    );
 
     // Also populate warehouse-level DailyStockSnapshot for backward compatibility
     // We group by warehouseId and inventoryId, summing up closingStock
-    const snapshotsYesterday = await this.prisma.dailyLocationStockSnapshot.findMany({
-      where: {
-        date: start,
-      },
-    });
+    const snapshotsYesterday =
+      await this.prisma.dailyLocationStockSnapshot.findMany({
+        where: {
+          date: start,
+        },
+      });
 
     const warehouseGroupMap = new Map<string, number>();
     for (const s of snapshotsYesterday) {
@@ -391,22 +408,23 @@ export class ReportsService {
     });
 
     // 4. Load location-level snapshots
-    const locationSnapshots = await this.prisma.dailyLocationStockSnapshot.findMany({
-      where: {
-        warehouseId,
-        inventoryId: { in: movedProductIds },
-        date: {
-          gte: start,
-          lte: today,
+    const locationSnapshots =
+      await this.prisma.dailyLocationStockSnapshot.findMany({
+        where: {
+          warehouseId,
+          inventoryId: { in: movedProductIds },
+          date: {
+            gte: start,
+            lte: today,
+          },
         },
-      },
-    });
+      });
 
     // 5. Fetch all locations in the warehouse to map IDs to UUIDs and display names
     const dbLocations = await this.prisma.location.findMany({
       where: { warehouseId },
     });
-    const locationsMap = new Map<number, typeof dbLocations[number]>(
+    const locationsMap = new Map<number, (typeof dbLocations)[number]>(
       dbLocations.map((l) => [l.id, l]),
     );
 
@@ -421,15 +439,19 @@ export class ReportsService {
         activeLocationIds.add(q.locationId);
       }
       for (const op of gateOps) {
-        const opProd = op.products.find((p) => p.inventoryId === prod.id);
-        if (opProd && opProd.locationId) {
-          activeLocationIds.add(opProd.locationId);
+        const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
+        for (const opProd of matchingProducts) {
+          if (opProd.locationId) {
+            activeLocationIds.add(opProd.locationId);
+          }
         }
       }
       for (const op of activePendingOps) {
-        const opProd = op.products.find((p) => p.inventoryId === prod.id);
-        if (opProd && opProd.locationId) {
-          activeLocationIds.add(opProd.locationId);
+        const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
+        for (const opProd of matchingProducts) {
+          if (opProd.locationId) {
+            activeLocationIds.add(opProd.locationId);
+          }
         }
       }
 
@@ -443,10 +465,10 @@ export class ReportsService {
         let pendingInQty = 0;
         let pendingOutQty = 0;
         for (const op of activePendingOps) {
-          const opProd = op.products.find(
+          const matchingProducts = op.products.filter(
             (p) => p.inventoryId === prod.id && p.locationId === locId,
           );
-          if (opProd) {
+          for (const opProd of matchingProducts) {
             if (op.cardType === 'IN') {
               pendingInQty += opProd.quantity;
             } else {
@@ -467,49 +489,61 @@ export class ReportsService {
       >();
 
       for (const op of gateOps) {
-        const opProd = op.products.find((p) => p.inventoryId === prod.id);
-        if (!opProd || !opProd.locationId) continue;
+        const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
+        for (const opProd of matchingProducts) {
+          if (!opProd.locationId) continue;
 
-        const dateStr = formatDateInTimezone(op.verifiedAt || op.createdAt, timezone);
-        const locId = opProd.locationId;
-        const key = `${dateStr}_${locId}`;
+          const dateStr = formatDateInTimezone(
+            op.verifiedAt || op.createdAt,
+            timezone,
+          );
+          const locId = opProd.locationId;
+          const key = `${dateStr}_${locId}`;
 
-        const current = locationTransactionsMap.get(key) || {
-          incoming: 0,
-          outgoing: 0,
-          inList: [],
-          outList: [],
-        };
+          const current = locationTransactionsMap.get(key) || {
+            incoming: 0,
+            outgoing: 0,
+            inList: [],
+            outList: [],
+          };
 
-        const txDetail = {
-          uuid: op.uuid,
-          opNumber: op.opNumber,
-          driverName: op.driverName,
-          licensePlate: op.licensePlate,
-          cardType: op.cardType,
-          quantity: opProd.quantity,
-          referenceDocument: op.documentReference?.documentNumber || '-',
-          status: op.status,
-          createdAt: op.verifiedAt || op.createdAt,
-          stack: opProd.quant?.lotName || '-',
-        };
+          const txDetail = {
+            uuid: op.uuid,
+            opNumber: op.opNumber,
+            driverName: op.driverName,
+            licensePlate: op.licensePlate,
+            cardType: op.cardType,
+            quantity: opProd.quantity,
+            referenceDocument: op.documentReference?.documentNumber || '-',
+            status: op.status,
+            createdAt: op.verifiedAt || op.createdAt,
+            stack: opProd.quant?.lotName || '-',
+          };
 
-        if (op.cardType === 'IN') {
-          current.incoming += opProd.quantity;
-          current.inList.push(txDetail);
-        } else {
-          current.outgoing += opProd.quantity;
-          current.outList.push(txDetail);
+          if (op.cardType === 'IN') {
+            current.incoming += opProd.quantity;
+            current.inList.push(txDetail);
+          } else {
+            current.outgoing += opProd.quantity;
+            current.outList.push(txDetail);
+          }
+
+          locationTransactionsMap.set(key, current);
         }
-
-        locationTransactionsMap.set(key, current);
       }
 
       // Map to store daily metrics per location
       // Key: dateStr_locationId
       const locationDailyMetrics = new Map<
         string,
-        { opening: number; incoming: number; outgoing: number; closing: number; inList: any[]; outList: any[] }
+        {
+          opening: number;
+          incoming: number;
+          outgoing: number;
+          closing: number;
+          inList: any[];
+          outList: any[];
+        }
       >();
 
       // Perform backward calculation for each active location
@@ -631,7 +665,9 @@ export class ReportsService {
           incoming: dayIncoming,
           outgoing: dayOutgoing,
           closingStock: dayClosing,
-          locations: locationsBreakdown.sort((a, b) => a.locationName.localeCompare(b.locationName)),
+          locations: locationsBreakdown.sort((a, b) =>
+            a.locationName.localeCompare(b.locationName),
+          ),
         });
       }
     }
@@ -747,16 +783,15 @@ export class ReportsService {
       },
     });
 
-    const unreconciledGateOps = gateOps.map((op) => {
-      const opProd = op.products[0];
-      return {
+    const unreconciledGateOps = gateOps.flatMap((op) => {
+      return op.products.map((opProd) => ({
         documentNumber: op.opNumber,
         partnerName: op.driverName + ' (' + op.licensePlate + ')',
         pickingTypeCode: op.cardType === 'IN' ? 'incoming' : 'outgoing',
-        quantity: opProd?.quantity || 0,
+        quantity: opProd.quantity,
         scheduledDate: op.verifiedAt || op.createdAt,
         type: 'GATE_OPERATION',
-      };
+      }));
     });
 
     const incomingTransactions = [
@@ -839,50 +874,66 @@ export class ReportsService {
       },
     });
 
-    const locationSnapshots = await this.prisma.dailyLocationStockSnapshot.findMany({
-      where: {
-        warehouseId,
-        inventoryId: inventory.id,
-        date: {
-          gte: start,
-          lte: today,
+    const locationSnapshots =
+      await this.prisma.dailyLocationStockSnapshot.findMany({
+        where: {
+          warehouseId,
+          inventoryId: inventory.id,
+          date: {
+            gte: start,
+            lte: today,
+          },
         },
-      },
-    });
+      });
 
     const activeLocationIds = new Set<number>();
     for (const q of quants) {
       activeLocationIds.add(q.locationId);
     }
     for (const op of gateOpsForProd) {
-      const opProd = op.products.find((p) => p.inventoryId === inventory.id);
-      if (opProd && opProd.locationId) {
-        activeLocationIds.add(opProd.locationId);
+      const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
+      for (const opProd of matchingProducts) {
+        if (opProd.locationId) {
+          activeLocationIds.add(opProd.locationId);
+        }
       }
     }
     for (const op of activePendingOps) {
-      const opProd = op.products.find((p) => p.inventoryId === inventory.id);
-      if (opProd && opProd.locationId) {
-        activeLocationIds.add(opProd.locationId);
+      const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
+      for (const opProd of matchingProducts) {
+        if (opProd.locationId) {
+          activeLocationIds.add(opProd.locationId);
+        }
       }
     }
 
-    const locationTransactionsMap = new Map<string, { incoming: number; outgoing: number }>();
+    const locationTransactionsMap = new Map<
+      string,
+      { incoming: number; outgoing: number }
+    >();
     for (const op of gateOpsForProd) {
-      const opProd = op.products.find((p) => p.inventoryId === inventory.id);
-      if (!opProd || !opProd.locationId) continue;
+      const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
+      for (const opProd of matchingProducts) {
+        if (!opProd.locationId) continue;
 
-      const dateStr = formatDateInTimezone(op.verifiedAt || op.createdAt, timezone);
-      const locId = opProd.locationId;
-      const key = `${dateStr}_${locId}`;
+        const dateStr = formatDateInTimezone(
+          op.verifiedAt || op.createdAt,
+          timezone,
+        );
+        const locId = opProd.locationId;
+        const key = `${dateStr}_${locId}`;
 
-      const current = locationTransactionsMap.get(key) || { incoming: 0, outgoing: 0 };
-      if (op.cardType === 'IN') {
-        current.incoming += opProd.quantity;
-      } else {
-        current.outgoing += opProd.quantity;
+        const current = locationTransactionsMap.get(key) || {
+          incoming: 0,
+          outgoing: 0,
+        };
+        if (op.cardType === 'IN') {
+          current.incoming += opProd.quantity;
+        } else {
+          current.outgoing += opProd.quantity;
+        }
+        locationTransactionsMap.set(key, current);
       }
-      locationTransactionsMap.set(key, current);
     }
 
     const currentStockTrackerMap = new Map<number, number>();
@@ -893,10 +944,10 @@ export class ReportsService {
       let pendingInQty = 0;
       let pendingOutQty = 0;
       for (const op of activePendingOps) {
-        const opProd = op.products.find(
+        const matchingProducts = op.products.filter(
           (p) => p.inventoryId === inventory.id && p.locationId === locId,
         );
-        if (opProd) {
+        for (const opProd of matchingProducts) {
           if (op.cardType === 'IN') {
             pendingInQty += opProd.quantity;
           } else {
@@ -921,7 +972,10 @@ export class ReportsService {
       for (const dDate of backwardDates) {
         const dStr = formatDateInTimezone(dDate, timezone);
         const key = `${dStr}_${locId}`;
-        const txs = locationTransactionsMap.get(key) || { incoming: 0, outgoing: 0 };
+        const txs = locationTransactionsMap.get(key) || {
+          incoming: 0,
+          outgoing: 0,
+        };
 
         let closing = 0;
         const snap = locationSnapshots.find(
@@ -1073,10 +1127,14 @@ export class ReportsService {
 
           // Calculate dynamic height for the row based on content text height
           doc.font('Helvetica-Bold').fontSize(6.8);
-          const productNameHeight = doc.heightOfString(row.product.name, { width: 110 });
+          const productNameHeight = doc.heightOfString(row.product.name, {
+            width: 110,
+          });
 
           doc.font('Helvetica').fontSize(6.8);
-          const locationNameHeight = doc.heightOfString(loc.locationName, { width: 85 });
+          const locationNameHeight = doc.heightOfString(loc.locationName, {
+            width: 85,
+          });
 
           const maxTextHeight = Math.max(productNameHeight, locationNameHeight);
           const rowHeight = Math.max(maxTextHeight + 8, 16); // padding 4pt top/bottom, min height 16
