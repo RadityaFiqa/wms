@@ -36,6 +36,7 @@ export default function GateOperationsListPage() {
     endDate: endDate || undefined,
     page,
     limit: 10,
+    sortOrder: "desc",
   });
 
   const getStatusBadge = (statusValue: string) => {
@@ -75,12 +76,12 @@ export default function GateOperationsListPage() {
 
   const getCardTypeBadge = (type: string) => {
     return type === "IN" ? (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-150">
-        📥 GATE IN
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-150">
+        📥 Masuk
       </span>
     ) : (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-150">
-        📤 GATE OUT
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-150">
+        📤 Keluar
       </span>
     );
   };
@@ -259,14 +260,12 @@ export default function GateOperationsListPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider">
-                    <th className="px-6 py-4">No. Operasi</th>
+                    <th className="px-6 py-4">Nomor Tiket</th>
                     <th className="px-6 py-4">Waktu</th>
-                    <th className="px-6 py-4">Tipe Kartu</th>
-                    <th className="px-6 py-4">Driver</th>
-                    <th className="px-6 py-4">Plat Nomor</th>
+                    <th className="px-6 py-4">Aksi</th>
+                    <th className="px-6 py-4">Dokumen Referensi</th>
+                    <th className="px-6 py-4">Klien / Partner</th>
                     <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Total Item</th>
-                    <th className="px-6 py-4">Reporter</th>
                     <th className="px-6 py-4 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -360,19 +359,19 @@ function GateOperationRow({
           </div>
         </td>
         <td className="px-6 py-4">{getCardTypeBadge(item.cardType)}</td>
-        <td className="px-6 py-4 font-semibold text-slate-800">
-          {item.driverName}
+        <td className="px-6 py-4 font-mono text-xs font-semibold">
+          {item.documentReference?.documentNumber ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-250">
+              {item.documentReference.documentNumber}
+            </span>
+          ) : (
+            <span className="text-slate-400">-</span>
+          )}
         </td>
-        <td className="px-6 py-4 font-mono font-bold text-xs text-slate-900">
-          {item.licensePlate}
+        <td className="px-6 py-4 font-semibold text-slate-800">
+          {item.clientPartner || "-"}
         </td>
         <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
-        <td className="px-6 py-4 font-bold text-slate-700">
-          {totalItemCount.toLocaleString("id-ID")}
-        </td>
-        <td className="px-6 py-4 font-semibold text-slate-700">
-          {item.createdByUser?.name || "Sistem"}
-        </td>
         <td
           className="px-6 py-4 text-center"
           onClick={(e) => e.stopPropagation()}
@@ -389,7 +388,7 @@ function GateOperationRow({
       {isExpanded && (
         <tr>
           <td
-            colSpan={9}
+            colSpan={7}
             className="bg-slate-50/50 px-12 py-4 border-b border-slate-200"
           >
             <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden max-w-2xl">

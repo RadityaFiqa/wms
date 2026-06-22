@@ -546,6 +546,16 @@ export default function GateOperationDetailPage() {
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {getStatusBadge(gateOperation.status || "PENDING")}
 
+          {gateOperation.status !== "VERIFIED" && gateOperation.status !== "CANCELED" && (
+            <Link
+              href={`/gate-verification/${uuid}`}
+              className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 border border-blue-600 rounded-lg text-xs transition cursor-pointer"
+            >
+              <ShieldCheck className="h-4 w-4 mr-1.5" />
+              Verifikasi
+            </Link>
+          )}
+
           <button
             type="button"
             onClick={handlePrintPreview}

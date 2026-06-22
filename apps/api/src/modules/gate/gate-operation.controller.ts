@@ -68,6 +68,7 @@ export class GateOperationController {
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
     return this.service.getGateOperations({
       search,
@@ -77,6 +78,7 @@ export class GateOperationController {
       endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
+      sortOrder,
     });
   }
 

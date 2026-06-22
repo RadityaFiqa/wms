@@ -86,13 +86,27 @@ export class GateService {
    * Format: GO-YYYYMMDD-XXXX
    */
   private async generateOpNumber(tx: any, cardType: CardType): Promise<string> {
+    const lockId = cardType === CardType.IN ? 10001 : 10002;
+    await tx.$queryRawUnsafe(
+      `SELECT 1 FROM (SELECT pg_advisory_xact_lock(${lockId})) AS lock`,
+    );
+
+    const timezone = this.warehouseContext.getTimezone();
     const today = new Date();
-    const day = String(today.getDate()).padStart(2, '0');
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const year = today.getFullYear();
+    const todayStr = formatDateInTimezone(today, timezone);
+    const [year, month, day] = todayStr.split('-');
+
+    const start = getLocalStartOfDay(todayStr, timezone);
+    const end = getLocalEndOfDay(todayStr, timezone);
 
     const lastOp = await tx.gateOperation.findFirst({
-      where: { cardType },
+      where: {
+        cardType,
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
       orderBy: { id: 'desc' },
       select: { opNumber: true },
     });
@@ -212,6 +226,7 @@ export class GateService {
     endDate?: string;
     page?: number;
     limit?: number;
+    sortOrder?: 'asc' | 'desc';
   }) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
@@ -274,7 +289,7 @@ export class GateService {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: query.sortOrder || 'desc' },
         include: {
           attachments: true,
           documentReference: {

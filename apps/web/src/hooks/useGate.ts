@@ -166,6 +166,7 @@ export function useGateOperations(
     endDate?: string;
     page?: number;
     limit?: number;
+    sortOrder?: 'asc' | 'desc';
   } = {},
 ) {
   const { activeWarehouse } = useAuthStore();
@@ -178,6 +179,7 @@ export function useGateOperations(
   if (query.endDate) searchParams.append("endDate", query.endDate);
   if (query.page) searchParams.append("page", String(query.page));
   if (query.limit) searchParams.append("limit", String(query.limit));
+  if (query.sortOrder) searchParams.append("sortOrder", query.sortOrder);
 
   // Dynamic SWR key ensures auto-re-fetching when activeWarehouse or query filters change
   const swrKey = activeWarehouse

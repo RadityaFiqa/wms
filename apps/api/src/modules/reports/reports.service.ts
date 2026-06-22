@@ -51,17 +51,29 @@ export class ReportsService {
         status: { in: ['PENDING', 'VERIFIED'] },
         OR: [
           {
-            verifiedAt: {
+            cardType: 'OUT',
+            createdAt: {
               gte: start,
               lte: end,
             },
           },
           {
-            verifiedAt: null,
-            createdAt: {
-              gte: start,
-              lte: end,
-            },
+            cardType: 'IN',
+            OR: [
+              {
+                verifiedAt: {
+                  gte: start,
+                  lte: end,
+                },
+              },
+              {
+                verifiedAt: null,
+                createdAt: {
+                  gte: start,
+                  lte: end,
+                },
+              },
+            ],
           },
         ],
       },
@@ -419,17 +431,29 @@ export class ReportsService {
         status: { in: ['PENDING', 'VERIFIED'] },
         OR: [
           {
-            verifiedAt: {
+            cardType: 'OUT',
+            createdAt: {
               gte: start,
               lte: today,
             },
           },
           {
-            verifiedAt: null,
-            createdAt: {
-              gte: start,
-              lte: today,
-            },
+            cardType: 'IN',
+            OR: [
+              {
+                verifiedAt: {
+                  gte: start,
+                  lte: today,
+                },
+              },
+              {
+                verifiedAt: null,
+                createdAt: {
+                  gte: start,
+                  lte: today,
+                },
+              },
+            ],
           },
         ],
       },
@@ -568,7 +592,7 @@ export class ReportsService {
     }
 
     for (const op of gateOps) {
-      const opDate = op.verifiedAt || op.createdAt;
+      const opDate = op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt);
       if (opDate && opDate >= dateRangeStart && opDate <= dateRangeEnd) {
         for (const p of op.products) {
           movedProductIdsSet.add(p.inventoryId);
@@ -692,7 +716,7 @@ export class ReportsService {
           if (!opProd.locationId) continue;
 
           const dateStr = formatDateInTimezone(
-            op.verifiedAt || op.createdAt,
+            op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
             timezone,
           );
           const locId = opProd.locationId;
@@ -715,7 +739,7 @@ export class ReportsService {
             quantity: opProd.quantity,
             referenceDocument: op.documentReference?.documentNumber || '-',
             status: op.status,
-            createdAt: op.verifiedAt || op.createdAt,
+            createdAt: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
             stack: opProd.quant?.lotName || '-',
             type: 'GATE_OPERATION',
           };
@@ -1055,17 +1079,29 @@ export class ReportsService {
           {
             OR: [
               {
-                verifiedAt: {
+                cardType: 'OUT',
+                createdAt: {
                   gte: start,
                   lte: end,
                 },
               },
               {
-                verifiedAt: null,
-                createdAt: {
-                  gte: start,
-                  lte: end,
-                },
+                cardType: 'IN',
+                OR: [
+                  {
+                    verifiedAt: {
+                      gte: start,
+                      lte: end,
+                    },
+                  },
+                  {
+                    verifiedAt: null,
+                    createdAt: {
+                      gte: start,
+                      lte: end,
+                    },
+                  },
+                ],
               },
             ],
           },
@@ -1091,7 +1127,7 @@ export class ReportsService {
         partnerName: op.clientPartner || op.driverName + ' (' + op.licensePlate + ')',
         pickingTypeCode: op.cardType === 'IN' ? 'incoming' : 'outgoing',
         quantity: opProd.quantity,
-        scheduledDate: op.verifiedAt || op.createdAt,
+        scheduledDate: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
         type: 'GATE_OPERATION',
       }));
     });
@@ -1239,17 +1275,29 @@ export class ReportsService {
         status: { in: ['PENDING', 'VERIFIED'] },
         OR: [
           {
-            verifiedAt: {
+            cardType: 'OUT',
+            createdAt: {
               gte: start,
               lte: today,
             },
           },
           {
-            verifiedAt: null,
-            createdAt: {
-              gte: start,
-              lte: today,
-            },
+            cardType: 'IN',
+            OR: [
+              {
+                verifiedAt: {
+                  gte: start,
+                  lte: today,
+                },
+              },
+              {
+                verifiedAt: null,
+                createdAt: {
+                  gte: start,
+                  lte: today,
+                },
+              },
+            ],
           },
         ],
         products: {
@@ -1352,7 +1400,7 @@ export class ReportsService {
         if (!opProd.locationId) continue;
 
         const dateStr = formatDateInTimezone(
-          op.verifiedAt || op.createdAt,
+          op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
           timezone,
         );
         const locId = opProd.locationId;
