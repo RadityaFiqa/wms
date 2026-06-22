@@ -20,6 +20,59 @@ export class ReportsService {
     private readonly warehouseContext: WarehouseContextService,
   ) {}
 
+  private distributeAdjustment(
+    adjustment: number,
+    locations: { id: number; qty: number }[],
+  ): Map<number, number> {
+    const result = new Map<number, number>();
+    if (locations.length === 0) return result;
+
+    const totalQty = locations.reduce((sum, loc) => sum + loc.qty, 0);
+    if (totalQty === 0) {
+      let remaining = adjustment;
+      for (let i = 0; i < locations.length; i++) {
+        const loc = locations[i];
+        if (i === locations.length - 1) {
+          result.set(loc.id, remaining);
+        } else {
+          const share = Math.round(adjustment / locations.length);
+          result.set(loc.id, share);
+          remaining -= share;
+        }
+      }
+      return result;
+    }
+
+    let distributedSum = 0;
+    const shares = locations.map((loc) => {
+      const exactShare = (adjustment * loc.qty) / totalQty;
+      const roundedShare = Math.round(exactShare);
+      distributedSum += roundedShare;
+      return { id: loc.id, qty: loc.qty, roundedShare, exactShare };
+    });
+
+    const difference = adjustment - distributedSum;
+    if (difference !== 0) {
+      shares.sort((a, b) => {
+        const remA = a.exactShare - a.roundedShare;
+        const remB = b.exactShare - b.roundedShare;
+        return difference > 0 ? remB - remA : remA - remB;
+      });
+
+      const step = difference > 0 ? 1 : -1;
+      for (let i = 0; i < Math.abs(difference); i++) {
+        const index = i % shares.length;
+        shares[index].roundedShare += step;
+      }
+    }
+
+    for (const s of shares) {
+      result.set(s.id, s.roundedShare);
+    }
+
+    return result;
+  }
+
   /**
    * Cron Job to capture daily location-level stock snapshots at 05:00 AM (Asia/Makassar timezone)
    */
@@ -169,9 +222,9 @@ export class ReportsService {
           if (adjustment !== 0) {
             // Distribute adjustment to locations
             if (gateInfo.locations.size > 0) {
-              for (const [locId, gpQty] of gateInfo.locations.entries()) {
-                const proportion = gpQty / sumGateQty;
-                const locAdj = adjustment * proportion;
+              const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
+              const distributed = this.distributeAdjustment(adjustment, locList);
+              for (const [locId, locAdj] of distributed.entries()) {
                 const key = `${locId}_${invId}`;
                 locationAdjustmentsMap.set(
                   key,
@@ -562,9 +615,9 @@ export class ReportsService {
           if (adjustment !== 0) {
             // Distribute to cumulative location map (for today's stock tracker)
             if (gateInfo.locations.size > 0) {
-              for (const [locId, gpQty] of gateInfo.locations.entries()) {
-                const proportion = gpQty / sumGateQty;
-                const locAdj = adjustment * proportion;
+              const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
+              const distributed = this.distributeAdjustment(adjustment, locList);
+              for (const [locId, locAdj] of distributed.entries()) {
                 const key = `${locId}_${invId}`;
                 cumulativeLocationAdjustmentsMap.set(
                   key,
@@ -768,9 +821,9 @@ export class ReportsService {
         const gateInfo = adjInfo.gateInfo;
 
         if (gateInfo.locations.size > 0) {
-          for (const [locId, gpQty] of gateInfo.locations.entries()) {
-            const proportion = gpQty / sumGateQty;
-            const locAdjustment = adjustment * proportion;
+          const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
+          const distributed = this.distributeAdjustment(adjustment, locList);
+          for (const [locId, locAdjustment] of distributed.entries()) {
             if (locAdjustment === 0) continue;
 
             const key = `${docDateStr}_${locId}`;
@@ -1210,9 +1263,9 @@ export class ReportsService {
         if (adjustment !== 0) {
           // Distribute to cumulative location map (for today's stock tracker)
           if (locQties.size > 0) {
-            for (const [locId, gpQty] of locQties.entries()) {
-              const proportion = gpQty / sumGateQty;
-              const locAdj = adjustment * proportion;
+            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({ id, qty }));
+            const distributed = this.distributeAdjustment(adjustment, locList);
+            for (const [locId, locAdj] of distributed.entries()) {
               const key = `${locId}_${inventory.id}`;
               cumulativeLocationAdjustmentsMap.set(
                 key,
@@ -1427,9 +1480,9 @@ export class ReportsService {
       const gateInfo = adjInfo.gateInfo;
 
       if (gateInfo.locations.size > 0) {
-        for (const [locId, gpQty] of gateInfo.locations.entries()) {
-          const proportion = gpQty / sumGateQty;
-          const locAdjustment = adjustment * proportion;
+        const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
+        const distributed = this.distributeAdjustment(adjustment, locList);
+        for (const [locId, locAdjustment] of distributed.entries()) {
           if (locAdjustment === 0) continue;
 
           const key = `${docDateStr}_${locId}`;

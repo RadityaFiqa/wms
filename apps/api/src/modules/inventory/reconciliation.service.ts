@@ -9,6 +9,59 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 export class ReconciliationService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private distributeAdjustment(
+    adjustment: number,
+    locations: { id: number; qty: number }[],
+  ): Map<number, number> {
+    const result = new Map<number, number>();
+    if (locations.length === 0) return result;
+
+    const totalQty = locations.reduce((sum, loc) => sum + loc.qty, 0);
+    if (totalQty === 0) {
+      let remaining = adjustment;
+      for (let i = 0; i < locations.length; i++) {
+        const loc = locations[i];
+        if (i === locations.length - 1) {
+          result.set(loc.id, remaining);
+        } else {
+          const share = Math.round(adjustment / locations.length);
+          result.set(loc.id, share);
+          remaining -= share;
+        }
+      }
+      return result;
+    }
+
+    let distributedSum = 0;
+    const shares = locations.map((loc) => {
+      const exactShare = (adjustment * loc.qty) / totalQty;
+      const roundedShare = Math.round(exactShare);
+      distributedSum += roundedShare;
+      return { id: loc.id, qty: loc.qty, roundedShare, exactShare };
+    });
+
+    const difference = adjustment - distributedSum;
+    if (difference !== 0) {
+      shares.sort((a, b) => {
+        const remA = a.exactShare - a.roundedShare;
+        const remB = b.exactShare - b.roundedShare;
+        return difference > 0 ? remB - remA : remA - remB;
+      });
+
+      const step = difference > 0 ? 1 : -1;
+      for (let i = 0; i < Math.abs(difference); i++) {
+        const index = i % shares.length;
+        shares[index].roundedShare += step;
+      }
+    }
+
+    for (const s of shares) {
+      result.set(s.id, s.roundedShare);
+    }
+
+    return result;
+  }
+
   /**
    * Calculates ERP Stock reconciliation for all products in the active warehouse.
    */
@@ -396,9 +449,9 @@ export class ReconciliationService {
 
           // Proportional distribution of adjustment to locations
           if (locQties.size > 0) {
-            for (const [locId, gpQty] of locQties.entries()) {
-              const proportion = gpQty / sumGateQty;
-              const locAdj = adjustment * proportion;
+            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({ id, qty }));
+            const distributed = this.distributeAdjustment(adjustment, locList);
+            for (const [locId, locAdj] of distributed.entries()) {
               locationAdjustmentsMap.set(
                 locId,
                 (locationAdjustmentsMap.get(locId) || 0) + locAdj,
