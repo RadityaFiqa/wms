@@ -16,6 +16,7 @@ import type {
 import { CardType, VerificationStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
+import { getReconciledStockForQuants } from '@/core/utils/stock-reconciliation';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -1338,6 +1339,7 @@ export class GateService {
     if (quantId && quantId !== null) {
       const quant = await tx.quant.findUnique({
         where: { id: quantId },
+        include: { location: true },
       });
       if (!quant) {
         throw new BadRequestException('Tumpukan/stack tidak ditemukan.');
@@ -1355,39 +1357,14 @@ export class GateService {
         }
       }
       if (cardType === 'OUT') {
-        let reservedByThisOp = 0;
-        if (gateOperationId) {
-          const existingProduct = await tx.gateOperationProduct.findFirst({
-            where: {
-              gateOperationId,
-              quantId,
-              inventoryId: productId,
-            },
-          });
-          reservedByThisOp = existingProduct ? existingProduct.quantity : 0;
-        }
-        
-        // Calculate reservations from gate operations created after the quant was synced/created
-        const postSyncReservations = await tx.gateOperationProduct.aggregate({
-          where: {
-            quantId,
-            gateOperation: {
-              cardType: 'OUT',
-              status: {
-                notIn: ['CANCELED', 'REJECTED'],
-              },
-              createdAt: {
-                gt: quant.createdAt,
-              },
-              id: gateOperationId ? { not: gateOperationId } : undefined,
-            },
-          },
-          _sum: {
-            quantity: true,
-          },
-        });
-        const localReservedPostSync = postSyncReservations._sum.quantity || 0;
-        const totalAvailable = quant.availableQuantity + reservedByThisOp - localReservedPostSync;
+        const warehouseId = quant.location.warehouseId;
+        const reconciledStockMap = await getReconciledStockForQuants(
+          tx,
+          warehouseId,
+          productId,
+          gateOperationId,
+        );
+        const totalAvailable = reconciledStockMap.get(quantId) || 0;
 
         if (quantity > totalAvailable) {
           throw new BadRequestException(

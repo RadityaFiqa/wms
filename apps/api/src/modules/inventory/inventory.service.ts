@@ -8,6 +8,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { OdooClient } from '../odoo/odoo-client';
 import { OdooSessionManager } from '../odoo/odoo-session.manager';
 import PDFDocument from 'pdfkit';
+import { getReconciledStockForQuants } from '@/core/utils/stock-reconciliation';
 
 @Injectable()
 export class InventoryService {
@@ -793,6 +794,12 @@ export class InventoryService {
       throw new NotFoundException('Inventory tidak ditemukan.');
     }
 
+    const reconciledStockMap = await getReconciledStockForQuants(
+      this.prisma,
+      warehouseId,
+      inventory.id,
+    );
+
     const locationsMap = new Map<
       string,
       {
@@ -821,7 +828,7 @@ export class InventoryService {
         lotName: q.lotName || '-',
         quantity: q.quantity,
         reservedQuantity: q.reservedQuantity,
-        availableQuantity: q.availableQuantity,
+        availableQuantity: reconciledStockMap.get(q.id) ?? q.availableQuantity,
         secondaryUnitQty: q.secondaryUnitQty || 0.0,
       });
     }
