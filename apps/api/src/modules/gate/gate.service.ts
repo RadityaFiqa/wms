@@ -611,7 +611,7 @@ export class GateService {
               const currentAssigned = gp.quantity;
 
               const totalRealized = otherUsed + currentAssigned;
-              if (totalRealized > docItem.quantity) {
+              if (totalRealized > docItem.productQty) {
                 throw new BadRequestException(
                   `Total kuantitas realisasi untuk produk ${docItem.productName} (${totalRealized}) melebihi kuantitas dokumen ERP (${docItem.quantity}).`,
                 );
@@ -628,16 +628,6 @@ export class GateService {
           },
         });
       }
-
-      // Update gate operation verification fields
-      await tx.gateOperation.update({
-        where: { id: gateOperation.id },
-        data: {
-          verifiedById,
-          verificationNotes: body.notes || null,
-          verifiedAt: new Date(),
-        },
-      });
 
       // Update attachments for verification
       if (body.attachmentPaths !== undefined) {
