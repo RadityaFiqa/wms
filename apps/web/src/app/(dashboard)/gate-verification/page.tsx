@@ -285,6 +285,11 @@ export default function GateVerificationListPage() {
                       item={item}
                       getCardTypeBadge={getCardTypeBadge}
                       getStatusBadge={getStatusBadge}
+                      search={search}
+                      cardType={cardType}
+                      status={status}
+                      startDate={startDate}
+                      endDate={endDate}
                     />
                   ))}
                 </tbody>
@@ -330,10 +335,20 @@ function GateVerificationRow({
   item,
   getCardTypeBadge,
   getStatusBadge,
+  search,
+  cardType,
+  status,
+  startDate,
+  endDate,
 }: {
   item: any;
   getCardTypeBadge: any;
   getStatusBadge: any;
+  search: string;
+  cardType: string;
+  status: string;
+  startDate: string;
+  endDate: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -402,15 +417,26 @@ function GateVerificationRow({
           className="px-6 py-4 text-center"
           onClick={(e) => e.stopPropagation()}
         >
-          <Link
-            href={`/gate-verification/${item.uuid}`}
-            className="inline-flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition cursor-pointer"
-          >
-            <ShieldCheck className="h-4 w-4 mr-1.5" />
-            {item.status === "VERIFIED" || item.status === "CANCELED" || item.status === "REJECTED"
-              ? "Detail"
-              : "Verifikasi"}
-          </Link>
+          {(() => {
+            const queryParams = new URLSearchParams();
+            if (search) queryParams.append("search", search);
+            if (cardType) queryParams.append("cardType", cardType);
+            if (status) queryParams.append("status", status);
+            if (startDate) queryParams.append("startDate", startDate);
+            if (endDate) queryParams.append("endDate", endDate);
+            const queryStr = queryParams.toString();
+            return (
+              <Link
+                href={`/gate-verification/${item.uuid}${queryStr ? `?${queryStr}` : ""}`}
+                className="inline-flex items-center justify-center bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition cursor-pointer"
+              >
+                <ShieldCheck className="h-4 w-4 mr-1.5" />
+                {item.status === "VERIFIED" || item.status === "CANCELED" || item.status === "REJECTED"
+                  ? "Detail"
+                  : "Verifikasi"}
+              </Link>
+            );
+          })()}
         </td>
       </tr>
       {isExpanded && (

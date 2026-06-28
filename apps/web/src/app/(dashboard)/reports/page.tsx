@@ -389,11 +389,10 @@ export default function ReportsPage() {
                                       </div>
                                     </div>
 
-                                    {/* Combined Gate Operations List */}
                                     <div className="p-4 space-y-2">
                                       <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
                                         <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                                        Daftar Transaksi Gate Operations (Masuk / Keluar)
+                                        Daftar Transaksi Pergerakan Persediaan (Masuk / Keluar)
                                       </h4>
                                       {(() => {
                                         const allOps = [
@@ -438,7 +437,8 @@ export default function ReportsPage() {
                                                           minute: "2-digit",
                                                         })}
                                                       </td>
-                                                      <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px]">
+                                                      <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300 text-[11px] whitespace-nowrap">
+                                                        <span className="mr-1">{tx.type === "GATE_OPERATION" ? "🚚" : "📄"}</span>
                                                         {tx.opNumber}
                                                       </td>
                                                       <td className="px-3 py-2 text-center">
@@ -461,19 +461,21 @@ export default function ReportsPage() {
                                                         </span>
                                                       </td>
                                                       <td className="px-3 py-2 text-slate-650 dark:text-slate-350 text-[11px]">
-                                                        {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
-                                                          <div className="space-y-0.5">
-                                                            <div className="font-semibold text-blue-600 dark:text-blue-455">
-                                                              {tx.clientPartner || tx.driverName}
-                                                            </div>
-                                                            <div className="text-[9px] text-slate-400">
-                                                              ERP: {tx.erpQty} | Gate: {tx.totalGateQty} (Selisih: {tx.adjustmentQty})
-                                                            </div>
-                                                          </div>
-                                                        ) : (
-                                                          <span>{tx.clientPartner || `${tx.driverName} (${tx.licensePlate})`}</span>
-                                                        )}
-                                                      </td>
+                                                         {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
+                                                           <div className="space-y-0.5">
+                                                             <div className="font-semibold text-blue-600 dark:text-blue-455">
+                                                               {tx.clientPartner || tx.driverName}
+                                                             </div>
+                                                             <div className="text-[9px] text-slate-400">
+                                                               ERP: {tx.erpQty} | Gate: {tx.totalGateQty} (Selisih: {tx.adjustmentQty})
+                                                             </div>
+                                                           </div>
+                                                         ) : tx.type === "ERP_DOCUMENT" ? (
+                                                           <span>{tx.clientPartner || "-"}</span>
+                                                         ) : (
+                                                           <span>{tx.clientPartner || `${tx.driverName} (${tx.licensePlate})`}</span>
+                                                         )}
+                                                       </td>
                                                       <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
                                                         {tx.stack || "-"}
                                                       </td>
@@ -496,7 +498,7 @@ export default function ReportsPage() {
                                                           </span>
                                                         )}
                                                       </td>
-                              <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
+                                                      <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
                                                         {tx.referenceDocument || "-"}
                                                       </td>
                                                       <td className={`px-3 py-2 text-right font-bold text-[11px] ${
@@ -514,17 +516,17 @@ export default function ReportsPage() {
                                                         </div>
                                                       </td>
                                                       <td className="px-3 py-2 text-center">
-                                                        {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
-                                                          <span className="text-slate-400">-</span>
-                                                        ) : (
-                                                          <Link
-                                                            href={`/gate-operations/${tx.uuid}`}
-                                                            className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-455 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
-                                                          >
-                                                            <ExternalLink className="h-3.5 w-3.5" />
-                                                          </Link>
-                                                        )}
-                                                      </td>
+                                                         {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" || tx.type === "ERP_DOCUMENT" ? (
+                                                           <span className="text-slate-400">-</span>
+                                                         ) : (
+                                                           <Link
+                                                             href={`/gate-operations/${tx.uuid}`}
+                                                             className="inline-flex items-center justify-center p-1 text-blue-600 dark:text-blue-455 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition"
+                                                           >
+                                                             <ExternalLink className="h-3.5 w-3.5" />
+                                                           </Link>
+                                                         )}
+                                                       </td>
                                                     </tr>
                                                   );
                                                 })}

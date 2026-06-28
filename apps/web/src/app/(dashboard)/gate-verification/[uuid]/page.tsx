@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import React, { useState, useEffect, useRef } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CreateGateVerificationSchema } from "@bulog-wms/schema";
@@ -9,6 +9,7 @@ import {
   useGate,
   useGateOperationDetail,
   useGateVerificationHistory,
+  useGateOperations,
 } from "@/hooks/useGate";
 import { useAuthStore } from "@/store/auth";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -36,7 +37,10 @@ import {
   CheckCircle2,
   Search,
   Edit,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { formatSecondaryQty } from "@/lib/quantity";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
 
@@ -68,6 +72,83 @@ export default function GateVerificationDetailPage() {
   const router = useRouter();
   const params = useParams();
   const uuid = params.uuid as string;
+  const searchParams = useSearchParams();
+
+  // Extract filter parameters from URL
+  const searchVal = searchParams.get("search") || undefined;
+  const cardTypeVal = searchParams.get("cardType") || undefined;
+  // Gate Verification Queue defaults status to "PENDING"
+  const statusVal = searchParams.get("status") ?? "PENDING";
+  const startDateVal = searchParams.get("startDate") || undefined;
+  const endDateVal = searchParams.get("endDate") || undefined;
+
+  // Retrieve the list of matching records for circular navigation
+  const { data: listData } = useGateOperations({
+    search: searchVal,
+    cardType: cardTypeVal,
+    status: statusVal || undefined,
+    startDate: startDateVal,
+    endDate: endDateVal,
+    limit: 1000,
+    sortOrder: "asc", // Default sorting for Gate Verification Queue
+  });
+
+  const items = listData?.items || [];
+  const currentIndex = items.findIndex((item: any) => item.uuid === uuid);
+  const hasMultipleItems = items.length > 1;
+
+  const previousUuid = hasMultipleItems && currentIndex !== -1
+    ? items[(currentIndex - 1 + items.length) % items.length].uuid
+    : null;
+
+  const nextUuid = hasMultipleItems && currentIndex !== -1
+    ? items[(currentIndex + 1) % items.length].uuid
+    : null;
+
+  const navigateTo = (targetUuid: string) => {
+    const queryStr = searchParams.toString();
+    router.push(`/gate-verification/${targetUuid}${queryStr ? `?${queryStr}` : ""}`);
+  };
+
+  const handleBack = () => {
+    const queryStr = searchParams.toString();
+    router.push(`/gate-verification${queryStr ? `?${queryStr}` : ""}`);
+  };
+
+  // Helper to determine the next Gate Verification UUID for auto-navigation.
+  // Returns the next record in the dataset, wrapping around, excluding the current verified one.
+  const getNextGateVerificationUuid = () => {
+    if (items.length <= 1) return null;
+    const currentIdx = items.findIndex((item: any) => item.uuid === uuid);
+    if (currentIdx === -1) return null;
+
+    // Try items after current record
+    for (let i = currentIdx + 1; i < items.length; i++) {
+      if (items[i].uuid !== uuid) {
+        return items[i].uuid;
+      }
+    }
+    // Wrap around to items before current record
+    for (let i = 0; i < currentIdx; i++) {
+      if (items[i].uuid !== uuid) {
+        return items[i].uuid;
+      }
+    }
+    return null;
+  };
+
+  const isNavigatingToNext = useRef(false);
+
+  const navigateToNext = () => {
+    isNavigatingToNext.current = true;
+    const nextVerifyUuid = getNextGateVerificationUuid();
+    const queryStr = searchParams.toString();
+    if (nextVerifyUuid) {
+      router.push(`/gate-verification/${nextVerifyUuid}${queryStr ? `?${queryStr}` : ""}`);
+    } else {
+      router.push(`/gate-verification${queryStr ? `?${queryStr}` : ""}`);
+    }
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNotesDocsSubmitting, setIsNotesDocsSubmitting] = useState(false);
@@ -106,6 +187,7 @@ export default function GateVerificationDetailPage() {
 
   // Redirect to gate operation details if already verified/canceled
   useEffect(() => {
+    if (isNavigatingToNext.current) return;
     if (gateOperation && (gateOperation.status === "VERIFIED" || gateOperation.status === "CANCELED")) {
       router.replace(`/gate-operations/${uuid}`);
     }
@@ -172,6 +254,7 @@ export default function GateVerificationDetailPage() {
       );
       refreshDetail();
       refreshTimeline();
+      navigateToNext();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal mengonfirmasi verifikasi.",
@@ -386,6 +469,7 @@ export default function GateVerificationDetailPage() {
 
       refreshDetail();
       refreshTimeline();
+      navigateToNext();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal menyimpan catatan & dokumen.",
@@ -446,6 +530,7 @@ export default function GateVerificationDetailPage() {
       reset(data);
       refreshDetail();
       refreshTimeline();
+      navigateToNext();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal memproses verifikasi.",
@@ -469,7 +554,7 @@ export default function GateVerificationDetailPage() {
     try {
       await cancelGateVerification(uuid);
       toast.success("Verifikasi berhasil dibatalkan.", { id: toastId });
-      router.push("/gate-verification");
+      handleBack();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal membatalkan verifikasi.",
@@ -543,7 +628,7 @@ export default function GateVerificationDetailPage() {
         </p>
         <button
           type="button"
-          onClick={() => router.push("/gate-verification")}
+          onClick={handleBack}
           className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition"
         >
           Kembali ke Antrean
@@ -559,7 +644,7 @@ export default function GateVerificationDetailPage() {
         <div className="flex items-center space-x-4">
           <button
             type="button"
-            onClick={() => router.push("/gate-verification")}
+            onClick={handleBack}
             className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition cursor-pointer"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -569,9 +654,32 @@ export default function GateVerificationDetailPage() {
               <ShieldCheck className="h-6 w-6 text-blue-600 mr-2 shrink-0" />
               Verifikasi Kendaraan
             </h1>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <div className="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onClick={() => previousUuid && navigateTo(previousUuid)}
+                  disabled={!previousUuid}
+                  className="p-1 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600 transition disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                  title="Sebelumnya"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-slate-705 text-xs font-mono font-bold px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-md">
+                  {gateOperation.opNumber}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => nextUuid && navigateTo(nextUuid)}
+                  disabled={!nextUuid}
+                  className="p-1 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600 transition disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                  title="Berikutnya"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
               <span className="text-slate-500 text-xs font-mono">
-                {gateOperation.opNumber} | Driver: {gateOperation.driverName}
+                | Driver: {gateOperation.driverName}
               </span>
             </div>
           </div>
@@ -959,14 +1067,19 @@ export default function GateVerificationDetailPage() {
 
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
-                              <span>
-                                {originalItem
-                                  ? originalItem.quantity.toLocaleString("id-ID")
-                                  : "0"}
-                              </span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">
-                                {productDetails.uom}
+                            <div className="flex flex-col items-end">
+                              <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
+                                <span>
+                                  {originalItem
+                                    ? originalItem.quantity.toLocaleString("id-ID")
+                                    : "0"}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                  {productDetails.uom}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-normal mt-1 block">
+                                {formatSecondaryQty(originalItem ? originalItem.quantity : 0, productDetails.uom)}
                               </span>
                             </div>
                           </td>
@@ -1108,7 +1221,7 @@ export default function GateVerificationDetailPage() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
-                onClick={() => router.push("/gate-verification")}
+                onClick={handleBack}
                 disabled={isSubmitting}
                 className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-5 py-2.5 rounded-lg text-sm transition disabled:opacity-40 cursor-pointer text-center"
               >

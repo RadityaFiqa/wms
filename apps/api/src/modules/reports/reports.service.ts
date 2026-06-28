@@ -153,6 +153,39 @@ export class ReportsService {
       },
     });
 
+    // Fetch all completed independent ERP Document References that happened yesterday (across all warehouses)
+    const yesterdayIndependentDocs = await this.prisma.documentReference.findMany({
+      where: {
+        state: 'done',
+        pickingTypeCode: { in: ['incoming', 'outgoing'] },
+        gateOperations: {
+          none: {
+            status: {
+              in: ['PENDING', 'VERIFIED'],
+            },
+          },
+        },
+        OR: [
+          {
+            dateDone: {
+              gte: start,
+              lte: end,
+            },
+          },
+          {
+            dateDone: null,
+            updatedAt: {
+              gte: start,
+              lte: end,
+            },
+          },
+        ],
+      },
+      include: {
+        items: true,
+      },
+    });
+
     // Fetch all completed Document References in the system (up to the snapshot end date)
     const completedDocs = await this.prisma.documentReference.findMany({
       where: {
@@ -291,6 +324,43 @@ export class ReportsService {
       }
     }
 
+    // Map each independent ERP movement to the location with the highest mismatch
+    const yesterdayIndependentMovementsMapped: any[] = [];
+    const mismatchMapsCache = new Map<string, Map<number, number>>();
+
+    for (const doc of yesterdayIndependentDocs) {
+      const whLocs = locations.filter((l) => l.warehouseId === doc.warehouseId);
+      const fallbackLocId = whLocs[0]?.id;
+
+      for (const item of doc.items) {
+        const prodId = item.inventoryId;
+        const cacheKey = `${doc.warehouseId}_${prodId}`;
+        
+        let mismatchMap = mismatchMapsCache.get(cacheKey);
+        if (!mismatchMap) {
+          const productQuants = currentQuants.filter((q) => q.inventoryId === prodId);
+          mismatchMap = await this.getProductMismatchMap(doc.warehouseId, prodId, whLocs, productQuants);
+          mismatchMapsCache.set(cacheKey, mismatchMap);
+        }
+
+        const productQuants = currentQuants.filter((q) => q.inventoryId === prodId);
+        const mappedLocId = this.getBestMismatchLocation(whLocs, mismatchMap, productQuants, fallbackLocId);
+
+        const currentMismatch = mismatchMap.get(mappedLocId) || 0;
+        const qty = item.productQty;
+        const movementQty = doc.pickingTypeCode === 'incoming' ? qty : -qty;
+        mismatchMap.set(mappedLocId, currentMismatch - movementQty);
+
+        yesterdayIndependentMovementsMapped.push({
+          doc,
+          item,
+          locationId: mappedLocId,
+        });
+
+        uniqueKeys.add(`${mappedLocId}_${prodId}`);
+      }
+    }
+
     // Process each location + product pair
     for (const key of uniqueKeys) {
       const [locationIdStr, inventoryIdStr] = key.split('_');
@@ -355,6 +425,16 @@ export class ReportsService {
             totalOut += matchingProduct.quantity;
           } else {
             totalIn += matchingProduct.quantity;
+          }
+        }
+      }
+
+      for (const m of yesterdayIndependentMovementsMapped) {
+        if (m.locationId === locationId && m.item.inventoryId === inventoryId) {
+          if (m.doc.pickingTypeCode === 'incoming') {
+            totalIn += m.item.productQty;
+          } else if (m.doc.pickingTypeCode === 'outgoing') {
+            totalOut += m.item.productQty;
           }
         }
       }
@@ -572,6 +652,51 @@ export class ReportsService {
       },
     });
 
+    // Fetch independent completed Document References (up to TODAY)
+    const independentCompletedDocs = await this.prisma.documentReference.findMany({
+      where: {
+        warehouseId,
+        state: 'done',
+        pickingTypeCode: { in: ['incoming', 'outgoing'] },
+        gateOperations: {
+          none: {
+            status: {
+              in: ['PENDING', 'VERIFIED'],
+            },
+          },
+        },
+        OR: [
+          {
+            dateDone: {
+              gte: start,
+              lte: today,
+            },
+          },
+          {
+            dateDone: null,
+            updatedAt: {
+              gte: start,
+              lte: today,
+            },
+          },
+        ],
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    // Process independent completed document references to find products with movement
+    for (const doc of independentCompletedDocs) {
+      const docDate = doc.dateDone || doc.updatedAt || doc.createdAt;
+      const isWithinDateRange = docDate >= start && docDate <= end;
+      if (isWithinDateRange) {
+        for (const item of doc.items) {
+          movedProductIdsSet.add(item.inventoryId);
+        }
+      }
+    }
+
     const cumulativeLocationAdjustmentsMap = new Map<string, number>(); // Key: `${locationId}_${inventoryId}`
     const completedDocsAdjustments: any[] = [];
 
@@ -729,6 +854,45 @@ export class ReportsService {
         }
       }
 
+      // Get discrepancy-based mismatch map for this product
+      const productQuants = prod.quants;
+      const mismatchMap = await this.getProductMismatchMap(warehouseId, prod.id, dbLocations, productQuants);
+
+      const fallbackLocId = dbLocations[0]?.id;
+      const mappedIndependentDocs: any[] = [];
+
+      // Filter and sort independent docs for this product chronologically
+      const prodIndependentDocs = independentCompletedDocs
+        .filter((doc) => doc.items.some((item) => item.inventoryId === prod.id))
+        .sort((a, b) => {
+          const dateA = a.dateDone || a.updatedAt || a.createdAt;
+          const dateB = b.dateDone || b.updatedAt || b.createdAt;
+          return dateA.getTime() - dateB.getTime();
+        });
+
+      for (const doc of prodIndependentDocs) {
+        const item = doc.items.find((i) => i.inventoryId === prod.id);
+        if (!item) continue;
+
+        const mappedLocId = this.getBestMismatchLocation(dbLocations, mismatchMap, productQuants, fallbackLocId);
+
+        // Update mismatch for the mapped location
+        const currentMismatch = mismatchMap.get(mappedLocId) || 0;
+        const qty = item.productQty;
+        const movementQty = doc.pickingTypeCode === 'incoming' ? qty : -qty;
+        mismatchMap.set(mappedLocId, currentMismatch - movementQty);
+
+        mappedIndependentDocs.push({
+          doc,
+          item,
+          locationId: mappedLocId,
+          qty,
+        });
+
+        // Add mapped location to activeLocationIds
+        activeLocationIds.add(mappedLocId);
+      }
+
       // Get current physical stock for this product at each location in this warehouse
       // Formula: realStock = erpStock (Quant quantity) + pendingInQty - pendingOutQty + cumulativeAdjustment
       const currentStockTrackerMap = new Map<number, number>();
@@ -807,6 +971,45 @@ export class ReportsService {
 
           locationTransactionsMap.set(key, current);
         }
+      }
+
+      // Add independent completed ERP documents to locationTransactionsMap
+      for (const m of mappedIndependentDocs) {
+        const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
+        const docDateStr = formatDateInTimezone(docDate, timezone);
+
+        const key = `${docDateStr}_${m.locationId}`;
+        const current = locationTransactionsMap.get(key) || {
+          incoming: 0,
+          outgoing: 0,
+          inList: [],
+          outList: [],
+        };
+
+        const txDetail = {
+          uuid: m.doc.uuid,
+          opNumber: m.doc.documentNumber,
+          driverName: m.doc.driver || '-',
+          licensePlate: m.doc.plateNumber || '-',
+          clientPartner: m.doc.partnerName || m.doc.purchaseName || '-',
+          cardType: m.doc.pickingTypeCode === 'incoming' ? 'IN' : 'OUT',
+          quantity: m.qty,
+          referenceDocument: m.doc.documentNumber,
+          status: m.doc.state.toUpperCase(), // 'DONE'
+          createdAt: docDate,
+          stack: '-',
+          type: 'ERP_DOCUMENT',
+        };
+
+        if (m.doc.pickingTypeCode === 'incoming') {
+          current.incoming += m.qty;
+          current.inList.push(txDetail);
+        } else if (m.doc.pickingTypeCode === 'outgoing') {
+          current.outgoing += m.qty;
+          current.outList.push(txDetail);
+        }
+
+        locationTransactionsMap.set(key, current);
       }
 
       // Add completed document adjustments to locationTransactionsMap
@@ -1083,35 +1286,68 @@ export class ReportsService {
     const todayStr = formatDateInTimezone(new Date(), timezone);
     const today = getLocalEndOfDay(todayStr, timezone);
 
-    // 1. Fetch ERP receipts and deliveries for this product on this day
-    const erpItems = await this.prisma.documentReferenceItem.findMany({
+    // 1. Fetch independent ERP receipts and deliveries for this product on this day (and up to today for backward stock calculation)
+    const independentCompletedDocs = await this.prisma.documentReference.findMany({
       where: {
-        inventoryId: inventory.id,
-        documentReference: {
-          warehouseId,
-          state: 'done',
-          dateDone: {
-            gte: start,
-            lte: end,
+        warehouseId,
+        state: 'done',
+        pickingTypeCode: { in: ['incoming', 'outgoing'] },
+        items: {
+          some: {
+            inventoryId: inventory.id,
+          },
+        },
+        gateOperations: {
+          none: {
+            status: {
+              in: ['PENDING', 'VERIFIED'],
+            },
+          },
+        },
+        OR: [
+          {
+            dateDone: {
+              gte: start,
+              lte: today,
+            },
+          },
+          {
+            dateDone: null,
+            updatedAt: {
+              gte: start,
+              lte: today,
+            },
+          },
+        ],
+      },
+      include: {
+        items: {
+          where: {
+            inventoryId: inventory.id,
           },
         },
       },
-      include: {
-        documentReference: true,
-      },
     });
 
-    const erpTransactions = erpItems.map((item) => ({
-      documentNumber: item.documentReference.documentNumber,
-      partnerName:
-        item.documentReference.partnerName ||
-        item.documentReference.purchaseName ||
-        'Tanpa Partner',
-      pickingTypeCode: item.documentReference.pickingTypeCode, // incoming / outgoing
-      quantity: item.quantity,
-      scheduledDate: item.documentReference.scheduledDate,
-      type: 'ERP_DOCUMENT',
-    }));
+    const targetDayIndependentDocs = independentCompletedDocs.filter((doc) => {
+      const docDate = doc.dateDone || doc.updatedAt || doc.createdAt;
+      return docDate >= start && docDate <= end;
+    });
+
+    const erpTransactions = targetDayIndependentDocs.map((doc) => {
+      const item = doc.items[0];
+      return {
+        documentNumber: doc.documentNumber,
+        partnerName:
+          doc.partnerName ||
+          doc.purchaseName ||
+          'Tanpa Partner',
+        pickingTypeCode: doc.pickingTypeCode, // incoming / outgoing
+        quantity: item ? item.productQty : 0,
+        scheduledDate: doc.dateDone || doc.updatedAt || doc.createdAt,
+        type: 'ERP_DOCUMENT',
+      };
+    });
 
     // 2. Fetch pending and verified gate operations for this product on this day
     const gateOps = await this.prisma.gateOperation.findMany({
@@ -1443,6 +1679,42 @@ export class ReportsService {
       }
     }
 
+    // Get discrepancy-based mismatch map for this product
+    const mismatchMap = await this.getProductMismatchMap(warehouseId, inventory.id, dbLocations, quants);
+
+    const fallbackLocId = dbLocations[0]?.id;
+    const mappedIndependentDocs: any[] = [];
+
+    // Sort independent docs for this product chronologically
+    const sortedIndependentDocs = [...independentCompletedDocs].sort((a, b) => {
+      const dateA = a.dateDone || a.updatedAt || a.createdAt;
+      const dateB = b.dateDone || b.updatedAt || b.createdAt;
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    for (const doc of sortedIndependentDocs) {
+      const item = doc.items.find((i) => i.inventoryId === inventory.id);
+      if (!item) continue;
+
+      const mappedLocId = this.getBestMismatchLocation(dbLocations, mismatchMap, quants, fallbackLocId);
+
+      // Update mismatch for the mapped location
+      const currentMismatch = mismatchMap.get(mappedLocId) || 0;
+      const qty = item.productQty;
+      const movementQty = doc.pickingTypeCode === 'incoming' ? qty : -qty;
+      mismatchMap.set(mappedLocId, currentMismatch - movementQty);
+
+      mappedIndependentDocs.push({
+        doc,
+        item,
+        locationId: mappedLocId,
+        qty,
+      });
+
+      // Add mapped location to activeLocationIds
+      activeLocationIds.add(mappedLocId);
+    }
+
     const locationTransactionsMap = new Map<
       string,
       { incoming: number; outgoing: number }
@@ -1470,6 +1742,24 @@ export class ReportsService {
         }
         locationTransactionsMap.set(key, current);
       }
+    }
+
+    // Add independent completed ERP documents to locationTransactionsMap
+    for (const m of mappedIndependentDocs) {
+      const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
+      const docDateStr = formatDateInTimezone(docDate, timezone);
+
+      const key = `${docDateStr}_${m.locationId}`;
+      const current = locationTransactionsMap.get(key) || {
+        incoming: 0,
+        outgoing: 0,
+      };
+      if (m.doc.pickingTypeCode === 'incoming') {
+        current.incoming += m.qty;
+      } else {
+        current.outgoing += m.qty;
+      }
+      locationTransactionsMap.set(key, current);
     }
 
     // Add completed document adjustments to locationTransactionsMap for backward calculations
@@ -1612,6 +1902,90 @@ export class ReportsService {
       outgoing: outgoingTransactions,
       closingStock: dayClosing,
     };
+  }
+
+  /**
+   * Helper to compute product mismatch per location
+   * Mismatch = ERP Expected Qty - Current Location Qty
+   */
+  private async getProductMismatchMap(
+    warehouseId: number,
+    prodId: number,
+    dbLocations: { id: number }[],
+    quants: { locationId: number; quantity: number }[],
+  ): Promise<Map<number, number>> {
+    const gateProducts = await this.prisma.gateOperationProduct.findMany({
+      where: {
+        inventoryId: prodId,
+        gateOperation: {
+          warehouseId,
+          status: { in: ['PENDING', 'VERIFIED'] },
+        },
+      },
+      include: {
+        gateOperation: true,
+      },
+    });
+
+    const expectedStockMap = new Map<number, number>();
+    for (const gp of gateProducts) {
+      if (!gp.locationId) continue;
+      const current = expectedStockMap.get(gp.locationId) || 0;
+      if (gp.gateOperation.cardType === 'IN') {
+        expectedStockMap.set(gp.locationId, current + gp.quantity);
+      } else {
+        expectedStockMap.set(gp.locationId, current - gp.quantity);
+      }
+    }
+
+    const currentQtyMap = new Map<number, number>();
+    for (const q of quants) {
+      currentQtyMap.set(q.locationId, q.quantity);
+    }
+
+    const mismatchMap = new Map<number, number>();
+    for (const loc of dbLocations) {
+      const expected = expectedStockMap.get(loc.id) || 0;
+      const current = currentQtyMap.get(loc.id) || 0;
+      mismatchMap.set(loc.id, expected - current);
+    }
+
+    return mismatchMap;
+  }
+
+  private getBestMismatchLocation(
+    dbLocations: { id: number }[],
+    mismatchMap: Map<number, number>,
+    quants: { locationId: number; quantity: number }[],
+    fallbackLocId?: number,
+  ): number {
+    let bestLocId = fallbackLocId;
+    let maxAbsMismatch = -1;
+    let maxCurrentQty = -1;
+
+    const currentQtyMap = new Map<number, number>();
+    for (const q of quants) {
+      currentQtyMap.set(q.locationId, q.quantity);
+    }
+
+    for (const loc of dbLocations) {
+      const mismatch = mismatchMap.get(loc.id) || 0;
+      const absMismatch = Math.abs(mismatch);
+      const currentQty = currentQtyMap.get(loc.id) || 0;
+
+      if (absMismatch > maxAbsMismatch) {
+        maxAbsMismatch = absMismatch;
+        maxCurrentQty = currentQty;
+        bestLocId = loc.id;
+      } else if (absMismatch === maxAbsMismatch) {
+        if (currentQty > maxCurrentQty) {
+          maxCurrentQty = currentQty;
+          bestLocId = loc.id;
+        }
+      }
+    }
+
+    return bestLocId || dbLocations[0]?.id;
   }
 
   /**

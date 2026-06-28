@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,7 @@ import {
   useGate,
   useGateOperationDetail,
   useGateVerificationHistory,
+  useGateOperations,
 } from "@/hooks/useGate";
 import { useAuthStore } from "@/store/auth";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -42,7 +43,10 @@ import {
   Loader2,
   Info,
   Save,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { formatSecondaryQty } from "@/lib/quantity";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
 import { DocumentReferenceSelector } from "@/components/DocumentReferenceSelector";
@@ -84,6 +88,47 @@ export default function GateOperationDetailPage() {
   const router = useRouter();
   const params = useParams();
   const uuid = params.uuid as string;
+  const searchParams = useSearchParams();
+
+  // Extract filter parameters from URL
+  const searchVal = searchParams.get("search") || undefined;
+  const cardTypeVal = searchParams.get("cardType") || undefined;
+  const statusVal = searchParams.get("status") || undefined;
+  const startDateVal = searchParams.get("startDate") || undefined;
+  const endDateVal = searchParams.get("endDate") || undefined;
+
+  // Retrieve the list of matching records for circular navigation
+  const { data: listData } = useGateOperations({
+    search: searchVal,
+    cardType: cardTypeVal,
+    status: statusVal,
+    startDate: startDateVal,
+    endDate: endDateVal,
+    limit: 1000,
+    sortOrder: "desc", // Default sorting for Gate Operations List
+  });
+
+  const items = listData?.items || [];
+  const currentIndex = items.findIndex((item: any) => item.uuid === uuid);
+  const hasMultipleItems = items.length > 1;
+
+  const previousUuid = hasMultipleItems && currentIndex !== -1
+    ? items[(currentIndex - 1 + items.length) % items.length].uuid
+    : null;
+
+  const nextUuid = hasMultipleItems && currentIndex !== -1
+    ? items[(currentIndex + 1) % items.length].uuid
+    : null;
+
+  const navigateTo = (targetUuid: string) => {
+    const queryStr = searchParams.toString();
+    router.push(`/gate-operations/${targetUuid}${queryStr ? `?${queryStr}` : ""}`);
+  };
+
+  const handleBack = () => {
+    const queryStr = searchParams.toString();
+    router.push(`/gate-operations${queryStr ? `?${queryStr}` : ""}`);
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -454,7 +499,7 @@ export default function GateOperationDetailPage() {
     try {
       await cancelGateVerification(uuid);
       toast.success("Verifikasi berhasil dibatalkan.", { id: toastId });
-      router.push("/gate-operations");
+      handleBack();
     } catch (err: any) {
       toast.error(
         err.response?.data?.message || "Gagal membatalkan verifikasi.",
@@ -509,7 +554,7 @@ export default function GateOperationDetailPage() {
         </p>
         <button
           type="button"
-          onClick={() => router.push("/gate-operations")}
+          onClick={handleBack}
           className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition"
         >
           Kembali ke List
@@ -525,7 +570,7 @@ export default function GateOperationDetailPage() {
         <div className="flex items-center space-x-4">
           <button
             type="button"
-            onClick={() => router.push("/gate-operations")}
+            onClick={handleBack}
             className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition cursor-pointer"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -535,9 +580,32 @@ export default function GateOperationDetailPage() {
               <ShieldCheck className="h-6 w-6 text-blue-600 mr-2 shrink-0" />
               Detail & Verifikasi Log Gerbang
             </h1>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <div className="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onClick={() => previousUuid && navigateTo(previousUuid)}
+                  disabled={!previousUuid}
+                  className="p-1 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600 transition disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                  title="Sebelumnya"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-slate-705 text-xs font-mono font-bold px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-md">
+                  {gateOperation.opNumber}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => nextUuid && navigateTo(nextUuid)}
+                  disabled={!nextUuid}
+                  className="p-1 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600 transition disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                  title="Berikutnya"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
               <span className="text-slate-500 text-xs font-mono">
-                {gateOperation.opNumber} | Driver: {gateOperation.driverName}
+                | Driver: {gateOperation.driverName}
               </span>
             </div>
           </div>
@@ -548,7 +616,7 @@ export default function GateOperationDetailPage() {
 
           {gateOperation.status !== "VERIFIED" && gateOperation.status !== "CANCELED" && (
             <Link
-              href={`/gate-verification/${uuid}`}
+              href={`/gate-verification/${uuid}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`}
               className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 border border-blue-600 rounded-lg text-xs transition cursor-pointer"
             >
               <ShieldCheck className="h-4 w-4 mr-1.5" />
@@ -980,14 +1048,19 @@ export default function GateOperationDetailPage() {
 
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
-                              <span>
-                                {originalItem
-                                  ? originalItem.quantity.toLocaleString("id-ID")
-                                  : "0"}
-                              </span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">
-                                {productDetails.uom}
+                            <div className="flex flex-col items-end">
+                              <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
+                                <span>
+                                  {originalItem
+                                    ? originalItem.quantity.toLocaleString("id-ID")
+                                    : "0"}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                  {productDetails.uom}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-normal mt-1 block">
+                                {formatSecondaryQty(originalItem ? originalItem.quantity : 0, productDetails.uom)}
                               </span>
                             </div>
                           </td>

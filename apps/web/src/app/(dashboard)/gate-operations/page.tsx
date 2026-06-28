@@ -276,6 +276,11 @@ export default function GateOperationsListPage() {
                       item={item}
                       getCardTypeBadge={getCardTypeBadge}
                       getStatusBadge={getStatusBadge}
+                      search={search}
+                      cardType={cardType}
+                      status={status}
+                      startDate={startDate}
+                      endDate={endDate}
                     />
                   ))}
                 </tbody>
@@ -320,10 +325,20 @@ function GateOperationRow({
   item,
   getCardTypeBadge,
   getStatusBadge,
+  search,
+  cardType,
+  status,
+  startDate,
+  endDate,
 }: {
   item: any;
   getCardTypeBadge: any;
   getStatusBadge: any;
+  search: string;
+  cardType: string;
+  status: string;
+  startDate: string;
+  endDate: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const totalItemCount =
@@ -376,13 +391,24 @@ function GateOperationRow({
           className="px-6 py-4 text-center"
           onClick={(e) => e.stopPropagation()}
         >
-          <Link
-            href={`/gate-operations/${item.uuid}`}
-            className="inline-flex items-center justify-center p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition cursor-pointer"
-            title="Lihat Detail"
-          >
-            <Eye className="h-4.5 w-4.5" />
-          </Link>
+          {(() => {
+            const queryParams = new URLSearchParams();
+            if (search) queryParams.append("search", search);
+            if (cardType) queryParams.append("cardType", cardType);
+            if (status) queryParams.append("status", status);
+            if (startDate) queryParams.append("startDate", startDate);
+            if (endDate) queryParams.append("endDate", endDate);
+            const queryStr = queryParams.toString();
+            return (
+              <Link
+                href={`/gate-operations/${item.uuid}${queryStr ? `?${queryStr}` : ""}`}
+                className="inline-flex items-center justify-center p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                title="Lihat Detail"
+              >
+                <Eye className="h-4.5 w-4.5" />
+              </Link>
+            );
+          })()}
         </td>
       </tr>
       {isExpanded && (
