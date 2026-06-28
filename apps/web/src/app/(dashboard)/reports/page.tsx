@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useReports } from "@/hooks/useReports";
 import { useProducts } from "@/hooks/useInventory";
 import { useAuthStore } from "@/store/auth";
+import { formatSecondaryQty } from "@/lib/quantity";
 import { toast } from "sonner";
 import {
   BarChart3,
@@ -271,48 +272,82 @@ export default function ReportsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right font-semibold text-slate-600 dark:text-slate-400">
-                          {row.openingStock.toLocaleString("id-ID")}{" "}
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            {row.product.uom}
-                          </span>
+                          <div>
+                            {row.openingStock.toLocaleString("id-ID")}{" "}
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {row.product.uom}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                            {formatSecondaryQty(row.openingStock, row.product.uom)}
+                          </div>
                         </td>
                         <td
                           className={`px-6 py-4 text-right font-extrabold ${
                             hasIncoming
-                              ? "text-emerald-650 dark:text-emerald-400"
+                              ? "text-emerald-655 dark:text-emerald-400"
                               : "text-slate-400"
                           }`}
                         >
-                          {hasIncoming ? (
-                            <span className="flex items-center justify-end gap-1">
-                              +{row.incoming.toLocaleString("id-ID")}
-                              <TrendingUp className="h-3.5 w-3.5" />
-                            </span>
-                          ) : (
-                            "0"
-                          )}
+                          <div className="flex flex-col items-end">
+                            {hasIncoming ? (
+                              <>
+                                <span className="flex items-center justify-end gap-1">
+                                  +{row.incoming.toLocaleString("id-ID")}
+                                  <TrendingUp className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="text-xs text-slate-405 dark:text-slate-500 font-normal mt-0.5">
+                                  +{formatSecondaryQty(row.incoming, row.product.uom)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span>0</span>
+                                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                  0 Kg
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td
                           className={`px-6 py-4 text-right font-extrabold ${
                             hasOutgoing
-                              ? "text-red-650 dark:text-red-400"
+                              ? "text-red-655 dark:text-red-400"
                               : "text-slate-400"
                           }`}
                         >
-                          {hasOutgoing ? (
-                            <span className="flex items-center justify-end gap-1">
-                              -{row.outgoing.toLocaleString("id-ID")}
-                              <TrendingDown className="h-3.5 w-3.5" />
-                            </span>
-                          ) : (
-                            "0"
-                          )}
+                          <div className="flex flex-col items-end">
+                            {hasOutgoing ? (
+                              <>
+                                <span className="flex items-center justify-end gap-1">
+                                  -{row.outgoing.toLocaleString("id-ID")}
+                                  <TrendingDown className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="text-xs text-slate-405 dark:text-slate-500 font-normal mt-0.5">
+                                  -{formatSecondaryQty(row.outgoing, row.product.uom)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span>0</span>
+                                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                  0 Kg
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right font-bold text-slate-805 dark:text-slate-105">
-                          {row.closingStock.toLocaleString("id-ID")}{" "}
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            {row.product.uom}
-                          </span>
+                          <div>
+                            {row.closingStock.toLocaleString("id-ID")}{" "}
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {row.product.uom}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                            {formatSecondaryQty(row.closingStock, row.product.uom)}
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && (
@@ -461,16 +496,22 @@ export default function ReportsPage() {
                                                           </span>
                                                         )}
                                                       </td>
-                                                      <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
+                              <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
                                                         {tx.referenceDocument || "-"}
                                                       </td>
                                                       <td className={`px-3 py-2 text-right font-bold text-[11px] ${
                                                         isIncoming
-                                                          ? "text-emerald-600 dark:text-emerald-455"
-                                                          : "text-red-650 dark:text-red-455"
+                                                          ? "text-emerald-650 dark:text-emerald-455"
+                                                          : "text-red-655 dark:text-red-455"
                                                       }`}>
-                                                        {isIncoming ? "+" : "-"}
-                                                        {tx.quantity.toLocaleString("id-ID")}
+                                                        <div>
+                                                          {isIncoming ? "+" : "-"}
+                                                          {tx.quantity.toLocaleString("id-ID")}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                                          {isIncoming ? "+" : "-"}
+                                                          {formatSecondaryQty(tx.quantity, row.product.uom)}
+                                                        </div>
                                                       </td>
                                                       <td className="px-3 py-2 text-center">
                                                         {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (

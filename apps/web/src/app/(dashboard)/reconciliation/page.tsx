@@ -7,6 +7,7 @@ import {
 } from "@/hooks/useReconciliation";
 import { useProducts, useWarehouseLocations } from "@/hooks/useInventory";
 import { useAuthStore } from "@/store/auth";
+import { formatSecondaryQty } from "@/lib/quantity";
 import {
   Scale,
   MapPin,
@@ -209,52 +210,78 @@ export default function ReconciliationPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
-                          {row.erpStock.toLocaleString("id-ID")}{" "}
-                          <span className="text-slate-450 text-[10px] font-normal ml-0.5">
-                            {row.product.uom}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right font-semibold">
-                          {row.physicalAdjustment !== 0 ? (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
-                                row.physicalAdjustment > 0
-                                  ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
-                                  : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
-                              }`}
-                            >
-                              {row.physicalAdjustment > 0
-                                ? `+${row.physicalAdjustment.toLocaleString("id-ID")}`
-                                : row.physicalAdjustment.toLocaleString("id-ID")}{" "}
+                          <div>
+                            {row.erpStock.toLocaleString("id-ID")}{" "}
+                            <span className="text-slate-450 text-[10px] font-normal ml-0.5">
                               {row.product.uom}
                             </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                            {formatSecondaryQty(row.erpStock, row.product.uom)}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right font-semibold">
-                          {row.adjustmentQty !== 0 ? (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
-                                row.adjustmentQty > 0
-                                  ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
-                                  : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
-                              }`}
-                            >
-                              {row.adjustmentQty > 0
-                                ? `+${row.adjustmentQty.toLocaleString("id-ID")}`
-                                : row.adjustmentQty.toLocaleString("id-ID")}{" "}
-                              {row.product.uom}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
+                          <div className="flex flex-col items-end">
+                            {row.physicalAdjustment !== 0 ? (
+                              <>
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
+                                    row.physicalAdjustment > 0
+                                      ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                                      : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
+                                  }`}
+                                >
+                                  {row.physicalAdjustment > 0
+                                    ? `+${row.physicalAdjustment.toLocaleString("id-ID")}`
+                                    : row.physicalAdjustment.toLocaleString("id-ID")}{" "}
+                                  {row.product.uom}
+                                </span>
+                                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                  {row.physicalAdjustment > 0 ? "+" : ""}
+                                  {formatSecondaryQty(row.physicalAdjustment, row.product.uom)}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right font-semibold">
+                          <div className="flex flex-col items-end">
+                            {row.adjustmentQty !== 0 ? (
+                              <>
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
+                                    row.adjustmentQty > 0
+                                      ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                                      : "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30"
+                                  }`}
+                                >
+                                  {row.adjustmentQty > 0
+                                    ? `+${row.adjustmentQty.toLocaleString("id-ID")}`
+                                    : row.adjustmentQty.toLocaleString("id-ID")}{" "}
+                                  {row.product.uom}
+                                </span>
+                                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                  {row.adjustmentQty > 0 ? "+" : ""}
+                                  {formatSecondaryQty(row.adjustmentQty, row.product.uom)}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right font-black text-slate-900 dark:text-slate-100">
-                          {row.calculatedPhysical.toLocaleString("id-ID")}{" "}
-                          <span className="text-slate-450 text-[10px] font-normal ml-0.5">
-                            {row.product.uom}
-                          </span>
+                          <div>
+                            {row.calculatedPhysical.toLocaleString("id-ID")}{" "}
+                            <span className="text-slate-450 text-[10px] font-normal ml-0.5">
+                              {row.product.uom}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                            {formatSecondaryQty(row.calculatedPhysical, row.product.uom)}
+                          </div>
                         </td>
                         <td
                           className={`px-6 py-4 text-right font-black ${
@@ -263,10 +290,15 @@ export default function ReconciliationPage() {
                               : "text-emerald-600 dark:text-emerald-400"
                           }`}
                         >
-                          {row.stockDifference.toLocaleString("id-ID")}{" "}
-                          <span className="text-slate-450 text-[10px] font-normal ml-0.5">
-                            {row.product.uom}
-                          </span>
+                          <div>
+                            {row.stockDifference.toLocaleString("id-ID")}{" "}
+                            <span className="text-slate-450 text-[10px] font-normal ml-0.5">
+                              {row.product.uom}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                            {formatSecondaryQty(row.stockDifference, row.product.uom)}
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && (
@@ -394,50 +426,76 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                         </div>
                       </td>
                       <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-300">
-                        {loc.erpQty.toLocaleString("id-ID")}{" "}
-                        <span className="text-slate-400 text-[9px] font-normal">
-                          {detailData.product.uom}
-                        </span>
+                        <div>
+                          {loc.erpQty.toLocaleString("id-ID")}{" "}
+                          <span className="text-slate-400 text-[9px] font-normal">
+                            {detailData.product.uom}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                          {formatSecondaryQty(loc.erpQty, detailData.product.uom)}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-right font-medium">
-                        {loc.physicalAdjustment !== 0 ? (
-                          <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              loc.physicalAdjustment > 0
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-red-600 dark:text-red-400"
-                            }`}
-                          >
-                            {loc.physicalAdjustment > 0
-                              ? `+${loc.physicalAdjustment.toLocaleString("id-ID")}`
-                              : loc.physicalAdjustment.toLocaleString("id-ID")}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
+                        <div className="flex flex-col items-end">
+                          {loc.physicalAdjustment !== 0 ? (
+                            <>
+                              <span
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  loc.physicalAdjustment > 0
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-red-650 dark:text-red-400"
+                                }`}
+                              >
+                                {loc.physicalAdjustment > 0
+                                  ? `+${loc.physicalAdjustment.toLocaleString("id-ID")}`
+                                  : loc.physicalAdjustment.toLocaleString("id-ID")}
+                              </span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                {loc.physicalAdjustment > 0 ? "+" : ""}
+                                {formatSecondaryQty(loc.physicalAdjustment, detailData.product.uom)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-right font-medium">
-                        {loc.adjustmentQty !== 0 ? (
-                          <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              loc.adjustmentQty > 0
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-red-650 dark:text-red-400"
-                            }`}
-                          >
-                            {loc.adjustmentQty > 0
-                              ? `+${loc.adjustmentQty.toLocaleString("id-ID")}`
-                              : loc.adjustmentQty.toLocaleString("id-ID")}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
+                        <div className="flex flex-col items-end">
+                          {loc.adjustmentQty !== 0 ? (
+                            <>
+                              <span
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  loc.adjustmentQty > 0
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-red-650 dark:text-red-400"
+                                }`}
+                              >
+                                {loc.adjustmentQty > 0
+                                  ? `+${loc.adjustmentQty.toLocaleString("id-ID")}`
+                                  : loc.adjustmentQty.toLocaleString("id-ID")}
+                              </span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                {loc.adjustmentQty > 0 ? "+" : ""}
+                                {formatSecondaryQty(loc.adjustmentQty, detailData.product.uom)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-right font-bold text-slate-800 dark:text-slate-200">
-                        {loc.calculatedPhysical.toLocaleString("id-ID")}{" "}
-                        <span className="text-slate-400 text-[9px] font-normal">
-                          {detailData.product.uom}
-                        </span>
+                        <div>
+                          {loc.calculatedPhysical.toLocaleString("id-ID")}{" "}
+                          <span className="text-slate-400 text-[9px] font-normal">
+                            {detailData.product.uom}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                          {formatSecondaryQty(loc.calculatedPhysical, detailData.product.uom)}
+                        </div>
                       </td>
                       <td
                         className={`px-5 py-3 text-right font-bold ${
@@ -446,10 +504,15 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                             : "text-emerald-600 dark:text-emerald-400"
                         }`}
                       >
-                        {loc.stockDifference.toLocaleString("id-ID")}{" "}
-                        <span className="text-slate-405 text-[9px] font-normal">
-                          {detailData.product.uom}
-                        </span>
+                        <div>
+                          {loc.stockDifference.toLocaleString("id-ID")}{" "}
+                          <span className="text-slate-455 text-[9px] font-normal">
+                            {detailData.product.uom}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                          {formatSecondaryQty(loc.stockDifference, detailData.product.uom)}
+                        </div>
                       </td>
                     </tr>
                     {isLocExpanded && hasOps && (
@@ -512,14 +575,20 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                                       className={`px-4 py-2 text-right font-bold ${
                                         op.cardType === "IN"
                                           ? "text-emerald-600 dark:text-emerald-400"
-                                          : "text-red-600 dark:text-red-400"
+                                          : "text-red-655 dark:text-red-400"
                                       }`}
                                     >
-                                      {op.cardType === "IN" ? "+" : "-"}
-                                      {op.quantity.toLocaleString("id-ID")}{" "}
-                                      <span className="text-slate-400 font-normal text-[9px]">
-                                        {detailData.product.uom}
-                                      </span>
+                                      <div>
+                                        {op.cardType === "IN" ? "+" : "-"}
+                                        {op.quantity.toLocaleString("id-ID")}{" "}
+                                        <span className="text-slate-400 font-normal text-[9px]">
+                                          {detailData.product.uom}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                        {op.cardType === "IN" ? "+" : "-"}
+                                        {formatSecondaryQty(op.quantity, detailData.product.uom)}
+                                      </div>
                                     </td>
                                     <td className="px-4 py-2 text-center">
                                       <Link
@@ -597,28 +666,44 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                       {adj.type === "IN" ? "Masuk" : "Keluar"}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-300">
-                    {adj.erpQty.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 text-[9px]">
-                      {detailData.product.uom}
-                    </span>
+                  <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-350">
+                    <div>
+                      {adj.erpQty.toLocaleString("id-ID")}{" "}
+                      <span className="text-slate-400 text-[9px]">
+                        {detailData.product.uom}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                      {formatSecondaryQty(adj.erpQty, detailData.product.uom)}
+                    </div>
                   </td>
-                  <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-300">
-                    {adj.totalGateOperationQty.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 text-[9px]">
-                      {detailData.product.uom}
-                    </span>
+                  <td className="px-5 py-3 text-right font-medium text-slate-700 dark:text-slate-350">
+                    <div>
+                      {adj.totalGateOperationQty.toLocaleString("id-ID")}{" "}
+                      <span className="text-slate-400 text-[9px]">
+                        {detailData.product.uom}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                      {formatSecondaryQty(adj.totalGateOperationQty, detailData.product.uom)}
+                    </div>
                   </td>
                   <td
                     className={`px-5 py-3 text-right font-bold ${
                       adj.difference !== 0 ? "text-amber-600" : "text-slate-400"
                     }`}
                   >
-                    {adj.difference > 0 ? "+" : ""}
-                    {adj.difference.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 text-[9px]">
-                      {detailData.product.uom}
-                    </span>
+                    <div>
+                      {adj.difference > 0 ? "+" : ""}
+                      {adj.difference.toLocaleString("id-ID")}{" "}
+                      <span className="text-slate-400 text-[9px]">
+                        {detailData.product.uom}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                      {adj.difference > 0 ? "+" : ""}
+                      {formatSecondaryQty(adj.difference, detailData.product.uom)}
+                    </div>
                   </td>
                   <td
                     className={`px-5 py-3 text-right font-extrabold ${
@@ -627,11 +712,17 @@ function ReconciliationRowDetail({ productUuid }: { productUuid: string }) {
                         : "text-red-650 dark:text-red-400"
                     }`}
                   >
-                    {adj.adjustmentQty > 0 ? "+" : ""}
-                    {adj.adjustmentQty.toLocaleString("id-ID")}{" "}
-                    <span className="text-slate-400 text-[9px]">
-                      {detailData.product.uom}
-                    </span>
+                    <div>
+                      {adj.adjustmentQty > 0 ? "+" : ""}
+                      {adj.adjustmentQty.toLocaleString("id-ID")}{" "}
+                      <span className="text-slate-400 text-[9px]">
+                        {detailData.product.uom}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                      {adj.adjustmentQty > 0 ? "+" : ""}
+                      {formatSecondaryQty(adj.adjustmentQty, detailData.product.uom)}
+                    </div>
                   </td>
                 </tr>
               ))}
