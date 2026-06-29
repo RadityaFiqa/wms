@@ -29,6 +29,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
+import { menuGroups as configMenuGroups } from "@/config/menu";
 
 export default function DashboardLayout({
   children,
@@ -123,124 +124,27 @@ export default function DashboardLayout({
     );
   }
 
-  // Sidebar Links defined with permissions, grouped by business domain
-  const menuGroups = [
-    {
-      title: "Overview",
-      items: [
-        {
-          name: "Dashboard",
-          href: "/",
-          icon: LayoutDashboard,
-          show: true,
-        },
-      ],
-    },
-    {
-      title: "Inventory Management",
-      items: [
-        {
-          name: "Inventory",
-          href: "/inventory",
-          icon: Boxes,
-          show: hasPermission("read", "Inventory"),
-        },
-        {
-          name: "Laporan Mutasi",
-          href: "/reports",
-          icon: BarChart3,
-          show: hasPermission("read", "Report"),
-        },
-        {
-          name: "Stock Opname",
-          href: "/stock-opname",
-          icon: Clipboard,
-          show: hasPermission("read", "StockOpname"),
-        },
-        {
-          name: "Rekonsiliasi ERP",
-          href: "/reconciliation",
-          icon: Scale,
-          show: hasPermission("read", "Reconciliation"),
-        },
-      ],
-    },
-    {
-      title: "Operations",
-      items: [
-        {
-          name: "Pending Pickup",
-          href: "/pending-pickup",
-          icon: ClipboardList,
-          show: hasPermission("read", "DocumentReference"),
-        },
-        {
-          name: "Gate Operation",
-          href: "/gate-operations",
-          icon: Truck,
-          show: hasPermission("read", "GateOperation"),
-        },
-        {
-          name: "Verifikasi Gate",
-          href: "/gate-verification",
-          icon: ClipboardCheck,
-          show: hasPermission("read", "GateVerification"),
-        },
-      ],
-    },
-    {
-      title: "Document Management",
-      items: [
-        {
-          name: "ERP Document",
-          href: "/erp-documents",
-          icon: FileText,
-          show: hasPermission("read", "DocumentReference"),
-        },
-        {
-          name: "Signed Document",
-          href: "/signed-documents",
-          icon: FileCheck,
-          show: hasPermission("read", "SignedDocument"),
-        },
-      ],
-    },
-    {
-      title: "Administration / Management",
-      items: [
-        {
-          name: "User Management",
-          href: "/users",
-          icon: Users,
-          show: hasPermission("read", "User"),
-        },
-        {
-          name: "Roles & Permissions",
-          href: "/roles",
-          icon: ShieldCheck,
-          show: hasPermission("read", "Role") && user?.role === "SUPER_ADMIN",
-        },
-        {
-          name: "Master Data",
-          href: "/warehouses",
-          icon: Warehouse,
-          show: user?.role === "SUPER_ADMIN",
-        },
-        {
-          name: "Odoo Settings",
-          href: "/odoo",
-          icon: Settings,
-          show: hasPermission("read", "OdooAccount"),
-        },
-        {
-          name: "Audit Log",
-          href: "/audit-logs",
-          icon: History,
-          show: hasPermission("read", "AuditLog"),
-        },
-      ],
-    },
-  ];
+  // Sidebar Links dynamically mapped from central config with permission checks
+  const menuGroups = configMenuGroups.map((group) => ({
+    title: group.title,
+    items: group.items.map((item) => {
+      let show = true;
+      if (item.superAdminOnly) {
+        show = user?.role === "SUPER_ADMIN";
+      } else if (item.permissionSubject) {
+        show = hasPermission(item.permissionAction || "read", item.permissionSubject);
+        if (item.name === "Roles & Permissions") {
+          show = show && user?.role === "SUPER_ADMIN";
+        }
+      }
+      return {
+        name: item.name,
+        href: item.href,
+        icon: item.icon,
+        show,
+      };
+    }),
+  }));
 
   const activeLinkClass = "bg-blue-600 text-white shadow-md";
   const inactiveLinkClass =
