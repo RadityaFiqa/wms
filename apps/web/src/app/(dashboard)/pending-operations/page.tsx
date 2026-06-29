@@ -67,6 +67,11 @@ export default function PendingPickupPage() {
   // Sync debounced search to URL
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
+    const currentSearch = params.get("search") || "";
+    if (debouncedSearch === currentSearch) {
+      return;
+    }
+
     if (debouncedSearch) {
       params.set("search", debouncedSearch);
     } else {
@@ -74,11 +79,16 @@ export default function PendingPickupPage() {
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, searchParams, pathname, router]);
 
   // Sync debounced partner to URL
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
+    const currentPartner = params.get("partner") || "";
+    if (debouncedPartner === currentPartner) {
+      return;
+    }
+
     if (debouncedPartner) {
       params.set("partner", debouncedPartner);
     } else {
@@ -86,7 +96,7 @@ export default function PendingPickupPage() {
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
-  }, [debouncedPartner]);
+  }, [debouncedPartner, searchParams, pathname, router]);
 
   // Fetch pending pickups (Product-First)
   const { pendingPickupsData, error, isLoading, refresh } = usePendingPickups({

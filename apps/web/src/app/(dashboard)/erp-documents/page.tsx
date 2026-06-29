@@ -53,6 +53,11 @@ export default function ErpDocumentsPage() {
   // Sync debounced search to URL
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
+    const currentSearch = params.get("search") || "";
+    if (debouncedSearch === currentSearch) {
+      return;
+    }
+
     if (debouncedSearch) {
       params.set("search", debouncedSearch);
     } else {
@@ -60,11 +65,16 @@ export default function ErpDocumentsPage() {
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, searchParams, pathname, router]);
 
   // Sync debounced refFax to URL
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
+    const currentRefFax = params.get("refFax") || "";
+    if (debouncedRefFax === currentRefFax) {
+      return;
+    }
+
     if (debouncedRefFax) {
       params.set("refFax", debouncedRefFax);
     } else {
@@ -72,7 +82,7 @@ export default function ErpDocumentsPage() {
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
-  }, [debouncedRefFax]);
+  }, [debouncedRefFax, searchParams, pathname, router]);
 
   // Sync initial URL search param to searchInput
   useEffect(() => {
