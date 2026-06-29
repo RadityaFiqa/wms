@@ -920,74 +920,55 @@ export class ReportsService {
         currentStockTrackerMap.set(locId, realStock);
       }
 
-      // Group gate operations by date and location for this product
-      // Key: dateStr_locationId
-      const locationTransactionsMap = new Map<
-        string,
-        { incoming: number; outgoing: number; inList: any[]; outList: any[] }
-      >();
+      // Collect all raw transactions into a list
+      const rawTransactionsList: {
+        txUuid: string;
+        opNumber: string;
+        driverName: string;
+        licensePlate: string;
+        clientPartner: string;
+        cardType: 'IN' | 'OUT';
+        quantity: number;
+        referenceDocument: string;
+        status: string;
+        effectiveDate: Date;
+        stack: string;
+        type: string;
+        locationId: number;
+        erpQty?: number;
+        totalGateQty?: number;
+        adjustmentQty?: number;
+        reason?: string;
+      }[] = [];
 
       for (const op of gateOps) {
         const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
         for (const opProd of matchingProducts) {
           if (!opProd.locationId) continue;
 
-          const dateStr = formatDateInTimezone(
-            op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
-            timezone,
-          );
-          const locId = opProd.locationId;
-          const key = `${dateStr}_${locId}`;
-
-          const current = locationTransactionsMap.get(key) || {
-            incoming: 0,
-            outgoing: 0,
-            inList: [],
-            outList: [],
-          };
-
-          const txDetail = {
-            uuid: op.uuid,
+          rawTransactionsList.push({
+            txUuid: op.uuid,
             opNumber: op.opNumber,
             driverName: op.driverName,
             licensePlate: op.licensePlate,
             clientPartner: op.clientPartner || '-',
-            cardType: op.cardType,
+            cardType: op.cardType as 'IN' | 'OUT',
             quantity: opProd.quantity,
             referenceDocument: op.documentReference?.documentNumber || '-',
             status: op.status,
-            createdAt: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
+            effectiveDate: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
             stack: opProd.quant?.lotName || '-',
             type: 'GATE_OPERATION',
-          };
-
-          if (op.cardType === 'IN') {
-            current.incoming += opProd.quantity;
-            current.inList.push(txDetail);
-          } else {
-            current.outgoing += opProd.quantity;
-            current.outList.push(txDetail);
-          }
-
-          locationTransactionsMap.set(key, current);
+            locationId: opProd.locationId,
+          });
         }
       }
 
-      // Add independent completed ERP documents to locationTransactionsMap
+      // Add independent completed ERP documents to rawTransactionsList
       for (const m of mappedIndependentDocs) {
         const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
-        const docDateStr = formatDateInTimezone(docDate, timezone);
-
-        const key = `${docDateStr}_${m.locationId}`;
-        const current = locationTransactionsMap.get(key) || {
-          incoming: 0,
-          outgoing: 0,
-          inList: [],
-          outList: [],
-        };
-
-        const txDetail = {
-          uuid: m.doc.uuid,
+        rawTransactionsList.push({
+          txUuid: m.doc.uuid,
           opNumber: m.doc.documentNumber,
           driverName: m.doc.driver || '-',
           licensePlate: m.doc.plateNumber || '-',
@@ -996,27 +977,17 @@ export class ReportsService {
           quantity: m.qty,
           referenceDocument: m.doc.documentNumber,
           status: m.doc.state.toUpperCase(), // 'DONE'
-          createdAt: docDate,
+          effectiveDate: docDate,
           stack: '-',
           type: 'ERP_DOCUMENT',
-        };
-
-        if (m.doc.pickingTypeCode === 'incoming') {
-          current.incoming += m.qty;
-          current.inList.push(txDetail);
-        } else if (m.doc.pickingTypeCode === 'outgoing') {
-          current.outgoing += m.qty;
-          current.outList.push(txDetail);
-        }
-
-        locationTransactionsMap.set(key, current);
+          locationId: m.locationId,
+        });
       }
 
-      // Add completed document adjustments to locationTransactionsMap
+      // Add completed document adjustments to rawTransactionsList
       for (const adjInfo of completedDocsAdjustments) {
         if (adjInfo.invId !== prod.id) continue;
 
-        const docDateStr = adjInfo.docDateStr;
         const doc = adjInfo.doc;
         const erpQty = adjInfo.erpQty;
         const sumGateQty = adjInfo.sumGateQty;
@@ -1029,16 +1000,8 @@ export class ReportsService {
           for (const [locId, locAdjustment] of distributed.entries()) {
             if (locAdjustment === 0) continue;
 
-            const key = `${docDateStr}_${locId}`;
-            const current = locationTransactionsMap.get(key) || {
-              incoming: 0,
-              outgoing: 0,
-              inList: [],
-              outList: [],
-            };
-
-            const txDetail = {
-              uuid: doc.uuid,
+            rawTransactionsList.push({
+              txUuid: `${doc.uuid}_adj_${locId}`,
               opNumber: doc.documentNumber,
               driverName: 'Penyesuaian Fisik',
               licensePlate: 'ERP Reconciliation',
@@ -1047,39 +1010,22 @@ export class ReportsService {
               quantity: Math.abs(locAdjustment),
               referenceDocument: doc.documentNumber,
               status: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
-              createdAt: adjInfo.docDate,
+              effectiveDate: adjInfo.docDate,
               stack: '-',
               type: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+              locationId: locId,
               erpQty,
               totalGateQty: sumGateQty,
               adjustmentQty: adjustment,
               reason: 'Partial physical realization after ERP completion',
-            };
-
-            if (locAdjustment > 0) {
-              current.incoming += locAdjustment;
-              current.inList.push(txDetail);
-            } else {
-              current.outgoing += Math.abs(locAdjustment);
-              current.outList.push(txDetail);
-            }
-
-            locationTransactionsMap.set(key, current);
+            });
           }
         } else {
           const fallbackLoc = dbLocations[0];
           if (fallbackLoc) {
             const locId = fallbackLoc.id;
-            const key = `${docDateStr}_${locId}`;
-            const current = locationTransactionsMap.get(key) || {
-              incoming: 0,
-              outgoing: 0,
-              inList: [],
-              outList: [],
-            };
-
-            const txDetail = {
-              uuid: doc.uuid,
+            rawTransactionsList.push({
+              txUuid: `${doc.uuid}_adj_${locId}`,
               opNumber: doc.documentNumber,
               driverName: 'Penyesuaian Fisik',
               licensePlate: 'ERP Reconciliation',
@@ -1088,24 +1034,15 @@ export class ReportsService {
               quantity: Math.abs(adjustment),
               referenceDocument: doc.documentNumber,
               status: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
-              createdAt: adjInfo.docDate,
+              effectiveDate: adjInfo.docDate,
               stack: '-',
               type: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+              locationId: locId,
               erpQty,
               totalGateQty: sumGateQty,
               adjustmentQty: adjustment,
               reason: 'Partial physical realization after ERP completion',
-            };
-
-            if (adjustment > 0) {
-              current.incoming += adjustment;
-              current.inList.push(txDetail);
-            } else {
-              current.outgoing += Math.abs(adjustment);
-              current.outList.push(txDetail);
-            }
-
-            locationTransactionsMap.set(key, current);
+            });
           }
         }
       }
@@ -1124,21 +1061,129 @@ export class ReportsService {
         }
       >();
 
-      // Perform backward calculation for each active location
+      // Perform calculation for each active location using forward running balance
       for (const locId of activeLocationIds) {
-        let currentStockTracker = currentStockTrackerMap.get(locId) || 0;
+        // Filter and sort transactions for this location chronologically
+        const locTransactions = rawTransactionsList
+          .filter((tx) => tx.locationId === locId)
+          .sort((a, b) => {
+            const timeA = a.effectiveDate.getTime();
+            const timeB = b.effectiveDate.getTime();
+            if (timeA !== timeB) return timeA - timeB;
+            return a.txUuid.localeCompare(b.txUuid);
+          });
 
-        for (const dDate of backwardDates) {
+        // 1. Calculate opening stock at start date
+        // Query latest snapshot prior to start date
+        const prevSnap = await this.prisma.dailyLocationStockSnapshot.findFirst({
+          where: {
+            warehouseId,
+            locationId: locId,
+            inventoryId: prod.id,
+            date: {
+              lt: start,
+            },
+          },
+          orderBy: {
+            date: 'desc',
+          },
+        });
+
+        let openingStockAtStart = 0;
+        if (prevSnap) {
+          openingStockAtStart = prevSnap.closingStock;
+          const lastSnapDate = prevSnap.date;
+          const lastSnapEnd = getLocalEndOfDay(formatDateInTimezone(lastSnapDate, timezone), timezone);
+          const gapTx = locTransactions.filter(
+            (tx) => tx.effectiveDate > lastSnapEnd && tx.effectiveDate < start,
+          );
+          for (const tx of gapTx) {
+            if (tx.cardType === 'IN') {
+              openingStockAtStart += tx.quantity;
+            } else {
+              openingStockAtStart -= tx.quantity;
+            }
+          }
+        } else {
+          // Backward calculation from today's real physical stock
+          const currentStockToday = currentStockTrackerMap.get(locId) || 0;
+          const reportAndLaterTx = locTransactions.filter((tx) => tx.effectiveDate >= start);
+
+          let calculatedStock = currentStockToday;
+          for (let i = reportAndLaterTx.length - 1; i >= 0; i--) {
+            const tx = reportAndLaterTx[i];
+            if (tx.cardType === 'IN') {
+              calculatedStock -= tx.quantity;
+            } else {
+              calculatedStock += tx.quantity;
+            }
+          }
+          openingStockAtStart = calculatedStock;
+        }
+
+        // 2. Perform forward running balance day by day
+        let runningStock = openingStockAtStart;
+
+        for (const dDate of datesList) {
           const dStr = formatDateInTimezone(dDate, timezone);
           const key = `${dStr}_${locId}`;
-          const txs = locationTransactionsMap.get(key) || {
-            incoming: 0,
-            outgoing: 0,
-            inList: [],
-            outList: [],
-          };
 
-          let closing = 0;
+          const dayStart = getLocalStartOfDay(dStr, timezone);
+          const dayEnd = getLocalEndOfDay(dStr, timezone);
+
+          const dayTx = locTransactions.filter(
+            (tx) => tx.effectiveDate >= dayStart && tx.effectiveDate <= dayEnd,
+          );
+
+          const dayLocOpening = runningStock;
+          let inbound = 0;
+          let outbound = 0;
+          const inList: any[] = [];
+          const outList: any[] = [];
+
+          for (const tx of dayTx) {
+            const txDetail = {
+              uuid: tx.txUuid.includes('_adj_') ? tx.txUuid.split('_adj_')[0] : tx.txUuid,
+              opNumber: tx.opNumber,
+              driverName: tx.driverName,
+              licensePlate: tx.licensePlate,
+              clientPartner: tx.clientPartner,
+              cardType: tx.cardType,
+              quantity: tx.quantity,
+              referenceDocument: tx.referenceDocument,
+              status: tx.status,
+              createdAt: tx.effectiveDate,
+              stack: tx.stack,
+              type: tx.type,
+              erpQty: tx.erpQty,
+              totalGateQty: tx.totalGateQty,
+              adjustmentQty: tx.adjustmentQty,
+              reason: tx.reason,
+            };
+
+            if (tx.cardType === 'IN') {
+              inbound += tx.quantity;
+              runningStock += tx.quantity;
+              inList.push(txDetail);
+            } else {
+              outbound += tx.quantity;
+              runningStock -= tx.quantity;
+              outList.push(txDetail);
+            }
+          }
+
+          const dayLocClosing = runningStock;
+
+          locationDailyMetrics.set(key, {
+            opening: dayLocOpening,
+            incoming: inbound,
+            outgoing: outbound,
+            closing: dayLocClosing,
+            inList,
+            outList,
+          });
+
+          // Persist snapshot to database on the fly if it doesn't exist
           const snap = locationSnapshots.find(
             (s) =>
               s.locationId === locId &&
@@ -1146,14 +1191,7 @@ export class ReportsService {
               formatDateInTimezone(s.date, timezone) === dStr,
           );
 
-          if (dStr === todayStr) {
-            closing = currentStockTracker;
-          } else if (snap) {
-            closing = snap.closingStock;
-          } else {
-            closing = currentStockTracker;
-            // Persist snapshot to database to speed up future queries
-            const openingForSnap = closing - txs.incoming + txs.outgoing;
+          if (!snap && dStr !== todayStr) {
             await this.prisma.dailyLocationStockSnapshot
               .create({
                 data: {
@@ -1161,26 +1199,14 @@ export class ReportsService {
                   warehouseId,
                   locationId: locId,
                   inventoryId: prod.id,
-                  openingStock: openingForSnap,
-                  totalIn: txs.incoming,
-                  totalOut: txs.outgoing,
-                  closingStock: closing,
+                  openingStock: dayLocOpening,
+                  totalIn: inbound,
+                  totalOut: outbound,
+                  closingStock: dayLocClosing,
                 },
               })
               .catch(() => {});
           }
-
-          const opening = closing - txs.incoming + txs.outgoing;
-          locationDailyMetrics.set(key, {
-            opening,
-            incoming: txs.incoming,
-            outgoing: txs.outgoing,
-            closing,
-            inList: txs.inList,
-            outList: txs.outList,
-          });
-
-          currentStockTracker = opening;
         }
       }
 
@@ -1600,7 +1626,11 @@ export class ReportsService {
           where: {
             inventoryId: inventory.id,
           },
+          include: {
+            quant: true,
+          },
         },
+        documentReference: true,
       },
     });
 
@@ -1715,56 +1745,74 @@ export class ReportsService {
       activeLocationIds.add(mappedLocId);
     }
 
-    const locationTransactionsMap = new Map<
-      string,
-      { incoming: number; outgoing: number }
-    >();
+    // Collect all raw transactions into a list
+    const rawTransactionsList: {
+      txUuid: string;
+      opNumber: string;
+      driverName: string;
+      licensePlate: string;
+      clientPartner: string;
+      cardType: 'IN' | 'OUT';
+      quantity: number;
+      referenceDocument: string;
+      status: string;
+      effectiveDate: Date;
+      stack: string;
+      type: string;
+      locationId: number;
+      erpQty?: number;
+      totalGateQty?: number;
+      adjustmentQty?: number;
+      reason?: string;
+    }[] = [];
+
     for (const op of gateOpsForProd) {
       const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
       for (const opProd of matchingProducts) {
         if (!opProd.locationId) continue;
 
-        const dateStr = formatDateInTimezone(
-          op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
-          timezone,
-        );
-        const locId = opProd.locationId;
-        const key = `${dateStr}_${locId}`;
-
-        const current = locationTransactionsMap.get(key) || {
-          incoming: 0,
-          outgoing: 0,
-        };
-        if (op.cardType === 'IN') {
-          current.incoming += opProd.quantity;
-        } else {
-          current.outgoing += opProd.quantity;
-        }
-        locationTransactionsMap.set(key, current);
+        rawTransactionsList.push({
+          txUuid: op.uuid,
+          opNumber: op.opNumber,
+          driverName: op.driverName,
+          licensePlate: op.licensePlate,
+          clientPartner: op.clientPartner || '-',
+          cardType: op.cardType as 'IN' | 'OUT',
+          quantity: opProd.quantity,
+          referenceDocument: op.documentReference?.documentNumber || '-',
+          status: op.status,
+          effectiveDate: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
+          stack: opProd.quant?.lotName || '-',
+          type: 'GATE_OPERATION',
+          locationId: opProd.locationId,
+        });
       }
     }
 
-    // Add independent completed ERP documents to locationTransactionsMap
+    // Add independent completed ERP documents to rawTransactionsList
     for (const m of mappedIndependentDocs) {
       const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
-      const docDateStr = formatDateInTimezone(docDate, timezone);
-
-      const key = `${docDateStr}_${m.locationId}`;
-      const current = locationTransactionsMap.get(key) || {
-        incoming: 0,
-        outgoing: 0,
-      };
-      if (m.doc.pickingTypeCode === 'incoming') {
-        current.incoming += m.qty;
-      } else {
-        current.outgoing += m.qty;
-      }
-      locationTransactionsMap.set(key, current);
+      rawTransactionsList.push({
+        txUuid: m.doc.uuid,
+        opNumber: m.doc.documentNumber,
+        driverName: m.doc.driver || '-',
+        licensePlate: m.doc.plateNumber || '-',
+        clientPartner: m.doc.partnerName || m.doc.purchaseName || '-',
+        cardType: m.doc.pickingTypeCode === 'incoming' ? 'IN' : 'OUT',
+        quantity: m.qty,
+        referenceDocument: m.doc.documentNumber,
+        status: m.doc.state.toUpperCase(), // 'DONE'
+        effectiveDate: docDate,
+        stack: '-',
+        type: 'ERP_DOCUMENT',
+        locationId: m.locationId,
+      });
     }
 
-    // Add completed document adjustments to locationTransactionsMap for backward calculations
+    // Add completed document adjustments to rawTransactionsList
     for (const adjInfo of completedDocsAdjustments) {
-      const docDateStr = adjInfo.docDateStr;
+      const doc = adjInfo.doc;
+      const erpQty = adjInfo.erpQty;
       const sumGateQty = adjInfo.sumGateQty;
       const adjustment = adjInfo.adjustment;
       const gateInfo = adjInfo.gateInfo;
@@ -1775,33 +1823,49 @@ export class ReportsService {
         for (const [locId, locAdjustment] of distributed.entries()) {
           if (locAdjustment === 0) continue;
 
-          const key = `${docDateStr}_${locId}`;
-          const current = locationTransactionsMap.get(key) || {
-            incoming: 0,
-            outgoing: 0,
-          };
-          if (locAdjustment > 0) {
-            current.incoming += locAdjustment;
-          } else {
-            current.outgoing += Math.abs(locAdjustment);
-          }
-          locationTransactionsMap.set(key, current);
+          rawTransactionsList.push({
+            txUuid: `${doc.uuid}_adj_${locId}`,
+            opNumber: doc.documentNumber,
+            driverName: 'Penyesuaian Fisik',
+            licensePlate: 'ERP Reconciliation',
+            clientPartner: doc.partnerName || 'Penyesuaian Fisik',
+            cardType: locAdjustment > 0 ? 'IN' : 'OUT',
+            quantity: Math.abs(locAdjustment),
+            referenceDocument: doc.documentNumber,
+            status: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+            effectiveDate: adjInfo.docDate,
+            stack: '-',
+            type: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+            locationId: locId,
+            erpQty,
+            totalGateQty: sumGateQty,
+            adjustmentQty: adjustment,
+            reason: 'Partial physical realization after ERP completion',
+          });
         }
       } else {
         const fallbackLoc = dbLocations[0];
         if (fallbackLoc) {
           const locId = fallbackLoc.id;
-          const key = `${docDateStr}_${locId}`;
-          const current = locationTransactionsMap.get(key) || {
-            incoming: 0,
-            outgoing: 0,
-          };
-          if (adjustment > 0) {
-            current.incoming += adjustment;
-          } else {
-            current.outgoing += Math.abs(adjustment);
-          }
-          locationTransactionsMap.set(key, current);
+          rawTransactionsList.push({
+            txUuid: `${doc.uuid}_adj_${locId}`,
+            opNumber: doc.documentNumber,
+            driverName: 'Penyesuaian Fisik',
+            licensePlate: 'ERP Reconciliation',
+            clientPartner: doc.partnerName || 'Penyesuaian Fisik',
+            cardType: adjustment > 0 ? 'IN' : 'OUT',
+            quantity: Math.abs(adjustment),
+            referenceDocument: doc.documentNumber,
+            status: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+            effectiveDate: adjInfo.docDate,
+            stack: '-',
+            type: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+            locationId: locId,
+            erpQty,
+            totalGateQty: sumGateQty,
+            adjustmentQty: adjustment,
+            reason: 'Partial physical realization after ERP completion',
+          });
         }
       }
     }
@@ -1831,63 +1895,90 @@ export class ReportsService {
       currentStockTrackerMap.set(locId, realStock);
     }
 
-    const backwardDates = this.generateDatesList(start, today).reverse();
     const targetDateStr = formatDateInTimezone(start, timezone);
 
     let dayOpening = 0;
     let dayClosing = 0;
 
     for (const locId of activeLocationIds) {
-      let currentStockTracker = currentStockTrackerMap.get(locId) || 0;
+      // Filter and sort transactions for this location chronologically
+      const locTransactions = rawTransactionsList
+        .filter((tx) => tx.locationId === locId)
+        .sort((a, b) => {
+          const timeA = a.effectiveDate.getTime();
+          const timeB = b.effectiveDate.getTime();
+          if (timeA !== timeB) return timeA - timeB;
+          return a.txUuid.localeCompare(b.txUuid);
+        });
 
-      for (const dDate of backwardDates) {
-        const dStr = formatDateInTimezone(dDate, timezone);
-        const key = `${dStr}_${locId}`;
-        const txs = locationTransactionsMap.get(key) || {
-          incoming: 0,
-          outgoing: 0,
-        };
+      // 1. Calculate opening stock at start date (the target date)
+      // Query latest snapshot prior to start date
+      const prevSnap = await this.prisma.dailyLocationStockSnapshot.findFirst({
+        where: {
+          warehouseId,
+          locationId: locId,
+          inventoryId: inventory.id,
+          date: {
+            lt: start,
+          },
+        },
+        orderBy: {
+          date: 'desc',
+        },
+      });
 
-        let closing = 0;
-        const snap = locationSnapshots.find(
-          (s) =>
-            s.locationId === locId &&
-            s.inventoryId === inventory.id &&
-            formatDateInTimezone(s.date, timezone) === dStr,
+      let openingStockAtStart = 0;
+      if (prevSnap) {
+        openingStockAtStart = prevSnap.closingStock;
+        const lastSnapDate = prevSnap.date;
+        const lastSnapEnd = getLocalEndOfDay(formatDateInTimezone(lastSnapDate, timezone), timezone);
+        const gapTx = locTransactions.filter(
+          (tx) => tx.effectiveDate > lastSnapEnd && tx.effectiveDate < start,
         );
-
-        if (dStr === todayStr) {
-          closing = currentStockTracker;
-        } else if (snap) {
-          closing = snap.closingStock;
-        } else {
-          closing = currentStockTracker;
-          const openingForSnap = closing - txs.incoming + txs.outgoing;
-          await this.prisma.dailyLocationStockSnapshot
-            .create({
-              data: {
-                date: dDate,
-                warehouseId,
-                locationId: locId,
-                inventoryId: inventory.id,
-                openingStock: openingForSnap,
-                totalIn: txs.incoming,
-                totalOut: txs.outgoing,
-                closingStock: closing,
-              },
-            })
-            .catch(() => {});
+        for (const tx of gapTx) {
+          if (tx.cardType === 'IN') {
+            openingStockAtStart += tx.quantity;
+          } else {
+            openingStockAtStart -= tx.quantity;
+          }
         }
+      } else {
+        // Backward calculation from today's real physical stock
+        const currentStockToday = currentStockTrackerMap.get(locId) || 0;
+        const reportAndLaterTx = locTransactions.filter((tx) => tx.effectiveDate >= start);
 
-        const opening = closing - txs.incoming + txs.outgoing;
-
-        if (dStr === targetDateStr) {
-          dayOpening += opening;
-          dayClosing += closing;
+        let calculatedStock = currentStockToday;
+        for (let i = reportAndLaterTx.length - 1; i >= 0; i--) {
+          const tx = reportAndLaterTx[i];
+          if (tx.cardType === 'IN') {
+            calculatedStock -= tx.quantity;
+          } else {
+            calculatedStock += tx.quantity;
+          }
         }
-
-        currentStockTracker = opening;
+        openingStockAtStart = calculatedStock;
       }
+
+      // 2. Perform forward running balance for the target date
+      const dayStart = getLocalStartOfDay(targetDateStr, timezone);
+      const dayEnd = getLocalEndOfDay(targetDateStr, timezone);
+
+      const dayTx = locTransactions.filter(
+        (tx) => tx.effectiveDate >= dayStart && tx.effectiveDate <= dayEnd,
+      );
+
+      let inbound = 0;
+      let outbound = 0;
+      for (const tx of dayTx) {
+        if (tx.cardType === 'IN') {
+          inbound += tx.quantity;
+        } else {
+          outbound += tx.quantity;
+        }
+      }
+
+      dayOpening += openingStockAtStart;
+      dayClosing += (openingStockAtStart + inbound - outbound);
     }
 
     return {
