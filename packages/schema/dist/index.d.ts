@@ -296,6 +296,32 @@ export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     gateOperationUuid?: string | undefined;
 }>;
 export type ErpDocumentReferenceQueryInput = z.infer<typeof ErpDocumentReferenceQuerySchema>;
+export declare const PendingPickupQuerySchema: z.ZodObject<{
+    search: z.ZodOptional<z.ZodString>;
+    partner: z.ZodOptional<z.ZodString>;
+    scheduledDate: z.ZodOptional<z.ZodString>;
+    state: z.ZodOptional<z.ZodString>;
+    status: z.ZodOptional<z.ZodString>;
+    page: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    limit: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+}, "strip", z.ZodTypeAny, {
+    status?: string | undefined;
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    state?: string | undefined;
+    partner?: string | undefined;
+    scheduledDate?: string | undefined;
+}, {
+    status?: string | undefined;
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    state?: string | undefined;
+    partner?: string | undefined;
+    scheduledDate?: string | undefined;
+}>;
+export type PendingPickupQueryInput = z.infer<typeof PendingPickupQuerySchema>;
 export declare const CreateWarehouseSchema: z.ZodObject<{
     code: z.ZodString;
     name: z.ZodString;

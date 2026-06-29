@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -129,6 +129,15 @@ exports.ErpDocumentReferenceQuerySchema = zod_1.z.object({
     state: zod_1.z.string().optional(),
     refFax: zod_1.z.string().optional(),
     gateOperationUuid: zod_1.z.string().optional(),
+});
+exports.PendingPickupQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    partner: zod_1.z.string().optional(),
+    scheduledDate: zod_1.z.string().optional(),
+    state: zod_1.z.string().optional(),
+    status: zod_1.z.string().optional(),
+    page: zod_1.z.string().or(zod_1.z.number()).optional(),
+    limit: zod_1.z.string().or(zod_1.z.number()).optional(),
 });
 // Warehouse CRUD Schemas
 exports.CreateWarehouseSchema = zod_1.z.object({

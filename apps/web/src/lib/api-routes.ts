@@ -57,6 +57,7 @@ export const API_ROUTES = {
     partners: "/erp-document-references/partners",
     realizationHistory: (uuid: string) =>
       `/erp-document-references/${uuid}/realization-history`,
+    pendingPickup: "/erp-document-references/pending-pickup",
   },
   odoo: {
     list: "/odoo-accounts",

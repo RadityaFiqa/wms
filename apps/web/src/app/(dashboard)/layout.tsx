@@ -26,6 +26,7 @@ import {
   BarChart3,
   FileCheck,
   FolderOpen,
+  ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -167,6 +168,12 @@ export default function DashboardLayout({
     {
       title: "Operations",
       items: [
+        {
+          name: "Pending Pickup",
+          href: "/pending-pickup",
+          icon: ClipboardList,
+          show: hasPermission("read", "DocumentReference"),
+        },
         {
           name: "Gate Operation",
           href: "/gate-operations",

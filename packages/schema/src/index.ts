@@ -163,6 +163,19 @@ export type ErpDocumentReferenceQueryInput = z.infer<
   typeof ErpDocumentReferenceQuerySchema
 >;
 
+export const PendingPickupQuerySchema = z.object({
+  search: z.string().optional(),
+  partner: z.string().optional(),
+  scheduledDate: z.string().optional(),
+  state: z.string().optional(),
+  status: z.string().optional(),
+  page: z.string().or(z.number()).optional(),
+  limit: z.string().or(z.number()).optional(),
+});
+export type PendingPickupQueryInput = z.infer<
+  typeof PendingPickupQuerySchema
+>;
+
 // Warehouse CRUD Schemas
 export const CreateWarehouseSchema = z.object({
   code: z.string().min(2, "Kode warehouse minimal 2 karakter").max(50),

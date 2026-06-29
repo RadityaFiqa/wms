@@ -72,6 +72,34 @@ export class ErpDocumentReferenceController {
     return this.service.findUniquePartners(warehouseId);
   }
 
+  @Get('pending-pickup')
+  @CheckPolicies((ability) => ability.can('read', 'Inventory'))
+  async getPendingPickups(
+    @Query('search') search?: string,
+    @Query('partner') partner?: string,
+    @Query('scheduledDate') scheduledDate?: string,
+    @Query('state') state?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    return this.service.getPendingPickups(warehouseId, {
+      search,
+      partner,
+      scheduledDate,
+      state,
+      status,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   @Get(':uuid')
   @CheckPolicies((ability) => ability.can('read', 'Inventory'))
   async findOne(@Param('uuid') uuid: string) {

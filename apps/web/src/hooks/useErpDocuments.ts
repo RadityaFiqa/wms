@@ -177,3 +177,46 @@ export function useErpDocumentRealizationHistory(uuid: string | null) {
   };
 }
 
+export function usePendingPickups(query?: {
+  search?: string;
+  partner?: string;
+  scheduledDate?: string;
+  state?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const { activeWarehouse } = useAuthStore();
+  const searchParams = new URLSearchParams();
+
+  if (query?.search) searchParams.append("search", query.search);
+  if (query?.partner) searchParams.append("partner", query.partner);
+  if (query?.scheduledDate) searchParams.append("scheduledDate", query.scheduledDate);
+  if (query?.state) searchParams.append("state", query.state);
+  if (query?.status) searchParams.append("status", query.status);
+  if (query?.page) searchParams.append("page", String(query.page));
+  if (query?.limit) searchParams.append("limit", String(query.limit));
+
+  const queryString = searchParams.toString();
+  const swrKey = activeWarehouse
+    ? `${API_ROUTES.erpDocumentReferences.pendingPickup}?warehouseUuid=${activeWarehouse.uuid}&${queryString}`
+    : null;
+
+  const {
+    data,
+    error,
+    isLoading,
+    mutate: refresh,
+  } = useSWR(swrKey, () => {
+    const url = `${API_ROUTES.erpDocumentReferences.pendingPickup}?${queryString}`;
+    return api.get(url).then((res) => res.data);
+  });
+
+  return {
+    pendingPickupsData: data,
+    error,
+    isLoading,
+    refresh,
+  };
+}
+

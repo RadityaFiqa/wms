@@ -658,6 +658,335 @@ export class ErpDocumentReferenceService {
     };
   }
 
+  async getPendingPickups(
+    warehouseId: number,
+    query: {
+      search?: string;
+      partner?: string;
+      scheduledDate?: string;
+      state?: string;
+      status?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      warehouseId,
+      state: query.state
+        ? query.state.toLowerCase()
+        : { in: ['assigned', 'confirmed'] },
+      OR: [
+        { partnerName: null },
+        { partnerName: { not: '4755 - Manager Pengolahan Kalsel' } },
+      ],
+    };
+
+    if (query.search) {
+      where.AND = where.AND || [];
+      where.AND.push({
+        items: {
+          some: {
+            productName: { contains: query.search, mode: 'insensitive' },
+          },
+        },
+      });
+    }
+
+    if (query.partner) {
+      where.AND = where.AND || [];
+      where.AND.push({
+        partnerName: { contains: query.partner, mode: 'insensitive' },
+      });
+    }
+
+    if (query.scheduledDate) {
+      const start = new Date(query.scheduledDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(query.scheduledDate);
+      end.setHours(23, 59, 59, 999);
+      where.scheduledDate = {
+        gte: start,
+        lte: end,
+      };
+    }
+
+    // Fetch candidate document references
+    const dbDocs = await this.prisma.documentReference.findMany({
+      where,
+      include: {
+        items: true,
+        gateOperations: {
+          where: {
+            status: { not: 'CANCELED' },
+          },
+          include: {
+            products: true,
+          },
+        },
+      },
+    });
+
+    // Get all unique inventoryIds
+    const inventoryIds = Array.from(
+      new Set(
+        dbDocs.flatMap((doc) => doc.items.map((item) => item.inventoryId)),
+      ),
+    );
+
+    // Fetch SKUs from Inventory
+    const inventories = await this.prisma.inventory.findMany({
+      where: { id: { in: inventoryIds } },
+      select: { id: true, sku: true },
+    });
+    const skuMap = new Map(inventories.map((inv) => [inv.id, inv.sku]));
+
+    // Grouping by Product
+    const productMap = new Map<number, any>();
+
+    for (const doc of dbDocs) {
+      // Picked quantities map for this document
+      const pickedMap = new Map<number, number>();
+      for (const op of doc.gateOperations) {
+        for (const prod of op.products) {
+          pickedMap.set(
+            prod.inventoryId,
+            (pickedMap.get(prod.inventoryId) || 0) + prod.quantity,
+          );
+        }
+      }
+
+      for (const item of doc.items) {
+        const erpPrimaryQty = item.productQty;
+        const erpSecondaryQty = item.secondaryQuantity;
+        const ratio =
+          erpSecondaryQty !== null && erpPrimaryQty > 0
+            ? erpSecondaryQty / erpPrimaryQty
+            : 0;
+
+        const pickedPrimaryQty = pickedMap.get(item.inventoryId) || 0;
+        const remainingPrimaryQty = Math.max(0, erpPrimaryQty - pickedPrimaryQty);
+
+        // A document item is pending only if remaining primary quantity > 0
+        if (remainingPrimaryQty <= 0) continue;
+
+        // Apply status filter to the document item
+        const itemStatus =
+          pickedPrimaryQty === 0 ? 'Not Picked' : 'Partially Picked';
+        if (query.status) {
+          const filterStatus = query.status.toLowerCase();
+          if (filterStatus === 'not_picked' && itemStatus !== 'Not Picked') {
+            continue;
+          }
+          if (
+            filterStatus === 'partially_picked' &&
+            itemStatus !== 'Partially Picked'
+          ) {
+            continue;
+          }
+        }
+
+        // Initialize or update product group
+        let prodGroup = productMap.get(item.inventoryId);
+        if (!prodGroup) {
+          prodGroup = {
+            productId: item.inventoryId,
+            productName: item.productName,
+            sku: skuMap.get(item.inventoryId) || '-',
+            uom: item.uom,
+            secondaryUom: item.secondaryUom,
+            ratio,
+            pendingDocumentsCount: 0,
+            erpQuantityPrimary: 0,
+            pickedQuantityPrimary: 0,
+            remainingQuantityPrimary: 0,
+            erpQuantitySecondary: null,
+            pickedQuantitySecondary: null,
+            remainingQuantitySecondary: null,
+            documents: [],
+          };
+          productMap.set(item.inventoryId, prodGroup);
+        }
+
+        // Aggregate product quantities
+        prodGroup.erpQuantityPrimary += erpPrimaryQty;
+        prodGroup.pickedQuantityPrimary += pickedPrimaryQty;
+        prodGroup.remainingQuantityPrimary += remainingPrimaryQty;
+
+        // Collect relevant gate operations for this document item
+        const relevantGateOps = doc.gateOperations
+          .filter((op) => op.products.some((p) => p.inventoryId === item.inventoryId))
+          .map((op) => {
+            const prodOp = op.products.find((p) => p.inventoryId === item.inventoryId);
+            return {
+              id: op.id,
+              uuid: op.uuid,
+              opNumber: op.opNumber,
+              createdAt: op.createdAt,
+              status: op.status,
+              quantity: prodOp?.quantity || 0,
+              secondaryQuantity:
+                erpSecondaryQty !== null && prodOp
+                  ? prodOp.quantity * ratio
+                  : null,
+            };
+          });
+
+        // Add document detail to this product group
+        prodGroup.documents.push({
+          uuid: doc.uuid,
+          documentNumber: doc.documentNumber,
+          partnerName: doc.partnerName,
+          scheduledDate: doc.scheduledDate,
+          origin: doc.origin,
+          driver: doc.driver,
+          plateNumber: doc.plateNumber,
+          state: doc.state,
+          status: itemStatus,
+          erpQuantityPrimary: erpPrimaryQty,
+          erpQuantitySecondary: erpSecondaryQty,
+          pickedQuantityPrimary: pickedPrimaryQty,
+          pickedQuantitySecondary:
+            erpSecondaryQty !== null ? pickedPrimaryQty * ratio : null,
+          remainingQuantityPrimary: remainingPrimaryQty,
+          remainingQuantitySecondary:
+            erpSecondaryQty !== null ? remainingPrimaryQty * ratio : null,
+          progress:
+            erpPrimaryQty > 0 ? (pickedPrimaryQty / erpPrimaryQty) * 105 : 0, // Wait: let's cap at 100% just in case
+          gateOperations: relevantGateOps,
+        });
+
+        // Cap progress at 100%
+        const lastDoc = prodGroup.documents[prodGroup.documents.length - 1];
+        lastDoc.progress = Math.min(100, lastDoc.progress);
+
+        prodGroup.pendingDocumentsCount = prodGroup.documents.length;
+      }
+    }
+
+    // Convert productMap to list
+    let productList = Array.from(productMap.values());
+
+    // Filter products list by search query if provided (in memory)
+    if (query.search) {
+      const searchLower = query.search.toLowerCase();
+      productList = productList.filter(
+        (prod) =>
+          prod.productName.toLowerCase().includes(searchLower) ||
+          prod.sku.toLowerCase().includes(searchLower),
+      );
+    }
+
+    // Calculate secondary quantities on product level based on totals
+    for (const prod of productList) {
+      if (prod.secondaryUom) {
+        prod.erpQuantitySecondary = prod.erpQuantityPrimary * prod.ratio;
+        prod.pickedQuantitySecondary = prod.pickedQuantityPrimary * prod.ratio;
+        prod.remainingQuantitySecondary =
+          prod.remainingQuantityPrimary * prod.ratio;
+      }
+    }
+
+    // Sort products: "Urutan default berdasarkan Remaining Qty terbesar, kemudian Scheduled Date paling lama."
+    productList.sort((a, b) => {
+      // 1. Remaining Quantity (descending)
+      if (b.remainingQuantityPrimary !== a.remainingQuantityPrimary) {
+        return b.remainingQuantityPrimary - a.remainingQuantityPrimary;
+      }
+
+      // 2. Earliest Scheduled Date (ascending)
+      const aEarliest = a.documents.reduce((earliest: Date | null, doc: any) => {
+        if (!doc.scheduledDate) return earliest;
+        const d = new Date(doc.scheduledDate);
+        return earliest === null || d < earliest ? d : earliest;
+      }, null);
+
+      const bEarliest = b.documents.reduce((earliest: Date | null, doc: any) => {
+        if (!doc.scheduledDate) return earliest;
+        const d = new Date(doc.scheduledDate);
+        return earliest === null || d < earliest ? d : earliest;
+      }, null);
+
+      if (aEarliest && bEarliest) {
+        return aEarliest.getTime() - bEarliest.getTime();
+      }
+      if (aEarliest) return -1;
+      if (bEarliest) return 1;
+      return 0;
+    });
+
+    // Global Summary Stats Calculations
+    const uniqueDocs = new Set<string>();
+    let grandTotalErpPrimary = 0;
+    let grandTotalPickedPrimary = 0;
+
+    const primaryGroups: { [uom: string]: number } = {};
+    const secondaryGroups: { [uom: string]: number } = {};
+
+    for (const prod of productList) {
+      grandTotalErpPrimary += prod.erpQuantityPrimary;
+      grandTotalPickedPrimary += prod.pickedQuantityPrimary;
+
+      // Group by primary UoM
+      const uom = prod.uom || 'Unit';
+      primaryGroups[uom] =
+        (primaryGroups[uom] || 0) + prod.remainingQuantityPrimary;
+
+      // Group by secondary UoM
+      if (prod.secondaryUom && prod.remainingQuantitySecondary !== null) {
+        const secUom = prod.secondaryUom;
+        secondaryGroups[secUom] =
+          (secondaryGroups[secUom] || 0) + prod.remainingQuantitySecondary;
+      }
+
+      for (const doc of prod.documents) {
+        uniqueDocs.add(doc.uuid);
+      }
+    }
+
+    const totalPendingDocuments = uniqueDocs.size;
+    const totalPendingProducts = productList.length;
+
+    const totalPendingPrimaryQty = Object.entries(primaryGroups).map(
+      ([uom, quantity]) => ({ uom, quantity }),
+    );
+    const totalPendingSecondaryQty = Object.entries(secondaryGroups).map(
+      ([uom, quantity]) => ({ uom, quantity }),
+    );
+
+    const completionRate =
+      grandTotalErpPrimary > 0
+        ? (grandTotalPickedPrimary / grandTotalErpPrimary) * 100
+        : 0;
+
+    const summary = {
+      totalPendingDocuments,
+      totalPendingProducts,
+      totalPendingPrimaryQty,
+      totalPendingSecondaryQty,
+      completionRate,
+    };
+
+    // Paginate product list
+    const total = productList.length;
+    const totalPages = Math.ceil(total / limit);
+    const paginatedProducts = productList.slice(skip, skip + limit);
+
+    return {
+      products: paginatedProducts,
+      summary,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+      },
+    };
+  }
+
   /**
    * Find detailed document reference and its item lines
    */
