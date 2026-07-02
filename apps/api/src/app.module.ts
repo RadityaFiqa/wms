@@ -22,6 +22,7 @@ import { ErpDocumentReferenceModule } from './modules/erp-document-reference/erp
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { DigitalSignatureModule } from './modules/digital-signature/digital-signature.module';
+import { StackCardModule } from './modules/stack-card/stack-card.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interceptor';
 
@@ -58,6 +59,7 @@ import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interce
     WarehouseModule,
     ReportsModule,
     DigitalSignatureModule,
+    StackCardModule,
   ],
   controllers: [AppController],
   providers: [

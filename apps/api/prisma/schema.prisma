@@ -33,6 +33,7 @@ model User {
   manualDocuments           ManualDocument[]
   signedDocuments           SignedDocument[]
   signatures                UserSignature[]
+  stackCardUploadLogs      StackCardUploadLog[]
 
   @@index([email])
   @@index([uuid])
@@ -144,6 +145,8 @@ model Warehouse {
   updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
   dailyStockSnapshots      DailyStockSnapshot[]
   dailyLocationStockSnapshots DailyLocationStockSnapshot[]
+  stackCards               StackCard[]
+  stackCardUploadLogs      StackCardUploadLog[]
   documentReferences  DocumentReference[]
   gateOperations      GateOperation[]
   inventories         Inventory[]
@@ -621,6 +624,61 @@ model UserSignature {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("UserSignature")
+}
+
+model StackCard {
+  id            Int      @id @default(autoincrement())
+  uuid          String   @unique @default(uuid())
+  warehouseId   Int
+  productName   String
+  sku           String
+  lot           String
+  shelfLife     Int      // in months
+  expiredDate   DateTime? @db.Timestamptz(3)
+  placementDate DateTime @db.Timestamptz(3)
+  locationName  String
+  quantity      Float
+  quantum       Float
+  uom           String
+  spraying      String?
+  fumigasi      String?
+  fogging       String?
+  keterangan    String?
+  isPublished   Boolean  @default(false)
+  snapshotDate  DateTime @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@index([snapshotDate])
+  @@index([locationName])
+  @@index([sku])
+  @@index([lot])
+  @@index([uuid])
+  @@map("StackCard")
+}
+
+model StackCardUploadLog {
+  id            Int      @id @default(autoincrement())
+  uuid          String   @unique @default(uuid())
+  warehouseId   Int
+  snapshotDate  DateTime @db.Timestamptz(3)
+  filename      String
+  locationName  String
+  rowCount      Int
+  actionType    String   // "REPLACE" | "APPEND"
+  uploadedById  Int
+  uploadedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  uploadedBy    User      @relation(fields: [uploadedById], references: [id])
+
+  @@index([warehouseId])
+  @@index([snapshotDate])
+  @@index([uuid])
+  @@map("StackCardUploadLog")
 }
 
 enum CardType {

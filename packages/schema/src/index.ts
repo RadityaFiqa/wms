@@ -278,3 +278,62 @@ export const SignDocumentSchema = z.object({
   clientTimeZone: z.string().optional(),
 });
 export type SignDocumentInput = z.infer<typeof SignDocumentSchema>;
+
+// Stack Card (Kartu Tumpukan) Schemas
+export const StackCardRowSchema = z.object({
+  productName: z.string().min(1, "Nama produk wajib diisi"),
+  sku: z.string().min(1, "SKU wajib diisi"),
+  lot: z.string().min(1, "Lot wajib diisi"),
+  shelfLife: z.number().int().nonnegative("Umur simpan tidak boleh negatif"),
+  expiredDate: z.string().nullable().optional(),
+  placementDate: z.string().min(1, "Tanggal penempatan wajib diisi"),
+  locationName: z.string().min(1, "Lokasi wajib diisi"),
+  quantity: z.number().nonnegative("Kuantitas tidak boleh negatif"),
+  quantum: z.number().nonnegative("Kuantum tidak boleh negatif"),
+  uom: z.string().min(1, "UoM wajib diisi"),
+  spraying: z.string().nullable().optional(),
+  fumigasi: z.string().nullable().optional(),
+  fogging: z.string().nullable().optional(),
+  keterangan: z.string().nullable().optional(),
+});
+export type StackCardRow = z.infer<typeof StackCardRowSchema>;
+
+export const ImportStackCardSchema = z.object({
+  snapshotDate: z.string().min(1, "Tanggal snapshot wajib diisi"),
+  locationName: z.string().min(1, "Lokasi wajib diisi"),
+  actionType: z.enum(["REPLACE", "APPEND"]),
+  filename: z.string().min(1, "Nama file wajib diisi"),
+  rows: z.array(StackCardRowSchema).min(1, "Data baris CSV minimal harus ada 1"),
+});
+export type ImportStackCardInput = z.infer<typeof ImportStackCardSchema>;
+
+export const UpdateStackCardSchema = z.object({
+  productName: z.string().min(1, "Nama produk wajib diisi"),
+  sku: z.string().min(1, "SKU wajib diisi"),
+  lot: z.string().min(1, "Lot wajib diisi"),
+  shelfLife: z.number().int().nonnegative("Umur simpan tidak boleh negatif"),
+  expiredDate: z.string().nullable().optional(),
+  placementDate: z.string().min(1, "Tanggal penempatan wajib diisi"),
+  locationName: z.string().min(1, "Lokasi wajib diisi"),
+  quantity: z.number().nonnegative("Kuantitas tidak boleh negatif"),
+  quantum: z.number().nonnegative("Kuantum tidak boleh negatif"),
+  uom: z.string().min(1, "UoM wajib diisi"),
+  spraying: z.string().nullable().optional(),
+  fumigasi: z.string().nullable().optional(),
+  fogging: z.string().nullable().optional(),
+  keterangan: z.string().nullable().optional(),
+  isPublished: z.boolean().optional(),
+});
+export type UpdateStackCardInput = z.infer<typeof UpdateStackCardSchema>;
+
+export const StackCardQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.string().or(z.number()).optional(),
+  limit: z.string().or(z.number()).optional(),
+  locationName: z.string().optional(),
+  sku: z.string().optional(),
+  lot: z.string().optional(),
+  snapshotDate: z.string().optional(),
+  isPublished: z.string().optional(),
+});
+export type StackCardQueryInput = z.infer<typeof StackCardQuerySchema>;

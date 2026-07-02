@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -214,4 +214,55 @@ exports.SignDocumentSchema = zod_1.z.object({
     qrHeight: zod_1.z.number().positive(),
     clientTime: zod_1.z.string().optional(),
     clientTimeZone: zod_1.z.string().optional(),
+});
+// Stack Card (Kartu Tumpukan) Schemas
+exports.StackCardRowSchema = zod_1.z.object({
+    productName: zod_1.z.string().min(1, "Nama produk wajib diisi"),
+    sku: zod_1.z.string().min(1, "SKU wajib diisi"),
+    lot: zod_1.z.string().min(1, "Lot wajib diisi"),
+    shelfLife: zod_1.z.number().int().nonnegative("Umur simpan tidak boleh negatif"),
+    expiredDate: zod_1.z.string().nullable().optional(),
+    placementDate: zod_1.z.string().min(1, "Tanggal penempatan wajib diisi"),
+    locationName: zod_1.z.string().min(1, "Lokasi wajib diisi"),
+    quantity: zod_1.z.number().nonnegative("Kuantitas tidak boleh negatif"),
+    quantum: zod_1.z.number().nonnegative("Kuantum tidak boleh negatif"),
+    uom: zod_1.z.string().min(1, "UoM wajib diisi"),
+    spraying: zod_1.z.string().nullable().optional(),
+    fumigasi: zod_1.z.string().nullable().optional(),
+    fogging: zod_1.z.string().nullable().optional(),
+    keterangan: zod_1.z.string().nullable().optional(),
+});
+exports.ImportStackCardSchema = zod_1.z.object({
+    snapshotDate: zod_1.z.string().min(1, "Tanggal snapshot wajib diisi"),
+    locationName: zod_1.z.string().min(1, "Lokasi wajib diisi"),
+    actionType: zod_1.z.enum(["REPLACE", "APPEND"]),
+    filename: zod_1.z.string().min(1, "Nama file wajib diisi"),
+    rows: zod_1.z.array(exports.StackCardRowSchema).min(1, "Data baris CSV minimal harus ada 1"),
+});
+exports.UpdateStackCardSchema = zod_1.z.object({
+    productName: zod_1.z.string().min(1, "Nama produk wajib diisi"),
+    sku: zod_1.z.string().min(1, "SKU wajib diisi"),
+    lot: zod_1.z.string().min(1, "Lot wajib diisi"),
+    shelfLife: zod_1.z.number().int().nonnegative("Umur simpan tidak boleh negatif"),
+    expiredDate: zod_1.z.string().nullable().optional(),
+    placementDate: zod_1.z.string().min(1, "Tanggal penempatan wajib diisi"),
+    locationName: zod_1.z.string().min(1, "Lokasi wajib diisi"),
+    quantity: zod_1.z.number().nonnegative("Kuantitas tidak boleh negatif"),
+    quantum: zod_1.z.number().nonnegative("Kuantum tidak boleh negatif"),
+    uom: zod_1.z.string().min(1, "UoM wajib diisi"),
+    spraying: zod_1.z.string().nullable().optional(),
+    fumigasi: zod_1.z.string().nullable().optional(),
+    fogging: zod_1.z.string().nullable().optional(),
+    keterangan: zod_1.z.string().nullable().optional(),
+    isPublished: zod_1.z.boolean().optional(),
+});
+exports.StackCardQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    page: zod_1.z.string().or(zod_1.z.number()).optional(),
+    limit: zod_1.z.string().or(zod_1.z.number()).optional(),
+    locationName: zod_1.z.string().optional(),
+    sku: zod_1.z.string().optional(),
+    lot: zod_1.z.string().optional(),
+    snapshotDate: zod_1.z.string().optional(),
+    isPublished: zod_1.z.string().optional(),
 });

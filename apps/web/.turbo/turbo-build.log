@@ -7,47 +7,5 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 13.1s
+✓ Compiled successfully in 26.2s
   Running TypeScript ...
-  Finished TypeScript in 14.4s ...
-  Collecting page data using 7 workers ...
-  Generating static pages using 7 workers (0/23) ...
-  Generating static pages using 7 workers (5/23) 
-  Generating static pages using 7 workers (11/23) 
-  Generating static pages using 7 workers (17/23) 
-✓ Generating static pages using 7 workers (23/23) in 3.1s
-  Finalizing page optimization ...
-
-Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ○ /audit-logs
-├ ƒ /document-verification/[token]
-├ ○ /erp-documents
-├ ƒ /erp-documents/[uuid]
-├ ○ /forgot-password
-├ ○ /gate-operations
-├ ƒ /gate-operations/[uuid]
-├ ○ /gate-operations/new
-├ ○ /gate-verification
-├ ƒ /gate-verification/[uuid]
-├ ○ /inventory
-├ ○ /login
-├ ○ /odoo
-├ ○ /pending-operations
-├ ○ /profile
-├ ○ /reconciliation
-├ ○ /reports
-├ ○ /reset-password
-├ ○ /roles
-├ ƒ /sign-document/[type]/[uuid]
-├ ○ /signed-documents
-├ ○ /stock-opname
-├ ƒ /stock-opname/[uuid]
-├ ○ /users
-└ ○ /warehouses
-
-
-○  (Static)   prerendered as static content
-ƒ  (Dynamic)  server-rendered on demand
-

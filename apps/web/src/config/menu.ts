@@ -67,6 +67,17 @@ export const menuGroups: MenuGroup[] = [
         priority: true,
       },
       {
+        name: "Kartu Tumpukan",
+        description: "Lihat dan kelola detail kartu tumpukan per lokasi/tumpukan.",
+        href: "/manage-kartu-tumpukan",
+        icon: ClipboardList,
+        color: "text-teal-600 bg-teal-50 border-teal-100 dark:bg-teal-950/20 dark:border-teal-900/30",
+        btnText: "Buka Kartu",
+        permissionSubject: "Inventory",
+        permissionAction: "read",
+        priority: true,
+      },
+      {
         name: "Laporan Mutasi",
         description: "Unduh data masuk, keluar, stok persediaan harian, dan drill-down transaksi terkait.",
         href: "/reports",
