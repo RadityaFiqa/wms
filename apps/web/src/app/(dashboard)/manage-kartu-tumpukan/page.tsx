@@ -54,10 +54,38 @@ export default function StackCardManagePage() {
     bulkDeleteStackCards,
     bulkPublishStackCards,
     publishSnapshotDate,
+    updateKartuTumpukanSource,
   } = useStackCardActions();
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"data" | "history">("data");
+
+  // Data Source Selector state
+  const [dataSource, setDataSource] = useState<"REAL_STOCK" | "CSV">(
+    (activeWarehouse as any)?.kartuTumpukanSource || "CSV"
+  );
+
+  useEffect(() => {
+    if ((activeWarehouse as any)?.kartuTumpukanSource) {
+      setDataSource((activeWarehouse as any).kartuTumpukanSource);
+    }
+  }, [(activeWarehouse as any)?.kartuTumpukanSource]);
+
+  const handleDataSourceChange = async (source: "REAL_STOCK" | "CSV") => {
+    setDataSource(source);
+    setPage(1);
+    setSelectedUuids([]);
+    try {
+      await updateKartuTumpukanSource(source);
+      toast.success(
+        `Sumber data gudang berhasil diubah ke ${
+          source === "REAL_STOCK" ? "Stok Real-time (Inventory)" : "Unggahan CSV"
+        }.`
+      );
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Gagal mengubah sumber data gudang.");
+    }
+  };
 
   // Filters
   const [selectedLocation, setSelectedLocation] = useState<string>("");
@@ -95,21 +123,22 @@ export default function StackCardManagePage() {
   // Fetch warehouse locations (metadata from ERP/quants)
   const { locations: systemLocations } = useWarehouseLocations();
 
-  // Get available dates and locations for the selected warehouse (include draft ones)
-  const { dates: allDates, refreshDates } = useStackCardDates(false);
-  const { locations: allLocations, refreshLocations } = useStackCardLocations(false);
+  // Get available dates and locations for the selected warehouse
+  const { dates: allDates, refreshDates } = useStackCardDates(false, dataSource);
+  const { locations: allLocations, refreshLocations } = useStackCardLocations(false, dataSource);
 
   // Fetch history logs
   const { historyData: uploadLogs, refreshHistory } = useStackCardHistory();
 
-  // Fetch stack cards data (draft + published)
+  // Fetch stack cards data (draft + published or real stock)
   const { stackCardData, isLoading: dataLoading, refresh: refreshCards } = useStackCards({
     search: debouncedSearch,
     page,
     limit,
     locationName: selectedLocation,
-    snapshotDate: selectedDate,
-    isPublished: publishStatus === "all" ? undefined : publishStatus,
+    snapshotDate: dataSource === "CSV" ? selectedDate : undefined,
+    isPublished: dataSource === "CSV" ? (publishStatus === "all" ? undefined : publishStatus) : undefined,
+    dataSource,
   });
 
   // Check write permissions
@@ -129,6 +158,25 @@ export default function StackCardManagePage() {
       return date.toLocaleDateString("id-ID", options);
     } catch (e) {
       return dateStr;
+    }
+  };
+
+  // Format date & time to Indonesian locale
+  const formatDateTime = (dateStr: string | Date | null | undefined) => {
+    if (!dateStr) return "-";
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return String(dateStr);
+      return date.toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch (e) {
+      return String(dateStr);
     }
   };
 
@@ -495,8 +543,6 @@ export default function StackCardManagePage() {
         <div>
           {/* Breadcrumbs */}
           <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            <span>Gudang</span>
-            <span>/</span>
             <span>Kartu Tumpukan</span>
             <span>/</span>
             <span className="text-blue-600">Manage</span>
@@ -521,21 +567,68 @@ export default function StackCardManagePage() {
 
         {/* Global actions */}
         <div className="flex items-center space-x-2.5">
-          <button
-            onClick={handleDownloadTemplate}
-            className="flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-350 font-bold px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer text-sm"
-          >
-            <Download className="h-4 w-4 mr-2 text-slate-550" />
-            Template CSV
-          </button>
-          
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl shadow-md transition cursor-pointer text-sm"
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Upload CSV
-          </button>
+          {dataSource === "CSV" && (
+            <>
+              <button
+                onClick={handleDownloadTemplate}
+                className="flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-350 font-bold px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer text-sm"
+              >
+                <Download className="h-4 w-4 mr-2 text-slate-550" />
+                Template CSV
+              </button>
+              
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl shadow-md transition cursor-pointer text-sm"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Upload CSV
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Data Source Selector */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Sumber Data:
+          </span>
+          <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl inline-flex items-center space-x-1 border border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => handleDataSourceChange("REAL_STOCK")}
+              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dataSource === "REAL_STOCK"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <Box className="h-4 w-4" />
+              <span>Stok Real-time (Inventory)</span>
+            </button>
+            <button
+              onClick={() => handleDataSourceChange("CSV")}
+              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dataSource === "CSV"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              <span>Unggahan CSV</span>
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+          {dataSource === "REAL_STOCK" ? (
+            <span className="inline-flex items-center text-emerald-600 dark:text-emerald-400 font-semibold">
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin-slow" />
+              Menampilkan stok aktif dari database.
+            </span>
+          ) : (
+            <span>Menampilkan data kartu tumpukan hasil unggahan file CSV.</span>
+          )}
         </div>
       </div>
 
@@ -582,24 +675,33 @@ export default function StackCardManagePage() {
                   Tanggal Snapshot
                 </label>
                 <div className="relative">
-                  <select
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-750 dark:text-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
-                  >
-                    {allDates.length === 0 ? (
-                      <option value="">Belum ada data snapshot</option>
-                    ) : (
-                      allDates.map((dateStr) => {
-                        const formatted = dateStr.split("T")[0];
-                        return (
-                          <option key={dateStr} value={formatted}>
-                            {formatDate(dateStr)}
-                          </option>
-                        );
-                      })
-                    )}
-                  </select>
+                  {dataSource === "REAL_STOCK" ? (
+                    <input
+                      type="text"
+                      disabled
+                      value={allDates[0] ? formatDateTime(allDates[0]) : formatDateTime(new Date())}
+                      className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-700 dark:text-slate-300 rounded-lg cursor-not-allowed"
+                    />
+                  ) : (
+                    <select
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-750 dark:text-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+                    >
+                      {allDates.length === 0 ? (
+                        <option value="">Belum ada data snapshot</option>
+                      ) : (
+                        allDates.map((dateStr) => {
+                          const formatted = dateStr.split("T")[0];
+                          return (
+                            <option key={dateStr} value={formatted}>
+                              {formatDate(dateStr)}
+                            </option>
+                          );
+                        })
+                      )}
+                    </select>
+                  )}
                   <Calendar className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 </div>
               </div>
@@ -632,15 +734,24 @@ export default function StackCardManagePage() {
                   Status Publish
                 </label>
                 <div className="relative">
-                  <select
-                    value={publishStatus}
-                    onChange={(e) => setPublishStatus(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-750 dark:text-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
-                  >
-                    <option value="all">Semua Status</option>
-                    <option value="true">Published</option>
-                    <option value="false">Draft (Unpublished)</option>
-                  </select>
+                  {dataSource === "REAL_STOCK" ? (
+                    <input
+                      type="text"
+                      disabled
+                      value="Semua Live Stock"
+                      className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-400 dark:text-slate-500 rounded-lg cursor-not-allowed"
+                    />
+                  ) : (
+                    <select
+                      value={publishStatus}
+                      onChange={(e) => setPublishStatus(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-750 dark:text-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+                    >
+                      <option value="all">Semua Status</option>
+                      <option value="true">Published</option>
+                      <option value="false">Draft (Unpublished)</option>
+                    </select>
+                  )}
                   <Settings className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 </div>
               </div>
@@ -664,7 +775,7 @@ export default function StackCardManagePage() {
             </div>
 
             {/* Publishing controls for the selected snapshot date */}
-            {selectedDate && (
+            {dataSource === "CSV" && selectedDate && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-xl space-y-3 sm:space-y-0 text-xs">
                 <div className="flex items-center space-x-2 text-slate-700 dark:text-slate-350 font-semibold">
                   <Info className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400 shrink-0" />
@@ -692,7 +803,7 @@ export default function StackCardManagePage() {
           </div>
 
           {/* Bulk actions options bar */}
-          {selectedUuids.length > 0 && (
+          {dataSource === "CSV" && selectedUuids.length > 0 && (
             <div className="flex items-center justify-between p-3.5 bg-slate-850 dark:bg-slate-900 border border-slate-750 rounded-xl text-white text-xs font-semibold animate-fade-in shadow-lg">
               <div className="flex items-center space-x-1.5">
                 <CheckCircle className="h-4 w-4 text-blue-400" />
@@ -729,12 +840,16 @@ export default function StackCardManagePage() {
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-400 dark:text-slate-455 uppercase tracking-wider sticky top-0 z-1">
                     <th className="py-3.5 px-4 text-center w-12">
-                      <input
-                        type="checkbox"
-                        checked={sortedStackCards.length > 0 && selectedUuids.length === sortedStackCards.length}
-                        onChange={handleSelectAll}
-                        className="cursor-pointer h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
+                      {dataSource === "CSV" ? (
+                        <input
+                          type="checkbox"
+                          checked={sortedStackCards.length > 0 && selectedUuids.length === sortedStackCards.length}
+                          onChange={handleSelectAll}
+                          className="cursor-pointer h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <span className="text-slate-300 dark:text-slate-600">-</span>
+                      )}
                     </th>
                     <th className="py-3.5 px-3 text-center w-12">No</th>
                     <th className="py-3.5 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-750" onClick={() => handleSort("productName")}>
@@ -801,12 +916,16 @@ export default function StackCardManagePage() {
                         >
                           {/* Checkbox */}
                           <td className="py-3 px-4 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleSelectRow(row.uuid)}
-                              className="cursor-pointer h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
+                            {dataSource === "CSV" ? (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleSelectRow(row.uuid)}
+                                className="cursor-pointer h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600">-</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-center font-bold text-slate-400">{numberIndex}</td>
                           <td className="py-3 px-4 font-bold">{row.productName}</td>
@@ -814,9 +933,15 @@ export default function StackCardManagePage() {
                             {row.sku}
                           </td>
                           <td className="py-3 px-4 font-semibold">{row.lot}</td>
-                          <td className="py-3 px-4 text-center font-semibold">{row.shelfLife}</td>
-                          <td className="py-3 px-4 font-semibold">{row.expiredDate ? formatDate(row.expiredDate) : "-"}</td>
-                          <td className="py-3 px-4 font-semibold">{formatDate(row.placementDate)}</td>
+                          <td className="py-3 px-4 text-center font-semibold">
+                            {row.shelfLife !== null && row.shelfLife !== undefined ? row.shelfLife : "-"}
+                          </td>
+                          <td className="py-3 px-4 font-semibold">
+                            {row.expiredDate ? formatDate(row.expiredDate) : "-"}
+                          </td>
+                          <td className="py-3 px-4 font-semibold">
+                            {row.placement ? row.placement : (row.placementDate ? formatDate(row.placementDate) : "-")}
+                          </td>
                           <td className="py-3 px-4">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30">
                               {row.locationName}
@@ -832,38 +957,49 @@ export default function StackCardManagePage() {
                           
                           {/* Publish Status Badge */}
                           <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => togglePublishSingle(row)}
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer ${
-                                row.isPublished
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/40"
-                                  : "bg-amber-50 text-amber-700 border-amber-250 dark:bg-amber-950/20 dark:text-amber-450 dark:border-amber-900/40"
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full mr-1 ${row.isPublished ? "bg-emerald-500" : "bg-amber-500"}`} />
-                              {row.isPublished ? "Published" : "Draft"}
-                            </button>
+                            {dataSource === "REAL_STOCK" ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/40">
+                                <span className="w-1.5 h-1.5 rounded-full mr-1 bg-blue-500" />
+                                Real Stock
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => togglePublishSingle(row)}
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer ${
+                                  row.isPublished
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/40"
+                                    : "bg-amber-50 text-amber-700 border-amber-250 dark:bg-amber-950/20 dark:text-amber-450 dark:border-amber-900/40"
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full mr-1 ${row.isPublished ? "bg-emerald-500" : "bg-amber-500"}`} />
+                                {row.isPublished ? "Published" : "Draft"}
+                              </button>
+                            )}
                           </td>
 
                           {/* Edit / Delete Buttons */}
                           <td className="py-3 px-4 text-center">
-                            <div className="flex items-center justify-center space-x-1.5">
-                              <button
-                                onClick={() => handleOpenEdit(row)}
-                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded transition cursor-pointer"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedRow(row);
-                                  setIsDeleteConfirmOpen(true);
-                                }}
-                                className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded transition cursor-pointer"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
+                            {dataSource === "REAL_STOCK" ? (
+                              <span className="text-slate-400 font-bold text-xs">-</span>
+                            ) : (
+                              <div className="flex items-center justify-center space-x-1.5">
+                                <button
+                                  onClick={() => handleOpenEdit(row)}
+                                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded transition cursor-pointer"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedRow(row);
+                                    setIsDeleteConfirmOpen(true);
+                                  }}
+                                  className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded transition cursor-pointer"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );

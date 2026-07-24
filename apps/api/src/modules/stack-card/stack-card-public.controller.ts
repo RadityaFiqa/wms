@@ -40,6 +40,7 @@ export class StackCardPublicController {
         uuid: true,
         name: true,
         code: true,
+        kartuTumpukanSource: true,
       },
       orderBy: { name: 'asc' },
     });

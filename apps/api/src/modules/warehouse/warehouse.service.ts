@@ -139,4 +139,17 @@ export class WarehouseService {
       data: { isActive: false },
     });
   }
+
+  async updateKartuTumpukanSource(warehouseId: number, source: 'REAL_STOCK' | 'CSV') {
+    const warehouse = await this.prisma.warehouse.update({
+      where: { id: warehouseId },
+      data: { kartuTumpukanSource: source },
+    });
+    return {
+      success: true,
+      message: `Sumber data kartu tumpukan untuk gudang ${warehouse.name} berhasil diperbarui ke ${source}.`,
+      data: warehouse,
+    };
+  }
 }
+

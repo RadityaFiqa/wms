@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   Req,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { WarehouseService } from './warehouse.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,14 +29,18 @@ import type {
 } from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
+import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
+
 
 @Controller('warehouses')
-@UseGuards(JwtAuthGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class WarehouseController {
   constructor(
     private readonly service: WarehouseService,
     private readonly prisma: PrismaService,
+    private readonly warehouseContext: WarehouseContextService,
   ) {}
 
   @Post()

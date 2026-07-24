@@ -80,7 +80,7 @@ function KartuTumpukanContent() {
   // Set default date when publishedDates load
   useEffect(() => {
     if (publishedDates && publishedDates.length > 0) {
-      const firstDate = publishedDates[0].split("T")[0];
+      const firstDate = publishedDates[0];
       setSelectedDate(firstDate);
     } else {
       setSelectedDate("");
@@ -114,6 +114,25 @@ function KartuTumpukanContent() {
         year: "numeric",
       };
       return date.toLocaleDateString("id-ID", options);
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const formatDateTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "-";
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      
+      return date.toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
     } catch (e) {
       return dateStr;
     }
@@ -269,7 +288,7 @@ function KartuTumpukanContent() {
             {selectedDate && (
               <span className="text-xs font-bold text-slate-500 dark:text-slate-450 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg flex items-center">
                 <Calendar className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
-                Terakhir diperbarui pada: <strong className="ml-1 text-slate-800 dark:text-slate-200">{formatDate(selectedDate)}</strong>
+                Terakhir diperbarui pada: <strong className="ml-1 text-slate-800 dark:text-slate-200">{formatDateTime(selectedDate)}</strong>
               </span>
             )}
           </div>
@@ -395,9 +414,15 @@ function KartuTumpukanContent() {
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-500">{row.sku}</td>
                         <td className="py-3 px-4 font-semibold">{row.lot}</td>
-                        <td className="py-3 px-4 text-center font-semibold">{row.shelfLife}</td>
-                        <td className="py-3 px-4 font-semibold">{formatDate(row.expiredDate)}</td>
-                        <td className="py-3 px-4 font-semibold">{formatDate(row.placementDate)}</td>
+                        <td className="py-3 px-4 text-center font-semibold">
+                          {row.shelfLife !== null && row.shelfLife !== undefined ? row.shelfLife : "-"}
+                        </td>
+                        <td className="py-3 px-4 font-semibold">
+                          {row.expiredDate ? formatDate(row.expiredDate) : "-"}
+                        </td>
+                        <td className="py-3 px-4 font-semibold">
+                          {row.placement ? row.placement : (row.placementDate ? formatDate(row.placementDate) : "-")}
+                        </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-850 dark:text-slate-100">
                           {formatNumber(row.quantity)}
                         </td>

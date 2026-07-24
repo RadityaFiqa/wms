@@ -98,7 +98,6 @@ export default function PendingPickupPage() {
     router.push(`${pathname}?${params.toString()}`);
   }, [debouncedPartner, searchParams, pathname, router]);
 
-  // Fetch pending pickups (Product-First)
   const { pendingPickupsData, error, isLoading, refresh } = usePendingPickups({
     search,
     partner,
@@ -129,9 +128,9 @@ export default function PendingPickupPage() {
   const handleRefresh = async () => {
     try {
       await refresh();
-      toast.success("Data pending pickup berhasil diperbarui");
+      toast.success("Data pending Operation berhasil diperbarui");
     } catch (err) {
-      toast.error("Gagal memperbarui data pending pickup");
+      toast.error("Gagal memperbarui data pending Operation");
     }
   };
 
@@ -212,7 +211,7 @@ export default function PendingPickupPage() {
         <div>
           <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center">
             <Clock className="h-8 w-8 text-blue-600 mr-3 animate-pulse" />
-            Pending Pickup
+            Pending Operation
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
             Monitor produk yang masih pending dan buat Gate Operation lanjutan untuk dokumen ERP terkait di gudang:{" "}
@@ -250,7 +249,7 @@ export default function PendingPickupPage() {
         <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
           <RefreshCw className="h-8 w-8 text-blue-500 animate-spin" />
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-            Memuat data pending pickup...
+            Memuat data pending Operation...
           </p>
         </div>
       ) : products.length === 0 ? (
@@ -260,10 +259,10 @@ export default function PendingPickupPage() {
           </div>
           <div className="max-w-md">
             <h4 className="text-lg font-bold text-slate-850 dark:text-white">
-              Tidak ada Pending Pickup
+              Tidak ada Pending Operation
             </h4>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-              Tidak ada Pending Pickup. Seluruh Document Reference telah selesai diproses.
+              Tidak ada Pending Operation. Seluruh Document Reference telah selesai diproses.
             </p>
           </div>
         </div>

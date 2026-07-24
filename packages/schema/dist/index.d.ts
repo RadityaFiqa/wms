@@ -756,6 +756,7 @@ export declare const StackCardQuerySchema: z.ZodObject<{
     lot: z.ZodOptional<z.ZodString>;
     snapshotDate: z.ZodOptional<z.ZodString>;
     isPublished: z.ZodOptional<z.ZodString>;
+    dataSource: z.ZodOptional<z.ZodEnum<["REAL_STOCK", "CSV"]>>;
 }, "strip", z.ZodTypeAny, {
     search?: string | undefined;
     page?: string | number | undefined;
@@ -765,6 +766,7 @@ export declare const StackCardQuerySchema: z.ZodObject<{
     locationName?: string | undefined;
     snapshotDate?: string | undefined;
     isPublished?: string | undefined;
+    dataSource?: "REAL_STOCK" | "CSV" | undefined;
 }, {
     search?: string | undefined;
     page?: string | number | undefined;
@@ -774,6 +776,15 @@ export declare const StackCardQuerySchema: z.ZodObject<{
     locationName?: string | undefined;
     snapshotDate?: string | undefined;
     isPublished?: string | undefined;
+    dataSource?: "REAL_STOCK" | "CSV" | undefined;
 }>;
 export type StackCardQueryInput = z.infer<typeof StackCardQuerySchema>;
+export declare const UpdateKartuTumpukanSourceSchema: z.ZodObject<{
+    source: z.ZodEnum<["REAL_STOCK", "CSV"]>;
+}, "strip", z.ZodTypeAny, {
+    source: "REAL_STOCK" | "CSV";
+}, {
+    source: "REAL_STOCK" | "CSV";
+}>;
+export type UpdateKartuTumpukanSourceInput = z.infer<typeof UpdateKartuTumpukanSourceSchema>;
 //# sourceMappingURL=index.d.ts.map

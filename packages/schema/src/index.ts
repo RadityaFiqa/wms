@@ -335,5 +335,13 @@ export const StackCardQuerySchema = z.object({
   lot: z.string().optional(),
   snapshotDate: z.string().optional(),
   isPublished: z.string().optional(),
+  dataSource: z.enum(["REAL_STOCK", "CSV"]).optional(),
 });
 export type StackCardQueryInput = z.infer<typeof StackCardQuerySchema>;
+
+export const UpdateKartuTumpukanSourceSchema = z.object({
+  source: z.enum(["REAL_STOCK", "CSV"]),
+});
+export type UpdateKartuTumpukanSourceInput = z.infer<typeof UpdateKartuTumpukanSourceSchema>;
+
+

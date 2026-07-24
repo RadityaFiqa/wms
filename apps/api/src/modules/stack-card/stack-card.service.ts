@@ -99,7 +99,157 @@ export class StackCardService {
     });
   }
 
+  parseLotInfo(lotName?: string | null, referenceDate = new Date()) {
+    if (!lotName || typeof lotName !== 'string') {
+      return { expiredDate: null, placement: null, shelfAge: null };
+    }
+
+    const expMatch = lotName.match(/\[(\d{4}-\d{2}-\d{2})\]/);
+    const placementMatch = lotName.match(/\/(\d{1,2}\/\d{4})(?:\/|$)/);
+
+    if (!expMatch || !placementMatch) {
+      return { expiredDate: null, placement: null, shelfAge: null };
+    }
+
+    const expiredDate = expMatch[1];
+    const placement = placementMatch[1];
+
+    const [monthStr, yearStr] = placement.split('/');
+    const pMonth = parseInt(monthStr, 10);
+    const pYear = parseInt(yearStr, 10);
+
+    if (isNaN(pMonth) || isNaN(pYear) || pMonth < 1 || pMonth > 12) {
+      return { expiredDate: null, placement: null, shelfAge: null };
+    }
+
+    const currentYear = referenceDate.getFullYear();
+    const currentMonth = referenceDate.getMonth() + 1; // 1-12
+    const shelfAge = (currentYear - pYear) * 12 + (currentMonth - pMonth);
+
+    return {
+      expiredDate,
+      placement,
+      shelfAge,
+    };
+  }
+
   async findAll(warehouseId: number, query: StackCardQueryInput) {
+    let effectiveDataSource = query.dataSource;
+    if (!effectiveDataSource) {
+      const warehouse = await this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { kartuTumpukanSource: true },
+      });
+      effectiveDataSource = warehouse?.kartuTumpukanSource || 'CSV';
+    }
+
+    if (effectiveDataSource === 'REAL_STOCK') {
+      const page = query.page ? parseInt(query.page as string, 10) : 1;
+      const limit = query.limit ? parseInt(query.limit as string, 10) : 10;
+      const skip = (page - 1) * limit;
+
+      const where: any = {
+        quantity: {
+          gt: 0,
+        },
+        location: {
+          warehouseId,
+        },
+      };
+
+      if (query.locationName) {
+        where.location = {
+          ...where.location,
+          displayName: query.locationName,
+        };
+      }
+
+      if (query.search) {
+        where.AND = [
+          {
+            OR: [
+              { inventory: { name: { contains: query.search, mode: 'insensitive' } } },
+              { inventory: { sku: { contains: query.search, mode: 'insensitive' } } },
+              { lotName: { contains: query.search, mode: 'insensitive' } },
+              { location: { displayName: { contains: query.search, mode: 'insensitive' } } },
+            ],
+          },
+        ];
+      }
+
+      const [quants, total] = await Promise.all([
+        this.prisma.quant.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: [{ location: { displayName: 'asc' } }, { id: 'asc' }],
+          include: {
+            inventory: true,
+            location: true,
+          },
+        }),
+        this.prisma.quant.count({ where }),
+      ]);
+
+      const stats = await this.prisma.quant.aggregate({
+        where,
+        _sum: {
+          quantity: true,
+          secondaryUnitQty: true,
+        },
+      });
+
+      const uniqueSkus = await this.prisma.quant.groupBy({
+        by: ['inventoryId'],
+        where,
+      });
+
+      const uniqueLots = await this.prisma.quant.groupBy({
+        by: ['lotName'],
+        where,
+      });
+
+      const now = new Date();
+      const data = quants.map((q) => {
+        const lotInfo = this.parseLotInfo(q.lotName);
+        return {
+          uuid: q.uuid,
+          productName: q.inventory?.name || '-',
+          sku: q.inventory?.sku || '-',
+          lot: q.lotName || '-',
+          shelfLife: lotInfo.shelfAge,
+          expiredDate: lotInfo.expiredDate,
+          placement: lotInfo.placement,
+          placementDate: null,
+          snapshotDate: now,
+          locationName: q.location?.displayName || '-',
+          quantity: q.quantity,
+          quantum: q.secondaryUnitQty || 0,
+          uom: q.inventory?.uom || '-',
+          spraying: null,
+          fumigasi: null,
+          fogging: null,
+          keterangan: null,
+          isPublished: true,
+          dataSource: 'REAL_STOCK',
+        };
+      });
+
+      return {
+        data,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        summary: {
+          totalSkus: uniqueSkus.length,
+          totalLots: uniqueLots.length,
+          totalQuantity: stats._sum.quantity || 0,
+          totalQuantum: stats._sum.secondaryUnitQty || 0,
+        },
+      };
+    }
+
     const page = query.page ? parseInt(query.page as string, 10) : 1;
     const limit = query.limit ? parseInt(query.limit as string, 10) : 10;
     const skip = (page - 1) * limit;
@@ -334,7 +484,24 @@ export class StackCardService {
     });
   }
 
-  async getSnapshotDates(warehouseId: number, onlyPublished = false) {
+  async getSnapshotDates(
+    warehouseId: number,
+    onlyPublished = false,
+    dataSource?: 'REAL_STOCK' | 'CSV',
+  ) {
+    let effectiveDataSource = dataSource;
+    if (!effectiveDataSource) {
+      const warehouse = await this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { kartuTumpukanSource: true },
+      });
+      effectiveDataSource = warehouse?.kartuTumpukanSource || 'CSV';
+    }
+
+    if (effectiveDataSource === 'REAL_STOCK') {
+      return [new Date().toISOString()];
+    }
+
     const where: any = { warehouseId };
     if (onlyPublished) {
       where.isPublished = true;
@@ -354,7 +521,37 @@ export class StackCardService {
     return dates.map((d) => d.snapshotDate);
   }
 
-  async getLocations(warehouseId: number, onlyPublished = false) {
+  async getLocations(warehouseId: number, onlyPublished = false, dataSource?: 'REAL_STOCK' | 'CSV') {
+    let effectiveDataSource = dataSource;
+    if (!effectiveDataSource) {
+      const warehouse = await this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { kartuTumpukanSource: true },
+      });
+      effectiveDataSource = warehouse?.kartuTumpukanSource || 'CSV';
+    }
+
+    if (effectiveDataSource === 'REAL_STOCK') {
+      const locations = await this.prisma.location.findMany({
+        where: {
+          warehouseId,
+          quants: {
+            some: {
+              quantity: { gt: 0 },
+            },
+          },
+        },
+        select: {
+          displayName: true,
+        },
+        orderBy: {
+          displayName: 'asc',
+        },
+      });
+
+      return locations.map((l) => l.displayName);
+    }
+
     const where: any = { warehouseId };
     if (onlyPublished) {
       where.isPublished = true;
@@ -373,4 +570,17 @@ export class StackCardService {
 
     return locations.map((l) => l.locationName);
   }
+
+  async updateKartuTumpukanSource(warehouseId: number, source: 'REAL_STOCK' | 'CSV') {
+    const warehouse = await this.prisma.warehouse.update({
+      where: { id: warehouseId },
+      data: { kartuTumpukanSource: source },
+    });
+    return {
+      success: true,
+      message: `Sumber data kartu tumpukan untuk gudang ${warehouse.name} berhasil diperbarui ke ${source}.`,
+      data: warehouse,
+    };
+  }
 }
+

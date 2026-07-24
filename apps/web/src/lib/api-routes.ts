@@ -88,6 +88,7 @@ export const API_ROUTES = {
     history: "/stack-cards/history",
     snapshotDates: "/stack-cards/snapshot-dates",
     locations: "/stack-cards/locations",
+    updateSource: "/stack-cards/sources",
     detail: (uuid: string) => `/stack-cards/${uuid}`,
     update: (uuid: string) => `/stack-cards/${uuid}`,
     delete: (uuid: string) => `/stack-cards/${uuid}`,

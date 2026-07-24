@@ -36,6 +36,20 @@ export class StackCardController {
     private readonly warehouseContext: WarehouseContextService,
   ) {}
 
+  @Put('sources')
+  @CheckPolicies((ability) => ability.can('update', 'Inventory'))
+  @AuditLogAction('STACK_CARD_SOURCE_UPDATE')
+  async updateSource(@Body('source') source: 'REAL_STOCK' | 'CSV') {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+    }
+    if (source !== 'REAL_STOCK' && source !== 'CSV') {
+      throw new BadRequestException('Sumber data harus REAL_STOCK atau CSV.');
+    }
+    return this.service.updateKartuTumpukanSource(warehouseId, source);
+  }
+
   @Post('import')
   @CheckPolicies((ability) => ability.can('update', 'Inventory'))
   @AuditLogAction('STACK_CARD_CSV_IMPORT')
@@ -67,6 +81,7 @@ export class StackCardController {
     @Query('lot') lot?: string,
     @Query('snapshotDate') snapshotDate?: string,
     @Query('isPublished') isPublished?: string,
+    @Query('dataSource') dataSource?: 'REAL_STOCK' | 'CSV',
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
@@ -82,6 +97,7 @@ export class StackCardController {
       lot,
       snapshotDate,
       isPublished,
+      dataSource,
     });
   }
 
@@ -97,22 +113,28 @@ export class StackCardController {
 
   @Get('snapshot-dates')
   @CheckPolicies((ability) => ability.can('read', 'Inventory'))
-  async getSnapshotDates(@Query('onlyPublished') onlyPublished?: string) {
+  async getSnapshotDates(
+    @Query('onlyPublished') onlyPublished?: string,
+    @Query('dataSource') dataSource?: 'REAL_STOCK' | 'CSV',
+  ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
       throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
     }
-    return this.service.getSnapshotDates(warehouseId, onlyPublished === 'true');
+    return this.service.getSnapshotDates(warehouseId, onlyPublished === 'true', dataSource);
   }
 
   @Get('locations')
   @CheckPolicies((ability) => ability.can('read', 'Inventory'))
-  async getLocations(@Query('onlyPublished') onlyPublished?: string) {
+  async getLocations(
+    @Query('onlyPublished') onlyPublished?: string,
+    @Query('dataSource') dataSource?: 'REAL_STOCK' | 'CSV',
+  ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
       throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
     }
-    return this.service.getLocations(warehouseId, onlyPublished === 'true');
+    return this.service.getLocations(warehouseId, onlyPublished === 'true', dataSource);
   }
 
   @Get(':uuid')

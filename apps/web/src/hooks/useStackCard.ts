@@ -3,6 +3,7 @@ import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
 import { ImportStackCardInput, UpdateStackCardInput } from "@bulog-wms/schema";
+import { useAuthStore } from "@/store/auth";
 
 export function useStackCards(query?: {
   search?: string;
@@ -11,6 +12,7 @@ export function useStackCards(query?: {
   locationName?: string;
   snapshotDate?: string;
   isPublished?: string;
+  dataSource?: "REAL_STOCK" | "CSV";
 }) {
   const searchParams = new URLSearchParams();
   if (query?.page) searchParams.append("page", String(query.page));
@@ -19,6 +21,7 @@ export function useStackCards(query?: {
   if (query?.locationName) searchParams.append("locationName", query.locationName);
   if (query?.snapshotDate) searchParams.append("snapshotDate", query.snapshotDate);
   if (query?.isPublished) searchParams.append("isPublished", query.isPublished);
+  if (query?.dataSource) searchParams.append("dataSource", query.dataSource);
 
   const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
@@ -60,15 +63,16 @@ export function useStackCardHistory() {
   };
 }
 
-export function useStackCardDates(onlyPublished = false) {
+export function useStackCardDates(onlyPublished = false, dataSource?: "REAL_STOCK" | "CSV") {
+  const queryString = dataSource ? `?onlyPublished=${onlyPublished}&dataSource=${dataSource}` : `?onlyPublished=${onlyPublished}`;
   const { data, error, isLoading } = useSWR(
-    `${API_ROUTES.stackCards.snapshotDates}?onlyPublished=${onlyPublished}`,
+    `${API_ROUTES.stackCards.snapshotDates}${queryString}`,
     (url: string) => api.get(url).then((res) => res.data),
   );
 
   const refreshDates = useCallback(() => {
-    mutate(`${API_ROUTES.stackCards.snapshotDates}?onlyPublished=${onlyPublished}`);
-  }, [onlyPublished]);
+    mutate(`${API_ROUTES.stackCards.snapshotDates}${queryString}`);
+  }, [queryString]);
 
   return {
     dates: (data || []) as string[],
@@ -78,15 +82,16 @@ export function useStackCardDates(onlyPublished = false) {
   };
 }
 
-export function useStackCardLocations(onlyPublished = false) {
+export function useStackCardLocations(onlyPublished = false, dataSource?: "REAL_STOCK" | "CSV") {
+  const queryString = dataSource ? `?onlyPublished=${onlyPublished}&dataSource=${dataSource}` : `?onlyPublished=${onlyPublished}`;
   const { data, error, isLoading } = useSWR(
-    `${API_ROUTES.stackCards.locations}?onlyPublished=${onlyPublished}`,
+    `${API_ROUTES.stackCards.locations}${queryString}`,
     (url: string) => api.get(url).then((res) => res.data),
   );
 
   const refreshLocations = useCallback(() => {
-    mutate(`${API_ROUTES.stackCards.locations}?onlyPublished=${onlyPublished}`);
-  }, [onlyPublished]);
+    mutate(`${API_ROUTES.stackCards.locations}${queryString}`);
+  }, [queryString]);
 
   return {
     locations: (data || []) as string[],
@@ -151,6 +156,44 @@ export function useStackCardActions() {
     [],
   );
 
+  const updateKartuTumpukanSource = useCallback(
+    async (source: "REAL_STOCK" | "CSV") => {
+      const activeWarehouse = useAuthStore.getState().activeWarehouse;
+      const headers: Record<string, string> = {};
+      if (activeWarehouse?.uuid) {
+        headers["x-warehouse-id"] = activeWarehouse.uuid;
+      }
+      const res = await api.put(
+        API_ROUTES.stackCards.updateSource,
+        { source },
+        { headers },
+      );
+      if (activeWarehouse) {
+        const updatedWarehouse = {
+          ...activeWarehouse,
+          kartuTumpukanSource: source,
+        };
+        useAuthStore.getState().setActiveWarehouse(updatedWarehouse);
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser) {
+          const updatedAccessible = (currentUser.accessibleWarehouses || []).map(
+            (w) => (w.uuid === activeWarehouse.uuid ? updatedWarehouse : w)
+          );
+          useAuthStore.getState().setAuth(
+            {
+              ...currentUser,
+              accessibleWarehouses: updatedAccessible,
+            },
+            useAuthStore.getState().token || ""
+          );
+        }
+      }
+      mutate((key) => typeof key === "string" && key.includes("/stack-cards"));
+      return res.data;
+    },
+    [],
+  );
+
   return {
     importStackCards,
     updateStackCard,
@@ -158,6 +201,7 @@ export function useStackCardActions() {
     bulkDeleteStackCards,
     bulkPublishStackCards,
     publishSnapshotDate,
+    updateKartuTumpukanSource,
   };
 }
 

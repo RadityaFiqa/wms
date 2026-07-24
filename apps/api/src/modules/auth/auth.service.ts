@@ -69,7 +69,11 @@ export class AuthService {
           subject: rp.permission.subject,
         })),
         warehouse: user.warehouse
-          ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+          ? {
+              uuid: user.warehouse.uuid,
+              name: user.warehouse.name,
+              kartuTumpukanSource: user.warehouse.kartuTumpukanSource,
+            }
           : null,
         accessibleWarehouses: await this.getAccessibleWarehouses(
           user.id,
@@ -82,20 +86,25 @@ export class AuthService {
   async getAccessibleWarehouses(userId: number, roleName: string) {
     if (roleName === 'SUPER_ADMIN') {
       return this.prisma.warehouse.findMany({
-        select: { uuid: true, name: true },
+        select: { uuid: true, name: true, kartuTumpukanSource: true },
         orderBy: { name: 'asc' },
       });
     }
 
     const accesses = await this.prisma.warehouseAccess.findMany({
       where: { userId },
-      include: { warehouse: { select: { uuid: true, name: true } } },
+      include: {
+        warehouse: {
+          select: { uuid: true, name: true, kartuTumpukanSource: true },
+        },
+      },
       orderBy: { warehouse: { name: 'asc' } } as any,
     });
 
     return accesses.map((acc) => ({
       uuid: acc.warehouse.uuid,
       name: acc.warehouse.name,
+      kartuTumpukanSource: acc.warehouse.kartuTumpukanSource,
     }));
   }
 
@@ -215,7 +224,11 @@ export class AuthService {
           subject: rp.permission.subject,
         })),
         warehouse: user.warehouse
-          ? { uuid: user.warehouse.uuid, name: user.warehouse.name }
+          ? {
+              uuid: user.warehouse.uuid,
+              name: user.warehouse.name,
+              kartuTumpukanSource: user.warehouse.kartuTumpukanSource,
+            }
           : null,
         accessibleWarehouses: await this.getAccessibleWarehouses(
           user.id,

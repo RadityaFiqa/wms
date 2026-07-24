@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+interface WarehouseItem {
+  uuid: string;
+  name: string;
+  kartuTumpukanSource?: "REAL_STOCK" | "CSV";
+}
+
 interface UserPayload {
   uuid: string;
   email: string;
@@ -8,19 +14,17 @@ interface UserPayload {
   isFirstLogin: boolean;
   role: string;
   permissions: { action: string; subject: string }[];
-  warehouse: { uuid: string; name: string } | null;
-  accessibleWarehouses: { uuid: string; name: string }[];
+  warehouse: WarehouseItem | null;
+  accessibleWarehouses: WarehouseItem[];
 }
 
 interface AuthState {
   user: UserPayload | null;
   token: string | null;
-  activeWarehouse: { uuid: string; name: string } | null;
+  activeWarehouse: WarehouseItem | null;
   isInitialized: boolean;
   setAuth: (user: UserPayload, token: string) => void;
-  setActiveWarehouse: (
-    warehouse: { uuid: string; name: string } | null,
-  ) => void;
+  setActiveWarehouse: (warehouse: WarehouseItem | null) => void;
   setInitialized: (initialized: boolean) => void;
   logout: () => void;
   hasPermission: (action: string, subject: string) => boolean;
@@ -42,10 +46,12 @@ export const useAuthStore = create<AuthState>()(
           user.accessibleWarehouses &&
           user.accessibleWarehouses.length > 0
         ) {
-          const hasActive = active
-            ? user.accessibleWarehouses.some((w) => w.uuid === active.uuid)
-            : false;
-          if (!hasActive) {
+          const matching = active
+            ? user.accessibleWarehouses.find((w) => w.uuid === active.uuid)
+            : undefined;
+          if (matching) {
+            nextActive = matching;
+          } else {
             nextActive = user.accessibleWarehouses[0];
           }
         } else {

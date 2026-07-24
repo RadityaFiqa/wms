@@ -141,6 +141,7 @@ model Warehouse {
   address             String?
   isActive            Boolean              @default(true)
   odooReference       String?
+  kartuTumpukanSource KartuTumpukanSource  @default(CSV)
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
   dailyStockSnapshots      DailyStockSnapshot[]
@@ -703,4 +704,9 @@ enum OdooSyncStatus {
 enum StockOpnameStatus {
   DRAFT
   COMPLETED
+}
+
+enum KartuTumpukanSource {
+  REAL_STOCK
+  CSV
 }
