@@ -1590,17 +1590,39 @@ export class GateService {
       doc.fillColor('#f8fafc').rect(40, currentY, 515, 20).fill();
       doc.fillColor('#475569').fontSize(8).font('Helvetica-Bold');
       doc.text('No', 45, currentY + 6, { width: 20 });
-      doc.text('Nama Produk', 70, currentY + 6, { width: 145 });
-      doc.text('SKU', 220, currentY + 6, { width: 65 });
-      doc.text('UOM', 290, currentY + 6, { width: 35 });
-      doc.text('Jumlah', 330, currentY + 6, { width: 45, align: 'right' });
-      doc.text('Location', 380, currentY + 6, { width: 175 });
+      doc.text('Nama Produk', 70, currentY + 6, { width: 180 });
+      doc.text('SKU', 255, currentY + 6, { width: 50 });
+      doc.text('UOM', 310, currentY + 6, { width: 30 });
+      doc.text('Jumlah', 345, currentY + 6, { width: 45, align: 'right' });
+      doc.text('Kuantum', 395, currentY + 6, { width: 60, align: 'right' });
+      doc.text('Location', 460, currentY + 6, { width: 95 });
 
       currentY += 20;
 
       // Table Rows
       let totalQty = 0;
-      const products = gateOperation.products || [];
+      const rawProducts = gateOperation.products || [];
+      const prodMap = new Map<string, any>();
+      rawProducts.forEach((p: any) => {
+        const key = `${p.inventoryId || 0}_${p.locationId || 0}`;
+        if (prodMap.has(key)) {
+          const existing = prodMap.get(key);
+          existing.quantity += p.quantity;
+          if (p.notes && p.notes.trim()) {
+            existing.notes = existing.notes
+              ? `${existing.notes}, ${p.notes}`
+              : p.notes;
+          }
+        } else {
+          prodMap.set(key, {
+            ...p,
+            inventory: p.inventory ? { ...p.inventory } : null,
+            location: p.location ? { ...p.location } : null,
+            quant: p.quant ? { ...p.quant } : null,
+          });
+        }
+      });
+      const products = Array.from(prodMap.values());
 
       products.forEach((p: any, idx: number) => {
         if (currentY + 25 > 720) {
@@ -1615,22 +1637,31 @@ export class GateService {
         doc
           .font('Helvetica-Bold')
           .text(p.inventory?.name || '-', 70, currentY + 6, {
-            width: 145,
+            width: 180,
             ellipsis: true,
           });
         doc
           .font('Helvetica')
-          .text(p.inventory?.sku || '-', 220, currentY + 6, {
-            width: 65,
+          .text(p.inventory?.sku || '-', 255, currentY + 6, {
+            width: 50,
             ellipsis: true,
           });
-        doc.text(p.inventory?.uom || '-', 290, currentY + 6, { width: 35 });
-        doc.text(p.quantity.toLocaleString('id-ID'), 330, currentY + 6, {
+        doc.text(p.inventory?.uom || '-', 310, currentY + 6, { width: 30 });
+        doc.text(p.quantity.toLocaleString('id-ID'), 345, currentY + 6, {
           width: 45,
           align: 'right',
         });
-        doc.text(locationName, 380, currentY + 6, {
-          width: 175,
+        doc.text(
+          this.formatSecondaryQty(p.quantity, p.inventory?.uom),
+          395,
+          currentY + 6,
+          {
+            width: 60,
+            align: 'right',
+          },
+        );
+        doc.text(locationName, 460, currentY + 6, {
+          width: 95,
           ellipsis: true,
         });
 
@@ -1646,7 +1677,20 @@ export class GateService {
 
       // Ringkasan Section
       currentY += 10;
-      doc.fillColor('#f8fafc').rect(320, currentY, 235, 40).fill();
+
+      const secondaryQtyMap = new Map<string, number>();
+      products.forEach((p: any) => {
+        const secQty = this.getSecondaryQty(p.quantity, p.inventory?.uom);
+        const secUnit = this.getSecondaryUnit(p.inventory?.uom);
+        const current = secondaryQtyMap.get(secUnit) || 0;
+        secondaryQtyMap.set(secUnit, current + secQty);
+      });
+
+      const secQtyEntries = Array.from(secondaryQtyMap.entries());
+      const numSecQtyLines = secQtyEntries.length > 0 ? secQtyEntries.length : 1;
+      const rectHeight = 40 + (numSecQtyLines * 14);
+
+      doc.fillColor('#f8fafc').rect(320, currentY, 235, rectHeight).fill();
       doc.fillColor('#475569').fontSize(8.5).font('Helvetica-Bold');
       doc.text('Total Jenis Barang', 330, currentY + 8);
       doc.text(`:  ${products.length}`, 430, currentY + 8);
@@ -1654,8 +1698,19 @@ export class GateService {
       doc.text('Total Quantity', 330, currentY + 22);
       doc.text(`:  ${totalQty.toLocaleString('id-ID')}`, 430, currentY + 22);
 
+      if (secQtyEntries.length === 0) {
+        doc.text('Total Kuantum', 330, currentY + 36);
+        doc.text(`:  0 Kg`, 430, currentY + 36);
+      } else {
+        secQtyEntries.forEach(([unit, sumSecQty], index) => {
+          const lineY = currentY + 36 + (index * 14);
+          doc.text(index === 0 ? 'Total Kuantum' : '', 330, lineY);
+          doc.text(`:  ${sumSecQty.toLocaleString('id-ID')} ${unit}`, 430, lineY);
+        });
+      }
+
       // Warning Note Section
-      currentY += 55;
+      currentY += rectHeight + 15;
       if (currentY + 20 > 750) {
         doc.addPage();
         currentY = 50;
@@ -1802,12 +1857,57 @@ export class GateService {
       },
     );
 
-    const products = gateOperation.products || [];
+    const rawProducts = gateOperation.products || [];
+    const prodMap = new Map<string, any>();
+    rawProducts.forEach((p: any) => {
+      const key = `${p.inventoryId || 0}_${p.locationId || 0}`;
+      if (prodMap.has(key)) {
+        const existing = prodMap.get(key);
+        existing.quantity += p.quantity;
+        if (p.notes && p.notes.trim()) {
+          existing.notes = existing.notes
+            ? `${existing.notes}, ${p.notes}`
+            : p.notes;
+        }
+      } else {
+        prodMap.set(key, {
+          ...p,
+          inventory: p.inventory ? { ...p.inventory } : null,
+          location: p.location ? { ...p.location } : null,
+          quant: p.quant ? { ...p.quant } : null,
+        });
+      }
+    });
+    const products = Array.from(prodMap.values());
     const totalQty = products.reduce((sum, p) => sum + p.quantity, 0);
+
+    const secondaryQtyMap = new Map<string, number>();
+    products.forEach((p) => {
+      const secQty = this.getSecondaryQty(p.quantity, p.inventory?.uom);
+      const secUnit = this.getSecondaryUnit(p.inventory?.uom);
+      const current = secondaryQtyMap.get(secUnit) || 0;
+      secondaryQtyMap.set(secUnit, current + secQty);
+    });
+
+    const secQtyEntries = Array.from(secondaryQtyMap.entries());
+    const totalKuantumRowsHtml = secQtyEntries.length === 0
+      ? `
+        <div class="summary-row" style="margin-top: 5px; border-top: 1px solid #cbd5e1; padding-top: 5px;">
+          <div class="summary-label">Total Kuantum</div>
+          <div class="summary-value">0 Kg</div>
+        </div>
+      `
+      : secQtyEntries.map(([unit, sumSecQty], idx) => `
+        <div class="summary-row" style="margin-top: 5px; ${idx === 0 ? 'border-top: 1px solid #cbd5e1; padding-top: 5px;' : ''}">
+          <div class="summary-label">${idx === 0 ? 'Total Kuantum' : ''}</div>
+          <div class="summary-value">${sumSecQty.toLocaleString('id-ID')} ${unit}</div>
+        </div>
+      `).join('');
 
     const rowsHtml = products
       .map((p, idx) => {
         const locationName = p.location?.displayName || '-';
+        const secondaryQtyStr = this.formatSecondaryQty(p.quantity, p.inventory?.uom);
         return `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
@@ -1815,6 +1915,7 @@ export class GateService {
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${p.inventory?.sku || '-'}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${p.inventory?.uom || '-'}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${p.quantity.toLocaleString('id-ID')}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right;">${secondaryQtyStr}</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${locationName}</td>
         </tr>
       `;
@@ -2042,11 +2143,12 @@ export class GateService {
             <thead>
               <tr>
                 <th style="width: 30px; text-align: center;">No</th>
-                <th>Nama Produk</th>
-                <th style="width: 100px;">SKU</th>
-                <th style="width: 60px; text-align: center;">UOM</th>
-                <th style="width: 100px; text-align: right;">Jumlah Muatan</th>
-                <th style="width: 180px;">Location</th>
+                <th style="width: 250px;">Nama Produk</th>
+                <th style="width: 80px;">SKU</th>
+                <th style="width: 50px; text-align: center;">UOM</th>
+                <th style="width: 90px; text-align: right;">Jumlah Muatan</th>
+                <th style="width: 90px; text-align: right;">Kuantum</th>
+                <th style="width: 120px;">Location</th>
               </tr>
             </thead>
             <tbody>
@@ -2063,6 +2165,7 @@ export class GateService {
               <div class="summary-label">Total Quantity</div>
               <div class="summary-value">${totalQty.toLocaleString('id-ID')}</div>
             </div>
+            ${totalKuantumRowsHtml}
           </div>
 
           <div style="margin-top: 20px; margin-bottom: 20px; font-style: italic; color: #ef4444; font-size: 10px; text-align: center; border: 1px dashed #fca5a5; padding: 8px; border-radius: 4px; background-color: #fef2f2;">
@@ -2091,6 +2194,35 @@ export class GateService {
       </body>
       </html>
     `;
+  }
+
+  private getSecondaryQty(qty: number, uom?: string | null): number {
+    if (!uom) return qty;
+    // Match the first sequence of digits potentially including a decimal point
+    const match = uom.match(/(\d+(?:\.\d+)?)/);
+    const multiplier = match ? parseFloat(match[0]) : 1;
+    return qty * multiplier;
+  }
+
+  private getSecondaryUnit(uom?: string | null): string {
+    if (!uom) return 'Kg';
+    const uomLower = uom.toLowerCase();
+    if (uomLower.includes('liter') || uomLower.includes('litre')) {
+      return 'Liter';
+    }
+    if (/\d+(?:\.\d+)?\s*(l|L)(?![a-zA-Z])/.test(uom)) {
+      return 'L';
+    }
+    return 'Kg';
+  }
+
+  private formatSecondaryQty(qty: number, uom?: string | null): string {
+    const secondaryQty = this.getSecondaryQty(qty, uom);
+    const unit = this.getSecondaryUnit(uom);
+    return `${secondaryQty.toLocaleString('id-ID', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 3,
+    })} ${unit}`;
   }
 
   private sanitizeVerification(verification: any) {

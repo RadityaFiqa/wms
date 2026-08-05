@@ -7,5 +7,54 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 26.2s
+✓ Compiled successfully in 13.3s
   Running TypeScript ...
+  Finished TypeScript in 16.3s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/28) ...
+  Generating static pages using 7 workers (7/28) 
+  Generating static pages using 7 workers (14/28) 
+  Generating static pages using 7 workers (21/28) 
+✓ Generating static pages using 7 workers (28/28) in 2.5s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /audit-logs
+├ ○ /document-generator
+├ ○ /document-generator/history
+├ ○ /document-templates
+├ ƒ /document-templates/[uuid]/assembly
+├ ƒ /document-templates/[uuid]/placeholders
+├ ƒ /document-verification/[token]
+├ ○ /erp-documents
+├ ƒ /erp-documents/[uuid]
+├ ○ /forgot-password
+├ ○ /gate-operations
+├ ƒ /gate-operations/[uuid]
+├ ○ /gate-operations/new
+├ ○ /gate-verification
+├ ƒ /gate-verification/[uuid]
+├ ○ /inventory
+├ ○ /kartu-tumpukan
+├ ○ /login
+├ ○ /manage-kartu-tumpukan
+├ ○ /odoo
+├ ○ /pending-operations
+├ ○ /profile
+├ ○ /reconciliation
+├ ○ /reports
+├ ○ /reset-password
+├ ○ /roles
+├ ƒ /sign-document/[type]/[uuid]
+├ ○ /signed-documents
+├ ○ /stock-opname
+├ ƒ /stock-opname/[uuid]
+├ ○ /users
+└ ○ /warehouses
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

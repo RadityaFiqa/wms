@@ -344,4 +344,82 @@ export const UpdateKartuTumpukanSourceSchema = z.object({
 });
 export type UpdateKartuTumpukanSourceInput = z.infer<typeof UpdateKartuTumpukanSourceSchema>;
 
+// Document Template Schemas
+export const CreateDocumentTemplateSchema = z.object({
+  categoryId: z.union([z.number(), z.string()]),
+  code: z.string().min(2, "Kode template wajib diisi").max(100),
+  name: z.string().min(2, "Nama template wajib diisi").max(255),
+  description: z.string().optional().nullable(),
+  isActive: z.boolean().optional().default(true),
+});
+export type CreateDocumentTemplateInput = z.infer<typeof CreateDocumentTemplateSchema>;
+
+export const UpdateDocumentTemplateSchema = z.object({
+  name: z.string().min(2, "Nama template wajib diisi").max(255),
+  description: z.string().optional().nullable(),
+  isActive: z.boolean(),
+});
+export type UpdateDocumentTemplateInput = z.infer<typeof UpdateDocumentTemplateSchema>;
+
+// Document Assembly Schema
+export const AssemblyItemSchema = z.object({
+  type: z.enum(["TEMPLATE", "PDF"]),
+  templateCode: z.string().optional().nullable(),
+  order: z.number().int().nonnegative(),
+  condition: z.string().optional().nullable(),
+  source: z.string().optional().nullable(),
+  position: z.enum(["AFTER_DOCUMENT", "AFTER_SECTION", "BEFORE_SECTION", "LAST_PAGE"]).optional().nullable(),
+});
+export const UpdateAssemblySchema = z.array(AssemblyItemSchema);
+export type UpdateAssemblyInput = z.infer<typeof UpdateAssemblySchema>;
+
+// Document Placeholder Schemas
+export const PlaceholderColumnSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+});
+
+export const PlaceholderItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum([
+    "TEXT",
+    "TEXTAREA",
+    "NUMBER",
+    "CURRENCY",
+    "DATE",
+    "TIME",
+    "DATETIME",
+    "BOOLEAN",
+    "SELECT",
+    "MULTI_SELECT",
+    "IMAGE",
+    "TABLE",
+  ]),
+  required: z.boolean(),
+  options: z.array(z.string()).optional().nullable(),
+  columns: z.array(PlaceholderColumnSchema).optional().nullable(),
+});
+
+export const UpdatePlaceholdersSchema = z.array(PlaceholderItemSchema);
+export type UpdatePlaceholdersInput = z.infer<typeof UpdatePlaceholdersSchema>;
+
+// Document Generation Schema
+export const GenerateDocumentSchema = z.object({
+  templateId: z.union([z.number(), z.string()]),
+  title: z.string().min(3, "Judul dokumen wajib diisi").max(255),
+  documentNumber: z.string().min(1, "Nomor dokumen wajib diisi").max(150),
+  placeholder: z.record(z.any()),
+  attachments: z
+    .array(
+      z.object({
+        type: z.enum(["PDF"]),
+        objectKey: z.string().min(1, "Object key attachment wajib diisi"),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+export type GenerateDocumentInput = z.infer<typeof GenerateDocumentSchema>;
+
 

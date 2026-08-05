@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -269,4 +269,68 @@ exports.StackCardQuerySchema = zod_1.z.object({
 });
 exports.UpdateKartuTumpukanSourceSchema = zod_1.z.object({
     source: zod_1.z.enum(["REAL_STOCK", "CSV"]),
+});
+// Document Template Schemas
+exports.CreateDocumentTemplateSchema = zod_1.z.object({
+    categoryId: zod_1.z.union([zod_1.z.number(), zod_1.z.string()]),
+    code: zod_1.z.string().min(2, "Kode template wajib diisi").max(100),
+    name: zod_1.z.string().min(2, "Nama template wajib diisi").max(255),
+    description: zod_1.z.string().optional().nullable(),
+    isActive: zod_1.z.boolean().optional().default(true),
+});
+exports.UpdateDocumentTemplateSchema = zod_1.z.object({
+    name: zod_1.z.string().min(2, "Nama template wajib diisi").max(255),
+    description: zod_1.z.string().optional().nullable(),
+    isActive: zod_1.z.boolean(),
+});
+// Document Assembly Schema
+exports.AssemblyItemSchema = zod_1.z.object({
+    type: zod_1.z.enum(["TEMPLATE", "PDF"]),
+    templateCode: zod_1.z.string().optional().nullable(),
+    order: zod_1.z.number().int().nonnegative(),
+    condition: zod_1.z.string().optional().nullable(),
+    source: zod_1.z.string().optional().nullable(),
+    position: zod_1.z.enum(["AFTER_DOCUMENT", "AFTER_SECTION", "BEFORE_SECTION", "LAST_PAGE"]).optional().nullable(),
+});
+exports.UpdateAssemblySchema = zod_1.z.array(exports.AssemblyItemSchema);
+// Document Placeholder Schemas
+exports.PlaceholderColumnSchema = zod_1.z.object({
+    key: zod_1.z.string(),
+    label: zod_1.z.string(),
+});
+exports.PlaceholderItemSchema = zod_1.z.object({
+    key: zod_1.z.string(),
+    label: zod_1.z.string(),
+    type: zod_1.z.enum([
+        "TEXT",
+        "TEXTAREA",
+        "NUMBER",
+        "CURRENCY",
+        "DATE",
+        "TIME",
+        "DATETIME",
+        "BOOLEAN",
+        "SELECT",
+        "MULTI_SELECT",
+        "IMAGE",
+        "TABLE",
+    ]),
+    required: zod_1.z.boolean(),
+    options: zod_1.z.array(zod_1.z.string()).optional().nullable(),
+    columns: zod_1.z.array(exports.PlaceholderColumnSchema).optional().nullable(),
+});
+exports.UpdatePlaceholdersSchema = zod_1.z.array(exports.PlaceholderItemSchema);
+// Document Generation Schema
+exports.GenerateDocumentSchema = zod_1.z.object({
+    templateId: zod_1.z.union([zod_1.z.number(), zod_1.z.string()]),
+    title: zod_1.z.string().min(3, "Judul dokumen wajib diisi").max(255),
+    documentNumber: zod_1.z.string().min(1, "Nomor dokumen wajib diisi").max(150),
+    placeholder: zod_1.z.record(zod_1.z.any()),
+    attachments: zod_1.z
+        .array(zod_1.z.object({
+        type: zod_1.z.enum(["PDF"]),
+        objectKey: zod_1.z.string().min(1, "Object key attachment wajib diisi"),
+    }))
+        .optional()
+        .default([]),
 });

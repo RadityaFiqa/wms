@@ -11,13 +11,27 @@ export function getSecondaryQty(qty: number, uom?: string): number {
   return qty * multiplier;
 }
 
+export function getSecondaryUnit(uom?: string): string {
+  if (!uom) return "Kg";
+  const uomLower = uom.toLowerCase();
+  if (uomLower.includes("liter") || uomLower.includes("litre")) {
+    return "Liter";
+  }
+  if (/\d+(?:\.\d+)?\s*(l|L)(?![a-zA-Z])/.test(uom)) {
+    return "L";
+  }
+  return "Kg";
+}
+
 /**
- * Calculates and formats the secondary quantity to Indonesian locale string with 'Kg' unit.
+ * Calculates and formats the secondary quantity to Indonesian locale string with appropriate unit.
  */
 export function formatSecondaryQty(qty: number, uom?: string): string {
   const secondaryQty = getSecondaryQty(qty, uom);
+  const unit = getSecondaryUnit(uom);
   return `${secondaryQty.toLocaleString("id-ID", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 3,
-  })} Kg`;
+  })} ${unit}`;
 }
+

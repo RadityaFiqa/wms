@@ -26,6 +26,8 @@ type ExtendedSubjects =
       DocumentCategory: any;
       DocumentVerificationLog: any;
       UserSignature: any;
+      DocumentTemplate: any;
+      DocumentGenerated: any;
     }>
   | 'all';
 

@@ -151,5 +151,26 @@ export const API_ROUTES = {
       verify: (token: string) => `/document-verification/${token}`,
     },
   },
+  documentGenerator: {
+    templates: {
+      list: "/templates",
+      detail: (uuid: string) => `/templates/${uuid}`,
+      create: "/templates",
+      update: (uuid: string) => `/templates/${uuid}`,
+      version: (uuid: string) => `/templates/${uuid}/version`,
+      delete: (uuid: string) => `/templates/${uuid}`,
+      assembly: (uuid: string) => `/templates/${uuid}/assembly`,
+      placeholders: (uuid: string) => `/templates/${uuid}/placeholders`,
+    },
+    generate: "/document/generate",
+    generated: {
+      list: "/document/generated",
+      detail: (uuid: string) => `/document/generated/${uuid}`,
+      preview: (uuid: string) => `/document/generated/${uuid}/preview`,
+      downloadDocx: (uuid: string) => `/document/generated/${uuid}/download/docx`,
+      downloadPdf: (uuid: string) => `/document/generated/${uuid}/download/pdf`,
+      delete: (uuid: string) => `/document/generated/${uuid}`,
+    },
+  },
 };
 export type ApiRoutes = typeof API_ROUTES;

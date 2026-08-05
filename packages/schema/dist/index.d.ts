@@ -787,4 +787,203 @@ export declare const UpdateKartuTumpukanSourceSchema: z.ZodObject<{
     source: "REAL_STOCK" | "CSV";
 }>;
 export type UpdateKartuTumpukanSourceInput = z.infer<typeof UpdateKartuTumpukanSourceSchema>;
+export declare const CreateDocumentTemplateSchema: z.ZodObject<{
+    categoryId: z.ZodUnion<[z.ZodNumber, z.ZodString]>;
+    code: z.ZodString;
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isActive: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+}, "strip", z.ZodTypeAny, {
+    code: string;
+    name: string;
+    isActive: boolean;
+    categoryId: string | number;
+    description?: string | null | undefined;
+}, {
+    code: string;
+    name: string;
+    categoryId: string | number;
+    isActive?: boolean | undefined;
+    description?: string | null | undefined;
+}>;
+export type CreateDocumentTemplateInput = z.infer<typeof CreateDocumentTemplateSchema>;
+export declare const UpdateDocumentTemplateSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isActive: z.ZodBoolean;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    isActive: boolean;
+    description?: string | null | undefined;
+}, {
+    name: string;
+    isActive: boolean;
+    description?: string | null | undefined;
+}>;
+export type UpdateDocumentTemplateInput = z.infer<typeof UpdateDocumentTemplateSchema>;
+export declare const AssemblyItemSchema: z.ZodObject<{
+    type: z.ZodEnum<["TEMPLATE", "PDF"]>;
+    templateCode: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    order: z.ZodNumber;
+    condition: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    source: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    position: z.ZodNullable<z.ZodOptional<z.ZodEnum<["AFTER_DOCUMENT", "AFTER_SECTION", "BEFORE_SECTION", "LAST_PAGE"]>>>;
+}, "strip", z.ZodTypeAny, {
+    type: "TEMPLATE" | "PDF";
+    order: number;
+    source?: string | null | undefined;
+    templateCode?: string | null | undefined;
+    condition?: string | null | undefined;
+    position?: "AFTER_DOCUMENT" | "AFTER_SECTION" | "BEFORE_SECTION" | "LAST_PAGE" | null | undefined;
+}, {
+    type: "TEMPLATE" | "PDF";
+    order: number;
+    source?: string | null | undefined;
+    templateCode?: string | null | undefined;
+    condition?: string | null | undefined;
+    position?: "AFTER_DOCUMENT" | "AFTER_SECTION" | "BEFORE_SECTION" | "LAST_PAGE" | null | undefined;
+}>;
+export declare const UpdateAssemblySchema: z.ZodArray<z.ZodObject<{
+    type: z.ZodEnum<["TEMPLATE", "PDF"]>;
+    templateCode: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    order: z.ZodNumber;
+    condition: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    source: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    position: z.ZodNullable<z.ZodOptional<z.ZodEnum<["AFTER_DOCUMENT", "AFTER_SECTION", "BEFORE_SECTION", "LAST_PAGE"]>>>;
+}, "strip", z.ZodTypeAny, {
+    type: "TEMPLATE" | "PDF";
+    order: number;
+    source?: string | null | undefined;
+    templateCode?: string | null | undefined;
+    condition?: string | null | undefined;
+    position?: "AFTER_DOCUMENT" | "AFTER_SECTION" | "BEFORE_SECTION" | "LAST_PAGE" | null | undefined;
+}, {
+    type: "TEMPLATE" | "PDF";
+    order: number;
+    source?: string | null | undefined;
+    templateCode?: string | null | undefined;
+    condition?: string | null | undefined;
+    position?: "AFTER_DOCUMENT" | "AFTER_SECTION" | "BEFORE_SECTION" | "LAST_PAGE" | null | undefined;
+}>, "many">;
+export type UpdateAssemblyInput = z.infer<typeof UpdateAssemblySchema>;
+export declare const PlaceholderColumnSchema: z.ZodObject<{
+    key: z.ZodString;
+    label: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    key: string;
+    label: string;
+}, {
+    key: string;
+    label: string;
+}>;
+export declare const PlaceholderItemSchema: z.ZodObject<{
+    key: z.ZodString;
+    label: z.ZodString;
+    type: z.ZodEnum<["TEXT", "TEXTAREA", "NUMBER", "CURRENCY", "DATE", "TIME", "DATETIME", "BOOLEAN", "SELECT", "MULTI_SELECT", "IMAGE", "TABLE"]>;
+    required: z.ZodBoolean;
+    options: z.ZodNullable<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    columns: z.ZodNullable<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        key: z.ZodString;
+        label: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        key: string;
+        label: string;
+    }, {
+        key: string;
+        label: string;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    type: "TEXT" | "TEXTAREA" | "NUMBER" | "CURRENCY" | "DATE" | "TIME" | "DATETIME" | "BOOLEAN" | "SELECT" | "MULTI_SELECT" | "IMAGE" | "TABLE";
+    key: string;
+    label: string;
+    required: boolean;
+    options?: string[] | null | undefined;
+    columns?: {
+        key: string;
+        label: string;
+    }[] | null | undefined;
+}, {
+    type: "TEXT" | "TEXTAREA" | "NUMBER" | "CURRENCY" | "DATE" | "TIME" | "DATETIME" | "BOOLEAN" | "SELECT" | "MULTI_SELECT" | "IMAGE" | "TABLE";
+    key: string;
+    label: string;
+    required: boolean;
+    options?: string[] | null | undefined;
+    columns?: {
+        key: string;
+        label: string;
+    }[] | null | undefined;
+}>;
+export declare const UpdatePlaceholdersSchema: z.ZodArray<z.ZodObject<{
+    key: z.ZodString;
+    label: z.ZodString;
+    type: z.ZodEnum<["TEXT", "TEXTAREA", "NUMBER", "CURRENCY", "DATE", "TIME", "DATETIME", "BOOLEAN", "SELECT", "MULTI_SELECT", "IMAGE", "TABLE"]>;
+    required: z.ZodBoolean;
+    options: z.ZodNullable<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    columns: z.ZodNullable<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        key: z.ZodString;
+        label: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        key: string;
+        label: string;
+    }, {
+        key: string;
+        label: string;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    type: "TEXT" | "TEXTAREA" | "NUMBER" | "CURRENCY" | "DATE" | "TIME" | "DATETIME" | "BOOLEAN" | "SELECT" | "MULTI_SELECT" | "IMAGE" | "TABLE";
+    key: string;
+    label: string;
+    required: boolean;
+    options?: string[] | null | undefined;
+    columns?: {
+        key: string;
+        label: string;
+    }[] | null | undefined;
+}, {
+    type: "TEXT" | "TEXTAREA" | "NUMBER" | "CURRENCY" | "DATE" | "TIME" | "DATETIME" | "BOOLEAN" | "SELECT" | "MULTI_SELECT" | "IMAGE" | "TABLE";
+    key: string;
+    label: string;
+    required: boolean;
+    options?: string[] | null | undefined;
+    columns?: {
+        key: string;
+        label: string;
+    }[] | null | undefined;
+}>, "many">;
+export type UpdatePlaceholdersInput = z.infer<typeof UpdatePlaceholdersSchema>;
+export declare const GenerateDocumentSchema: z.ZodObject<{
+    templateId: z.ZodUnion<[z.ZodNumber, z.ZodString]>;
+    title: z.ZodString;
+    documentNumber: z.ZodString;
+    placeholder: z.ZodRecord<z.ZodString, z.ZodAny>;
+    attachments: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        type: z.ZodEnum<["PDF"]>;
+        objectKey: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        type: "PDF";
+        objectKey: string;
+    }, {
+        type: "PDF";
+        objectKey: string;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+    templateId: string | number;
+    documentNumber: string;
+    placeholder: Record<string, any>;
+    attachments: {
+        type: "PDF";
+        objectKey: string;
+    }[];
+}, {
+    title: string;
+    templateId: string | number;
+    documentNumber: string;
+    placeholder: Record<string, any>;
+    attachments?: {
+        type: "PDF";
+        objectKey: string;
+    }[] | undefined;
+}>;
+export type GenerateDocumentInput = z.infer<typeof GenerateDocumentSchema>;
 //# sourceMappingURL=index.d.ts.map

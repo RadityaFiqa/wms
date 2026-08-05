@@ -34,6 +34,8 @@ model User {
   signedDocuments           SignedDocument[]
   signatures                UserSignature[]
   stackCardUploadLogs      StackCardUploadLog[]
+  documentTemplates         DocumentTemplate[]
+  generatedDocuments        DocumentGenerated[]
 
   @@index([email])
   @@index([uuid])
@@ -511,17 +513,81 @@ model DailyLocationStockSnapshot {
 }
 
 model DocumentCategory {
-  id              Int              @id @default(autoincrement())
-  name            String
-  description     String?
-  isActive        Boolean          @default(true)
-  deletedAt       DateTime?        @db.Timestamptz(3)
-  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
-  manualDocuments ManualDocument[]
-  signedDocuments SignedDocument[]
+  id                 Int                 @id @default(autoincrement())
+  uuid               String              @unique @default(uuid())
+  code               String              @unique @default("")
+  name               String
+  description        String?
+  isActive           Boolean             @default(true)
+  deletedAt          DateTime?           @db.Timestamptz(3)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  manualDocuments    ManualDocument[]
+  signedDocuments    SignedDocument[]
+  documentTemplates  DocumentTemplate[]
+  generatedDocuments DocumentGenerated[]
 
   @@map("DocumentCategory")
+}
+
+model DocumentTemplate {
+  id                Int                 @id @default(autoincrement())
+  uuid              String              @unique @default(uuid())
+  categoryId        Int
+  code              String              @unique
+  name              String
+  description       String?
+  version           Int                 @default(1)
+  objectKey         String
+  placeholderSchema Json
+  assemblySchema    Json?
+  isActive          Boolean             @default(true)
+  createdBy         Int
+  warehouseId       Int?
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
+  deletedAt         DateTime?           @db.Timestamptz(3)
+
+  category          DocumentCategory    @relation(fields: [categoryId], references: [id])
+  creator           User                @relation(fields: [createdBy], references: [id])
+  generatedDocuments DocumentGenerated[]
+
+  @@index([code])
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("DocumentTemplate")
+}
+
+model DocumentGenerated {
+  id                Int              @id @default(autoincrement())
+  uuid              String           @unique @default(uuid())
+  templateId        Int
+  categoryId        Int
+  title             String
+  documentNumber    String
+  docxObjectKey     String?
+  pdfObjectKey      String?
+  fileHash          String?
+  verificationToken String           @unique
+  generatedBy       Int
+  generatedAt       DateTime         @default(now()) @db.Timestamptz(3)
+  status            String           @default("PROCESSING") // PROCESSING, GENERATED, FAILED
+  errorMessage      String?
+  warehouseId       Int?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  deletedAt         DateTime?        @db.Timestamptz(3)
+
+  template          DocumentTemplate @relation(fields: [templateId], references: [id])
+  category          DocumentCategory @relation(fields: [categoryId], references: [id])
+  generator         User             @relation(fields: [generatedBy], references: [id])
+
+  @@index([templateId])
+  @@index([categoryId])
+  @@index([documentNumber])
+  @@index([generatedAt])
+  @@index([status])
+  @@map("DocumentGenerated")
 }
 
 model SignatureTemplate {

@@ -36,6 +36,31 @@ async function main() {
   });
   console.log('Seeded warehouse:', warehouse.name);
 
+  // 1b. Seed Document Categories
+  const categoriesData = [
+    { code: 'PO', name: 'Purchase Order', description: 'Dokumen Pemesanan Pembelian' },
+    { code: 'SO', name: 'Sales Order', description: 'Dokumen Pemesanan Penjualan' },
+    { code: 'SJ', name: 'Surat Jalan', description: 'Dokumen Surat Jalan Pengiriman' },
+    { code: 'BA', name: 'Berita Acara', description: 'Dokumen Berita Acara' },
+    { code: 'MEMO', name: 'Memo', description: 'Dokumen Memo Internal' },
+  ];
+
+  for (const cat of categoriesData) {
+    const createdCat = await prisma.documentCategory.upsert({
+      where: { code: cat.code },
+      update: {
+        name: cat.name,
+        description: cat.description,
+      },
+      create: {
+        code: cat.code,
+        name: cat.name,
+        description: cat.description,
+      },
+    });
+    console.log('Seeded document category:', createdCat.code);
+  }
+
   // 2. Create Permissions
   const permissionsData = [
     // Global Management
@@ -111,6 +136,15 @@ async function main() {
     { action: 'read', subject: 'DocumentCategory' },
     { action: 'update', subject: 'DocumentCategory' },
     { action: 'delete', subject: 'DocumentCategory' },
+    // Document Template
+    { action: 'create', subject: 'DocumentTemplate' },
+    { action: 'read', subject: 'DocumentTemplate' },
+    { action: 'update', subject: 'DocumentTemplate' },
+    { action: 'delete', subject: 'DocumentTemplate' },
+    // Document Generated
+    { action: 'create', subject: 'DocumentGenerated' },
+    { action: 'read', subject: 'DocumentGenerated' },
+    { action: 'delete', subject: 'DocumentGenerated' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -176,6 +210,13 @@ async function main() {
         'read:DocumentCategory',
         'update:DocumentCategory',
         'delete:DocumentCategory',
+        'create:DocumentTemplate',
+        'read:DocumentTemplate',
+        'update:DocumentTemplate',
+        'delete:DocumentTemplate',
+        'create:DocumentGenerated',
+        'read:DocumentGenerated',
+        'delete:DocumentGenerated',
       ],
     },
     {
