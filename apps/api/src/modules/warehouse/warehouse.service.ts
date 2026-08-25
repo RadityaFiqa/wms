@@ -140,7 +140,10 @@ export class WarehouseService {
     });
   }
 
-  async updateKartuTumpukanSource(warehouseId: number, source: 'REAL_STOCK' | 'CSV') {
+  async updateKartuTumpukanSource(
+    warehouseId: number,
+    source: 'REAL_STOCK' | 'CSV',
+  ) {
     const warehouse = await this.prisma.warehouse.update({
       where: { id: warehouseId },
       data: { kartuTumpukanSource: source },
@@ -152,4 +155,3 @@ export class WarehouseService {
     };
   }
 }
-

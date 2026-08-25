@@ -1,4 +1,10 @@
-import { Controller, Get, Query, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { StackCardService } from './stack-card.service';
 import { PrismaService } from '@/core/prisma/prisma.service';
 
@@ -9,7 +15,10 @@ export class StackCardPublicController {
     private readonly prisma: PrismaService,
   ) {}
 
-  private async getWarehouseId(uuid?: string, locationName?: string): Promise<number | undefined> {
+  private async getWarehouseId(
+    uuid?: string,
+    locationName?: string,
+  ): Promise<number | undefined> {
     if (uuid) {
       const warehouse = await this.prisma.warehouse.findUnique({
         where: { uuid },
@@ -26,7 +35,15 @@ export class StackCardPublicController {
         where: { locationName },
         select: { warehouseId: true },
       });
-      return match?.warehouseId;
+      if (match) {
+        return match.warehouseId;
+      }
+
+      const locMatch = await this.prisma.location.findFirst({
+        where: { displayName: locationName },
+        select: { warehouseId: true },
+      });
+      return locMatch?.warehouseId;
     }
 
     return undefined;
@@ -55,8 +72,11 @@ export class StackCardPublicController {
     @Query('locationName') locationName?: string,
     @Query('snapshotDate') snapshotDate?: string,
   ) {
-    const resolvedWarehouseId = await this.getWarehouseId(warehouseUuid, locationName);
-    
+    const resolvedWarehouseId = await this.getWarehouseId(
+      warehouseUuid,
+      locationName,
+    );
+
     // If no warehouse could be resolved and no warehouseUuid was provided, return empty
     if (!resolvedWarehouseId) {
       return {
@@ -89,7 +109,10 @@ export class StackCardPublicController {
     @Query('warehouseUuid') warehouseUuid?: string,
     @Query('locationName') locationName?: string,
   ) {
-    const resolvedWarehouseId = await this.getWarehouseId(warehouseUuid, locationName);
+    const resolvedWarehouseId = await this.getWarehouseId(
+      warehouseUuid,
+      locationName,
+    );
     if (!resolvedWarehouseId) {
       return [];
     }
@@ -101,7 +124,10 @@ export class StackCardPublicController {
     @Query('warehouseUuid') warehouseUuid?: string,
     @Query('locationName') locationName?: string,
   ) {
-    const resolvedWarehouseId = await this.getWarehouseId(warehouseUuid, locationName);
+    const resolvedWarehouseId = await this.getWarehouseId(
+      warehouseUuid,
+      locationName,
+    );
     if (!resolvedWarehouseId) {
       return [];
     }

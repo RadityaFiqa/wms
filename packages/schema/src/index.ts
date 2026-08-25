@@ -422,4 +422,17 @@ export const GenerateDocumentSchema = z.object({
 });
 export type GenerateDocumentInput = z.infer<typeof GenerateDocumentSchema>;
 
+// Bulk Gate Verification Schemas
+export const BulkApproveSchema = z.object({
+  ids: z.array(z.string().uuid("Format UUID tidak valid")),
+});
+export type BulkApproveInput = z.infer<typeof BulkApproveSchema>;
+
+export const BulkRejectSchema = z.object({
+  ids: z.array(z.string().uuid("Format UUID tidak valid")),
+  reason: z.string().min(1, "Alasan penolakan tidak boleh kosong"),
+});
+export type BulkRejectInput = z.infer<typeof BulkRejectSchema>;
+
+
 

@@ -986,4 +986,23 @@ export declare const GenerateDocumentSchema: z.ZodObject<{
     }[] | undefined;
 }>;
 export type GenerateDocumentInput = z.infer<typeof GenerateDocumentSchema>;
+export declare const BulkApproveSchema: z.ZodObject<{
+    ids: z.ZodArray<z.ZodString, "many">;
+}, "strip", z.ZodTypeAny, {
+    ids: string[];
+}, {
+    ids: string[];
+}>;
+export type BulkApproveInput = z.infer<typeof BulkApproveSchema>;
+export declare const BulkRejectSchema: z.ZodObject<{
+    ids: z.ZodArray<z.ZodString, "many">;
+    reason: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    ids: string[];
+    reason: string;
+}, {
+    ids: string[];
+    reason: string;
+}>;
+export type BulkRejectInput = z.infer<typeof BulkRejectSchema>;
 //# sourceMappingURL=index.d.ts.map

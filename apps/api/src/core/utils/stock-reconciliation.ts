@@ -128,7 +128,10 @@ export async function getReconciledStockForQuants(
       for (const gp of op.products) {
         sumGateQty += gp.quantity;
         if (gp.quantId) {
-          docGateQuantsMap.set(gp.quantId, (docGateQuantsMap.get(gp.quantId) || 0) + gp.quantity);
+          docGateQuantsMap.set(
+            gp.quantId,
+            (docGateQuantsMap.get(gp.quantId) || 0) + gp.quantity,
+          );
         }
       }
     }
@@ -147,7 +150,9 @@ export async function getReconciledStockForQuants(
       }
 
       if (adjustment !== 0 && docGateQuantsMap.size > 0) {
-        const quantList = Array.from(docGateQuantsMap.entries()).map(([id, qty]) => ({ id, qty }));
+        const quantList = Array.from(docGateQuantsMap.entries()).map(
+          ([id, qty]) => ({ id, qty }),
+        );
         const distributed = distributeAdjustmentHelper(adjustment, quantList);
         for (const [qId, qAdj] of distributed.entries()) {
           cumulativeQuantAdjustments.set(
@@ -196,9 +201,15 @@ export async function getReconciledStockForQuants(
     for (const gp of op.products) {
       if (!gp.quantId) continue;
       if (isOut) {
-        pendingOutMap.set(gp.quantId, (pendingOutMap.get(gp.quantId) || 0) + gp.quantity);
+        pendingOutMap.set(
+          gp.quantId,
+          (pendingOutMap.get(gp.quantId) || 0) + gp.quantity,
+        );
       } else {
-        pendingInMap.set(gp.quantId, (pendingInMap.get(gp.quantId) || 0) + gp.quantity);
+        pendingInMap.set(
+          gp.quantId,
+          (pendingInMap.get(gp.quantId) || 0) + gp.quantity,
+        );
       }
     }
   }

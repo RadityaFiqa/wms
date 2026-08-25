@@ -25,9 +25,8 @@ export class WarehouseGuard implements CanActivate {
       return true;
     }
 
-    const warehouse = (await this.warehouseResolver.resolveWarehouse(
-      warehouseIdHeader,
-    )) as any;
+    const warehouse =
+      await this.warehouseResolver.resolveWarehouse(warehouseIdHeader);
     if (!warehouse) {
       throw new BadRequestException('Warehouse tidak valid');
     }

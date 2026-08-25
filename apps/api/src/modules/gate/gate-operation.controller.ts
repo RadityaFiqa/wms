@@ -52,7 +52,9 @@ export class GateOperationController {
     const userId = req.user?.id;
     const result = await this.service.createGateOperation(userId, body);
 
-    this.logger.log(`createdOp result result ${JSON.stringify(result, null, 2)}`);
+    this.logger.log(
+      `createdOp result result ${JSON.stringify(result, null, 2)}`,
+    );
 
     req.auditDetails = { operationUuid: result.uuid };
     return result;
@@ -243,8 +245,6 @@ export class GateOperationController {
     return this.service.getGateOperationByUuid(uuid);
   }
 
-
-
   @Post(':uuid/verify')
   @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
   @AuditLogAction('GATE_OPERATION_VERIFY')
@@ -285,21 +285,14 @@ export class GateOperationController {
   @Post(':uuid/confirm')
   @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
   @AuditLogAction('GATE_OPERATION_CONFIRM')
-  async confirm(
-    @Param('uuid') uuid: string,
-    @Req() req: any,
-  ) {
+  async confirm(@Param('uuid') uuid: string, @Req() req: any) {
     const userId = req.user?.id;
     return this.service.confirmGateVerification(uuid, userId);
   }
 
-
-
   @Get(':uuid/history')
   @CheckPolicies((ability) => ability.can('read', 'GateOperation'))
-  async getVerificationHistory(
-    @Param('uuid') uuid: string,
-  ) {
+  async getVerificationHistory(@Param('uuid') uuid: string) {
     return this.service.getVerificationHistory(uuid);
   }
 }

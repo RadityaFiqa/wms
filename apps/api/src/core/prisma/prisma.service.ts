@@ -31,7 +31,7 @@ export class PrismaService
               return query(args);
             }
 
-            let op = operation;
+            const op = operation;
             const currentArgs = args as any;
 
             const operationsToScope = [
@@ -52,7 +52,16 @@ export class PrismaService
               currentArgs.where = currentArgs.where || {};
               if (model === 'Warehouse') {
                 currentArgs.where.id = warehouseId;
-              } else if (['Inventory', 'OdooAccount', 'User', 'AuditLog', 'DocumentTemplate', 'DocumentGenerated'].includes(model)) {
+              } else if (
+                [
+                  'Inventory',
+                  'OdooAccount',
+                  'User',
+                  'AuditLog',
+                  'DocumentTemplate',
+                  'DocumentGenerated',
+                ].includes(model)
+              ) {
                 currentArgs.where.warehouseId = warehouseId;
               }
               return (baseClient as any)[model][targetOp](currentArgs);
@@ -62,11 +71,29 @@ export class PrismaService
               currentArgs.where = currentArgs.where || {};
               if (model === 'Warehouse') {
                 currentArgs.where.id = warehouseId;
-              } else if (['Inventory', 'OdooAccount', 'User', 'AuditLog', 'DocumentTemplate', 'DocumentGenerated'].includes(model)) {
+              } else if (
+                [
+                  'Inventory',
+                  'OdooAccount',
+                  'User',
+                  'AuditLog',
+                  'DocumentTemplate',
+                  'DocumentGenerated',
+                ].includes(model)
+              ) {
                 currentArgs.where.warehouseId = warehouseId;
               }
             } else if (op === 'create') {
-              if (['Inventory', 'OdooAccount', 'User', 'AuditLog', 'DocumentTemplate', 'DocumentGenerated'].includes(model)) {
+              if (
+                [
+                  'Inventory',
+                  'OdooAccount',
+                  'User',
+                  'AuditLog',
+                  'DocumentTemplate',
+                  'DocumentGenerated',
+                ].includes(model)
+              ) {
                 currentArgs.data = currentArgs.data || {};
                 if (
                   currentArgs.data.warehouseId === undefined ||
@@ -80,7 +107,16 @@ export class PrismaService
             if (op === 'upsert') {
               currentArgs.create = currentArgs.create || {};
               currentArgs.update = currentArgs.update || {};
-              if (['Inventory', 'OdooAccount', 'User', 'AuditLog', 'DocumentTemplate', 'DocumentGenerated'].includes(model)) {
+              if (
+                [
+                  'Inventory',
+                  'OdooAccount',
+                  'User',
+                  'AuditLog',
+                  'DocumentTemplate',
+                  'DocumentGenerated',
+                ].includes(model)
+              ) {
                 if (
                   currentArgs.create.warehouseId === undefined ||
                   currentArgs.create.warehouseId === null

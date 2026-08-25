@@ -42,11 +42,15 @@ export class DocumentProcessor extends WorkerHost {
     fs.writeFileSync(tempDocxPath, docxBuffer);
 
     // Get LibreOffice path (defaulting to standard Windows installation)
-    const sofficePath = process.env.LIBREOFFICE_PATH || 'C:\\Program Files\\LibreOffice\\program\\soffice.exe';
+    const sofficePath =
+      process.env.LIBREOFFICE_PATH ||
+      'C:\\Program Files\\LibreOffice\\program\\soffice.exe';
 
     try {
-      this.logger.log(`Converting DOCX to PDF using LibreOffice: ${sofficePath}`);
-      
+      this.logger.log(
+        `Converting DOCX to PDF using LibreOffice: ${sofficePath}`,
+      );
+
       // Execute soffice conversion
       const cmd = `"${sofficePath}" --headless --convert-to pdf --outdir "${tempDir}" "${tempDocxPath}"`;
       await execAsync(cmd);
@@ -109,7 +113,8 @@ export class DocumentProcessor extends WorkerHost {
    * BullMQ queue job worker process
    */
   async process(job: Job<any, any, string>): Promise<any> {
-    const { id, templateId, placeholder, attachments, userId, warehouseId } = job.data;
+    const { id, templateId, placeholder, attachments, userId, warehouseId } =
+      job.data;
     this.logger.log(`Processing document generation job for ID: ${id}`);
 
     // Update status to PROCESSING (redundant but safe)
@@ -128,8 +133,12 @@ export class DocumentProcessor extends WorkerHost {
       }
 
       // Download Main Template DOCX
-      this.logger.log(`Downloading template DOCX from MinIO: ${template.objectKey}`);
-      const mainTemplateBuffer = await this.storageService.getFileBuffer(template.objectKey);
+      this.logger.log(
+        `Downloading template DOCX from MinIO: ${template.objectKey}`,
+      );
+      const mainTemplateBuffer = await this.storageService.getFileBuffer(
+        template.objectKey,
+      );
 
       // Compile Main Template
       this.logger.log('Compiling main template DOCX...');
@@ -144,8 +153,12 @@ export class DocumentProcessor extends WorkerHost {
       const pdfBuffersToMerge: Buffer[] = [mainPdfBuffer];
 
       // We will separate sections into: before specific templates, after specific templates, and end of document
-      const sectionTemplates = assemblySchema.filter((item) => item.type === 'TEMPLATE');
-      const pdfAttachments = assemblySchema.filter((item) => item.type === 'PDF');
+      const sectionTemplates = assemblySchema.filter(
+        (item) => item.type === 'TEMPLATE',
+      );
+      const pdfAttachments = assemblySchema.filter(
+        (item) => item.type === 'PDF',
+      );
       let userUploadIndex = 0;
 
       // Helper to evaluate assembly conditions (simple evaluation of placeholder values)
@@ -159,7 +172,9 @@ export class DocumentProcessor extends WorkerHost {
           const fn = new Function(...keys, `return ${conditionStr};`);
           return fn(...values);
         } catch (e) {
-          this.logger.warn(`Failed to evaluate condition "${conditionStr}": ${e}`);
+          this.logger.warn(
+            `Failed to evaluate condition "${conditionStr}": ${e}`,
+          );
           return false; // Fail safe
         }
       };
@@ -167,7 +182,9 @@ export class DocumentProcessor extends WorkerHost {
       // Generate section PDFs and merge them
       for (const section of sectionTemplates) {
         if (!evaluateCondition(section.condition)) {
-          this.logger.log(`Skipping section template "${section.templateCode}" due to unsatisfied condition.`);
+          this.logger.log(
+            `Skipping section template "${section.templateCode}" due to unsatisfied condition.`,
+          );
           continue;
         }
 
@@ -176,13 +193,17 @@ export class DocumentProcessor extends WorkerHost {
           where: { code: section.templateCode, deletedAt: null },
         });
         if (!secTemplate) {
-          this.logger.warn(`Section template with code "${section.templateCode}" not found.`);
+          this.logger.warn(
+            `Section template with code "${section.templateCode}" not found.`,
+          );
           continue;
         }
 
         // Check if there are attachments placed before this section
         const beforeSectionAttachments = pdfAttachments.filter(
-          (att) => att.position === 'BEFORE_SECTION' && att.templateCode === section.templateCode
+          (att) =>
+            att.position === 'BEFORE_SECTION' &&
+            att.templateCode === section.templateCode,
         );
         for (const att of beforeSectionAttachments) {
           let key = att.source || att.objectKey;
@@ -191,21 +212,27 @@ export class DocumentProcessor extends WorkerHost {
             userUploadIndex++;
           }
           if (key) {
-            this.logger.log(`Downloading assembly attachment (before section): ${key}`);
+            this.logger.log(
+              `Downloading assembly attachment (before section): ${key}`,
+            );
             const attBuffer = await this.storageService.getFileBuffer(key);
             pdfBuffersToMerge.push(attBuffer);
           }
         }
 
         // Process section template
-        const secBuffer = await this.storageService.getFileBuffer(secTemplate.objectKey);
+        const secBuffer = await this.storageService.getFileBuffer(
+          secTemplate.objectKey,
+        );
         const compiledSecDocx = this.compileDocx(secBuffer, placeholder);
         const compiledSecPdf = await this.convertDocxToPdf(compiledSecDocx);
         pdfBuffersToMerge.push(compiledSecPdf);
 
         // Check if there are attachments placed after this section
         const afterSectionAttachments = pdfAttachments.filter(
-          (att) => att.position === 'AFTER_SECTION' && att.templateCode === section.templateCode
+          (att) =>
+            att.position === 'AFTER_SECTION' &&
+            att.templateCode === section.templateCode,
         );
         for (const att of afterSectionAttachments) {
           let key = att.source || att.objectKey;
@@ -214,7 +241,9 @@ export class DocumentProcessor extends WorkerHost {
             userUploadIndex++;
           }
           if (key) {
-            this.logger.log(`Downloading assembly attachment (after section): ${key}`);
+            this.logger.log(
+              `Downloading assembly attachment (after section): ${key}`,
+            );
             const attBuffer = await this.storageService.getFileBuffer(key);
             pdfBuffersToMerge.push(attBuffer);
           }
@@ -223,7 +252,10 @@ export class DocumentProcessor extends WorkerHost {
 
       // Process global AFTER_DOCUMENT / LAST_PAGE PDF attachments in assembly
       const afterDocAttachments = pdfAttachments.filter(
-        (att) => att.position === 'AFTER_DOCUMENT' || att.position === 'LAST_PAGE' || !att.position
+        (att) =>
+          att.position === 'AFTER_DOCUMENT' ||
+          att.position === 'LAST_PAGE' ||
+          !att.position,
       );
       for (const att of afterDocAttachments) {
         let key = att.source || att.objectKey;
@@ -232,7 +264,9 @@ export class DocumentProcessor extends WorkerHost {
           userUploadIndex++;
         }
         if (key) {
-          this.logger.log(`Downloading assembly attachment (end of document): ${key}`);
+          this.logger.log(
+            `Downloading assembly attachment (end of document): ${key}`,
+          );
           const attBuffer = await this.storageService.getFileBuffer(key);
           pdfBuffersToMerge.push(attBuffer);
         }
@@ -243,7 +277,9 @@ export class DocumentProcessor extends WorkerHost {
       for (const att of remainingAttachments) {
         if (att.objectKey) {
           this.logger.log(`Downloading job attachment: ${att.objectKey}`);
-          const attBuffer = await this.storageService.getFileBuffer(att.objectKey);
+          const attBuffer = await this.storageService.getFileBuffer(
+            att.objectKey,
+          );
           pdfBuffersToMerge.push(attBuffer);
         }
       }
@@ -257,13 +293,24 @@ export class DocumentProcessor extends WorkerHost {
       const pdfPath = `generated/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.pdf`;
 
       this.logger.log(`Uploading compiled DOCX to MinIO: ${docxPath}`);
-      await this.storageService.uploadBuffer(mainDocxBuffer, docxPath, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      await this.storageService.uploadBuffer(
+        mainDocxBuffer,
+        docxPath,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      );
 
       this.logger.log(`Uploading final merged PDF to MinIO: ${pdfPath}`);
-      await this.storageService.uploadBuffer(finalPdfBuffer, pdfPath, 'application/pdf');
+      await this.storageService.uploadBuffer(
+        finalPdfBuffer,
+        pdfPath,
+        'application/pdf',
+      );
 
       // Compute Hash of final PDF
-      const hash = crypto.createHash('sha256').update(finalPdfBuffer).digest('hex');
+      const hash = crypto
+        .createHash('sha256')
+        .update(finalPdfBuffer)
+        .digest('hex');
 
       // 5. Update Database Record
       await this.prisma.documentGenerated.update({
@@ -276,10 +323,15 @@ export class DocumentProcessor extends WorkerHost {
         },
       });
 
-      this.logger.log(`Document generation job completed successfully for ID: ${id}`);
+      this.logger.log(
+        `Document generation job completed successfully for ID: ${id}`,
+      );
     } catch (error: any) {
-      this.logger.error(`Document generation job failed for ID: ${id}: ${error.message}`, error.stack);
-      
+      this.logger.error(
+        `Document generation job failed for ID: ${id}: ${error.message}`,
+        error.stack,
+      );
+
       // Update status to FAILED
       await this.prisma.documentGenerated.update({
         where: { id },

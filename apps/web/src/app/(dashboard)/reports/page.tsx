@@ -2,8 +2,8 @@
 
 import React, { useState } from "react";
 import { useReports } from "@/hooks/useReports";
-import { useProducts } from "@/hooks/useInventory";
 import { useAuthStore } from "@/store/auth";
+import { ProductSearchSelect } from "@/components/ProductSearchSelect";
 import { formatSecondaryQty } from "@/lib/quantity";
 import { toast } from "sonner";
 import {
@@ -49,8 +49,7 @@ export default function ReportsPage() {
     }));
   };
 
-  // Fetch list of products for the dropdown filter
-  const { products } = useProducts();
+  // Product filter is handled server-side by ProductSearchSelect
 
   const { reportData, isLoading, exportPdf, exportCsv } = useReports({
     startDate,
@@ -157,18 +156,12 @@ export default function ReportsPage() {
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Filter Produk
             </label>
-            <select
+            <ProductSearchSelect
               value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
-            >
-              <option value="">Semua Produk</option>
-              {products.map((p: any) => (
-                <option key={p.uuid} value={p.uuid}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={(val) => setProductId(val)}
+              placeholder="Semua Produk"
+              clearable
+            />
           </div>
 
           {/* Category selection */}

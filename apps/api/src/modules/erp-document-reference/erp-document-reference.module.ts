@@ -7,7 +7,12 @@ import { WarehouseContextModule } from '../../core/warehouse-context/warehouse-c
 import { AuditLogModule } from '../audit-log/audit-log.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => OdooModule), WarehouseContextModule, AuditLogModule],
+  imports: [
+    PrismaModule,
+    forwardRef(() => OdooModule),
+    WarehouseContextModule,
+    AuditLogModule,
+  ],
   controllers: [ErpDocumentReferenceController],
   providers: [ErpDocumentReferenceService],
   exports: [ErpDocumentReferenceService],

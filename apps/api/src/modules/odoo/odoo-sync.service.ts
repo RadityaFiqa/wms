@@ -103,7 +103,9 @@ export class OdooSyncService {
         createdBy,
       },
     });
-    this.logger.log(`[UNIFIED-SYNC-TRIGGER] Created sync log entry ID: ${log.id}`);
+    this.logger.log(
+      `[UNIFIED-SYNC-TRIGGER] Created sync log entry ID: ${log.id}`,
+    );
 
     // 2. Fire-and-forget background execution
     this.executeSyncAllJob(warehouseId, log.id, createdBy)
@@ -129,7 +131,11 @@ export class OdooSyncService {
     warehouseId: number,
     logId: number,
     triggeredBy: string,
-  ): Promise<{ success: boolean; documentsCount: number; inventoryCount: number }> {
+  ): Promise<{
+    success: boolean;
+    documentsCount: number;
+    inventoryCount: number;
+  }> {
     this.logger.log(
       `[UNIFIED-SYNC-JOB] Starting unified sync for warehouse ${warehouseId}, log ${logId}`,
     );
@@ -147,15 +153,26 @@ export class OdooSyncService {
     });
 
     if (!account || !account.isActive) {
-      const errorMsg = 'Akun Odoo untuk gudang ini tidak aktif atau belum dikonfigurasi.';
-      await this.updateStatusOnFailure(warehouseId, logId, triggeredBy, errorMsg);
+      const errorMsg =
+        'Akun Odoo untuk gudang ini tidak aktif atau belum dikonfigurasi.';
+      await this.updateStatusOnFailure(
+        warehouseId,
+        logId,
+        triggeredBy,
+        errorMsg,
+      );
       throw new BadRequestException(errorMsg);
     }
 
     const odooReference = account.warehouse?.odooReference;
     if (!odooReference) {
       const errorMsg = 'Referensi Odoo untuk gudang ini belum dikonfigurasi.';
-      await this.updateStatusOnFailure(warehouseId, logId, triggeredBy, errorMsg);
+      await this.updateStatusOnFailure(
+        warehouseId,
+        logId,
+        triggeredBy,
+        errorMsg,
+      );
       throw new BadRequestException(errorMsg);
     }
 
@@ -164,22 +181,16 @@ export class OdooSyncService {
 
     try {
       // SECTION A: Fetch ERP Documents from Odoo
-      const {
-        allFetchedDocRecords,
-        allActiveFetchedDocRecords,
-        docOffset,
-      } = await this.fetchErpDocuments(
-        warehouseId,
-        logId,
-        account.lastDocumentsOffset ?? 0,
-      );
+      const { allFetchedDocRecords, allActiveFetchedDocRecords, docOffset } =
+        await this.fetchErpDocuments(
+          warehouseId,
+          logId,
+          account.lastDocumentsOffset ?? 0,
+        );
 
       // SECTION B: Fetch Inventory details from Odoo
-      const {
-        fetchedProducts,
-        fetchedLocations,
-        fetchedQuants,
-      } = await this.fetchInventoryData(warehouseId, account.username);
+      const { fetchedProducts, fetchedLocations, fetchedQuants } =
+        await this.fetchInventoryData(warehouseId, account.username);
 
       // SECTION C: DB Transaction (atomic commit / rollback)
       this.logger.log(`[UNIFIED-SYNC-JOB] Initiating database transaction...`);
@@ -188,14 +199,24 @@ export class OdooSyncService {
           // 1. Write ERP Documents
           this.logger.log(`[UNIFIED-SYNC-JOB] Writing ERP documents to DB...`);
           for (const record of allFetchedDocRecords) {
-            await this.erpDocService.upsertDocumentRecord(tx, record, warehouseId);
+            await this.erpDocService.upsertDocumentRecord(
+              tx,
+              record,
+              warehouseId,
+            );
           }
           for (const record of allActiveFetchedDocRecords) {
-            await this.erpDocService.upsertDocumentRecord(tx, record, warehouseId);
+            await this.erpDocService.upsertDocumentRecord(
+              tx,
+              record,
+              warehouseId,
+            );
           }
 
           // 2. Write Inventory Data
-          this.logger.log(`[UNIFIED-SYNC-JOB] Writing inventory quants to DB...`);
+          this.logger.log(
+            `[UNIFIED-SYNC-JOB] Writing inventory quants to DB...`,
+          );
           await this.inventoryService.saveInventorySyncData(
             tx,
             warehouseId,
@@ -238,7 +259,9 @@ export class OdooSyncService {
         { timeout: 900_000 },
       );
 
-      this.logger.log(`[UNIFIED-SYNC-JOB] Transaction committed successfully for warehouse ${warehouseId}`);
+      this.logger.log(
+        `[UNIFIED-SYNC-JOB] Transaction committed successfully for warehouse ${warehouseId}`,
+      );
       return {
         success: true,
         documentsCount: allFetchedDocRecords.length,
@@ -249,7 +272,12 @@ export class OdooSyncService {
         `[UNIFIED-SYNC-JOB] Sync failed, reverting database changes: ${err.message}`,
         err.stack,
       );
-      await this.updateStatusOnFailure(warehouseId, logId, triggeredBy, err.message);
+      await this.updateStatusOnFailure(
+        warehouseId,
+        logId,
+        triggeredBy,
+        err.message,
+      );
       throw err;
     }
   }
@@ -279,9 +307,13 @@ export class OdooSyncService {
         [],
         { domain: [] },
       );
-      this.logger.log(`[UNIFIED-SYNC-JOB] Total ERP documents matching domain: ${totalDocuments}`);
+      this.logger.log(
+        `[UNIFIED-SYNC-JOB] Total ERP documents matching domain: ${totalDocuments}`,
+      );
     } catch (err: any) {
-      this.logger.warn(`[UNIFIED-SYNC-JOB] Failed to fetch total document count: ${err.message}`);
+      this.logger.warn(
+        `[UNIFIED-SYNC-JOB] Failed to fetch total document count: ${err.message}`,
+      );
     }
 
     if (docOffset > totalDocuments) {
@@ -296,7 +328,9 @@ export class OdooSyncService {
 
     const allFetchedDocRecords: any[] = [];
     while (true) {
-      this.logger.log(`[UNIFIED-SYNC-JOB] Fetching stock.picking: offset=${docOffset}, limit=${docLimit}`);
+      this.logger.log(
+        `[UNIFIED-SYNC-JOB] Fetching stock.picking: offset=${docOffset}, limit=${docLimit}`,
+      );
       const poRes = await this.safeOdooCall(
         warehouseId,
         'stock.picking',
@@ -364,7 +398,9 @@ export class OdooSyncService {
       select: { id: true },
     });
 
-    this.logger.log(`[UNIFIED-SYNC-JOB] Refreshing ${activeDocuments.length} active documents...`);
+    this.logger.log(
+      `[UNIFIED-SYNC-JOB] Refreshing ${activeDocuments.length} active documents...`,
+    );
     const allActiveFetchedDocRecords: any[] = [];
     for (const doc of activeDocuments) {
       const res = await this.safeOdooCall(
@@ -458,7 +494,9 @@ export class OdooSyncService {
           : [current_company_id];
       }
     } catch (err: any) {
-      this.logger.warn(`[UNIFIED-SYNC-JOB] Failed to fetch res.users context: ${err.message}. Using defaults.`);
+      this.logger.warn(
+        `[UNIFIED-SYNC-JOB] Failed to fetch res.users context: ${err.message}. Using defaults.`,
+      );
     }
 
     const context = {
@@ -641,7 +679,9 @@ export class OdooSyncService {
         });
       }
     } catch (e: any) {
-      this.logger.error(`Failed to record sync failure status in DB: ${e.message}`);
+      this.logger.error(
+        `Failed to record sync failure status in DB: ${e.message}`,
+      );
     }
   }
 

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
@@ -119,7 +123,11 @@ export class DocumentGenerationService {
         where: {
           OR: [
             { uuid: params.templateId },
-            { id: isNaN(Number(params.templateId)) ? -1 : Number(params.templateId) },
+            {
+              id: isNaN(Number(params.templateId))
+                ? -1
+                : Number(params.templateId),
+            },
           ],
           deletedAt: null,
         },
@@ -127,7 +135,10 @@ export class DocumentGenerationService {
       if (template) {
         where.templateId = template.id;
       } else {
-        return { data: [], pagination: { total: 0, page, limit, totalPages: 0 } };
+        return {
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
       }
     }
 
@@ -136,7 +147,11 @@ export class DocumentGenerationService {
         where: {
           OR: [
             { uuid: params.categoryId },
-            { id: isNaN(Number(params.categoryId)) ? -1 : Number(params.categoryId) },
+            {
+              id: isNaN(Number(params.categoryId))
+                ? -1
+                : Number(params.categoryId),
+            },
           ],
           deletedAt: null,
         },
@@ -144,7 +159,10 @@ export class DocumentGenerationService {
       if (category) {
         where.categoryId = category.id;
       } else {
-        return { data: [], pagination: { total: 0, page, limit, totalPages: 0 } };
+        return {
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
       }
     }
 
@@ -153,14 +171,21 @@ export class DocumentGenerationService {
         where: {
           OR: [
             { uuid: params.generatedBy },
-            { id: isNaN(Number(params.generatedBy)) ? -1 : Number(params.generatedBy) },
+            {
+              id: isNaN(Number(params.generatedBy))
+                ? -1
+                : Number(params.generatedBy),
+            },
           ],
         },
       });
       if (user) {
         where.generatedBy = user.id;
       } else {
-        return { data: [], pagination: { total: 0, page, limit, totalPages: 0 } };
+        return {
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
       }
     }
 
@@ -186,7 +211,13 @@ export class DocumentGenerationService {
         orderBy: { generatedAt: 'desc' },
         include: {
           template: {
-            select: { id: true, uuid: true, name: true, code: true, version: true },
+            select: {
+              id: true,
+              uuid: true,
+              name: true,
+              code: true,
+              version: true,
+            },
           },
           category: {
             select: { id: true, uuid: true, name: true, code: true },
@@ -217,7 +248,13 @@ export class DocumentGenerationService {
       where: { uuid, deletedAt: null },
       include: {
         template: {
-          select: { id: true, uuid: true, name: true, code: true, version: true },
+          select: {
+            id: true,
+            uuid: true,
+            name: true,
+            code: true,
+            version: true,
+          },
         },
         category: {
           select: { id: true, uuid: true, name: true, code: true },
@@ -241,7 +278,9 @@ export class DocumentGenerationService {
   async getPreviewUrl(uuid: string) {
     const doc = await this.findOne(uuid);
     if (!doc.pdfObjectKey) {
-      throw new BadRequestException('File PDF belum siap atau proses generate gagal.');
+      throw new BadRequestException(
+        'File PDF belum siap atau proses generate gagal.',
+      );
     }
     return this.storageService.getFilePrivateUrl(doc.pdfObjectKey);
   }

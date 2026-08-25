@@ -118,7 +118,9 @@ export class ReconciliationService {
         ],
         products: {
           some: {
-            ...(query?.productId ? { inventory: { uuid: query.productId } } : {}),
+            ...(query?.productId
+              ? { inventory: { uuid: query.productId } }
+              : {}),
             ...(locationDbId ? { locationId: locationDbId } : {}),
           },
         },
@@ -126,7 +128,9 @@ export class ReconciliationService {
       include: {
         products: {
           where: {
-            ...(query?.productId ? { inventory: { uuid: query.productId } } : {}),
+            ...(query?.productId
+              ? { inventory: { uuid: query.productId } }
+              : {}),
             ...(locationDbId ? { locationId: locationDbId } : {}),
           },
         },
@@ -322,7 +326,7 @@ export class ReconciliationService {
     const dbLocations = await this.prisma.location.findMany({
       where: { warehouseId },
     });
-    const locationsMap = new Map<number, typeof dbLocations[number]>(
+    const locationsMap = new Map<number, (typeof dbLocations)[number]>(
       dbLocations.map((l) => [l.id, l]),
     );
 
@@ -422,7 +426,10 @@ export class ReconciliationService {
         for (const gp of op.products) {
           sumGateQty += gp.quantity;
           if (gp.locationId) {
-            locQties.set(gp.locationId, (locQties.get(gp.locationId) || 0) + gp.quantity);
+            locQties.set(
+              gp.locationId,
+              (locQties.get(gp.locationId) || 0) + gp.quantity,
+            );
           }
         }
       }
@@ -449,7 +456,10 @@ export class ReconciliationService {
 
           // Proportional distribution of adjustment to locations
           if (locQties.size > 0) {
-            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({ id, qty }));
+            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({
+              id,
+              qty,
+            }));
             const distributed = this.distributeAdjustment(adjustment, locList);
             for (const [locId, locAdj] of distributed.entries()) {
               locationAdjustmentsMap.set(
@@ -542,11 +552,16 @@ export class ReconciliationService {
         stockDifference,
         pendingIncoming,
         pendingOutgoing,
-        gateOperations: gateOpsList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+        gateOperations: gateOpsList.sort(
+          (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+        ),
       };
     });
 
-    const totalErpStock = inventory.quants.reduce((sum, q) => sum + q.quantity, 0);
+    const totalErpStock = inventory.quants.reduce(
+      (sum, q) => sum + q.quantity,
+      0,
+    );
     let totalIncoming = 0;
     let totalOutgoing = 0;
     for (const op of contributingGateOps) {
@@ -561,7 +576,8 @@ export class ReconciliationService {
     }
 
     const physicalAdjustment = totalIncoming - totalOutgoing;
-    const calculatedPhysical = totalErpStock + physicalAdjustment + totalAdjustmentQty;
+    const calculatedPhysical =
+      totalErpStock + physicalAdjustment + totalAdjustmentQty;
     const stockDifference = totalErpStock - calculatedPhysical;
 
     const pendingGateQty = totalOutgoing - totalIncoming;
@@ -581,7 +597,9 @@ export class ReconciliationService {
       stockDifference,
       pendingGateQty,
       expectedStock,
-      locations: locationsBreakdown.sort((a, b) => a.locationName.localeCompare(b.locationName)),
+      locations: locationsBreakdown.sort((a, b) =>
+        a.locationName.localeCompare(b.locationName),
+      ),
       adjustmentDetails,
     };
   }

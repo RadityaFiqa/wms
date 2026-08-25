@@ -27,7 +27,9 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
       dailyLocationStockSnapshot: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockImplementation((args) => Promise.resolve(args.data)),
+        create: jest
+          .fn()
+          .mockImplementation((args) => Promise.resolve(args.data)),
       },
       location: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -65,12 +67,24 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
     beforeEach(() => {
       // Mock locations
       prismaMock.location.findMany.mockResolvedValue([
-        { id: locId, warehouseId, uuid: 'loc-uuid-1', displayName: 'Gudang Utama' },
+        {
+          id: locId,
+          warehouseId,
+          uuid: 'loc-uuid-1',
+          displayName: 'Gudang Utama',
+        },
       ]);
 
       // Mock products
       prismaMock.inventory.findMany.mockResolvedValue([
-        { id: prodId, uuid: 'prod-uuid-1', sku: 'PRD001', name: 'Beras Pack 5 Kg', uom: 'Pack', quants: [] },
+        {
+          id: prodId,
+          uuid: 'prod-uuid-1',
+          sku: 'PRD001',
+          name: 'Beras Pack 5 Kg',
+          uom: 'Pack',
+          quants: [],
+        },
       ]);
     });
 

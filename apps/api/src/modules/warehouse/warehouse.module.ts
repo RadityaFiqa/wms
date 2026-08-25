@@ -11,4 +11,3 @@ import { WarehouseContextModule } from '../../core/warehouse-context/warehouse-c
   exports: [WarehouseService],
 })
 export class WarehouseModule {}
-

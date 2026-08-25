@@ -126,9 +126,7 @@ export class ErpDocumentReferenceController {
 
   @Get(':uuid/realization-history')
   @CheckPolicies((ability) => ability.can('read', 'Inventory'))
-  async getRealizationHistory(
-    @Param('uuid') uuid: string,
-  ) {
+  async getRealizationHistory(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
       throw new BadRequestException(

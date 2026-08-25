@@ -42,7 +42,9 @@ export class StackCardController {
   async updateSource(@Body('source') source: 'REAL_STOCK' | 'CSV') {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     if (source !== 'REAL_STOCK' && source !== 'CSV') {
       throw new BadRequestException('Sumber data harus REAL_STOCK atau CSV.');
@@ -56,7 +58,9 @@ export class StackCardController {
   async import(@Req() req: any, @Body() body: any) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const validationResult = ImportStackCardSchema.safeParse(body);
@@ -67,7 +71,11 @@ export class StackCardController {
     }
 
     const userId = req.user.id;
-    return this.service.importStackCards(warehouseId, userId, validationResult.data);
+    return this.service.importStackCards(
+      warehouseId,
+      userId,
+      validationResult.data,
+    );
   }
 
   @Get()
@@ -85,7 +93,9 @@ export class StackCardController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     return this.service.findAll(warehouseId, {
@@ -106,7 +116,9 @@ export class StackCardController {
   async getHistory() {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.getUploadHistory(warehouseId);
   }
@@ -119,9 +131,15 @@ export class StackCardController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
-    return this.service.getSnapshotDates(warehouseId, onlyPublished === 'true', dataSource);
+    return this.service.getSnapshotDates(
+      warehouseId,
+      onlyPublished === 'true',
+      dataSource,
+    );
   }
 
   @Get('locations')
@@ -132,9 +150,15 @@ export class StackCardController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
-    return this.service.getLocations(warehouseId, onlyPublished === 'true', dataSource);
+    return this.service.getLocations(
+      warehouseId,
+      onlyPublished === 'true',
+      dataSource,
+    );
   }
 
   @Get(':uuid')
@@ -142,7 +166,9 @@ export class StackCardController {
   async findOne(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.findOne(warehouseId, uuid);
   }
@@ -156,7 +182,9 @@ export class StackCardController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     if (!Array.isArray(uuids) || uuids.length === 0) {
       throw new BadRequestException('Array uuids wajib diisi.');
@@ -173,7 +201,9 @@ export class StackCardController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     if (!snapshotDate) {
       throw new BadRequestException('Tanggal snapshot wajib diisi.');
@@ -187,7 +217,9 @@ export class StackCardController {
   async bulkDelete(@Body('uuids') uuids: string[]) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     if (!Array.isArray(uuids) || uuids.length === 0) {
       throw new BadRequestException('Array uuids wajib diisi.');
@@ -201,7 +233,9 @@ export class StackCardController {
   async update(@Param('uuid') uuid: string, @Body() body: any) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
 
     const validationResult = UpdateStackCardSchema.safeParse(body);
@@ -220,7 +254,9 @@ export class StackCardController {
   async remove(@Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
-      throw new BadRequestException('Warehouse context (header x-warehouse-id) diperlukan.');
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
     }
     return this.service.delete(warehouseId, uuid);
   }

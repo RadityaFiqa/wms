@@ -339,7 +339,7 @@ export class ErpDocumentReferenceService {
         syncedCount += records.length;
         offset += records.length;
 
-        console.log(`offset`, offset)
+        console.log(`offset`, offset);
 
         // Update OdooAccount offset
         await this.prisma.odooAccount.update({
@@ -549,7 +549,7 @@ export class ErpDocumentReferenceService {
     //   }
     // }
 
-    console.log(`product`, JSON.stringify(andConditions, null, 2))
+    console.log(`product`, JSON.stringify(andConditions, null, 2));
 
     if (query.search) {
       andConditions.push({
@@ -768,7 +768,10 @@ export class ErpDocumentReferenceService {
             : 0;
 
         const pickedPrimaryQty = pickedMap.get(item.inventoryId) || 0;
-        const remainingPrimaryQty = Math.max(0, erpPrimaryQty - pickedPrimaryQty);
+        const remainingPrimaryQty = Math.max(
+          0,
+          erpPrimaryQty - pickedPrimaryQty,
+        );
 
         // A document item is pending only if remaining primary quantity > 0
         if (remainingPrimaryQty <= 0) continue;
@@ -818,9 +821,13 @@ export class ErpDocumentReferenceService {
 
         // Collect relevant gate operations for this document item
         const relevantGateOps = doc.gateOperations
-          .filter((op) => op.products.some((p) => p.inventoryId === item.inventoryId))
+          .filter((op) =>
+            op.products.some((p) => p.inventoryId === item.inventoryId),
+          )
           .map((op) => {
-            const prodOp = op.products.find((p) => p.inventoryId === item.inventoryId);
+            const prodOp = op.products.find(
+              (p) => p.inventoryId === item.inventoryId,
+            );
             return {
               id: op.id,
               uuid: op.uuid,
@@ -898,17 +905,23 @@ export class ErpDocumentReferenceService {
       }
 
       // 2. Earliest Scheduled Date (ascending)
-      const aEarliest = a.documents.reduce((earliest: Date | null, doc: any) => {
-        if (!doc.scheduledDate) return earliest;
-        const d = new Date(doc.scheduledDate);
-        return earliest === null || d < earliest ? d : earliest;
-      }, null);
+      const aEarliest = a.documents.reduce(
+        (earliest: Date | null, doc: any) => {
+          if (!doc.scheduledDate) return earliest;
+          const d = new Date(doc.scheduledDate);
+          return earliest === null || d < earliest ? d : earliest;
+        },
+        null,
+      );
 
-      const bEarliest = b.documents.reduce((earliest: Date | null, doc: any) => {
-        if (!doc.scheduledDate) return earliest;
-        const d = new Date(doc.scheduledDate);
-        return earliest === null || d < earliest ? d : earliest;
-      }, null);
+      const bEarliest = b.documents.reduce(
+        (earliest: Date | null, doc: any) => {
+          if (!doc.scheduledDate) return earliest;
+          const d = new Date(doc.scheduledDate);
+          return earliest === null || d < earliest ? d : earliest;
+        },
+        null,
+      );
 
       if (aEarliest && bEarliest) {
         return aEarliest.getTime() - bEarliest.getTime();
@@ -1137,11 +1150,7 @@ export class ErpDocumentReferenceService {
     return this.sanitizeDocReference(updatedDoc);
   }
 
-  public async upsertDocumentRecord(
-    tx: any,
-    record: any,
-    warehouseId: number,
-  ) {
+  public async upsertDocumentRecord(tx: any, record: any, warehouseId: number) {
     const erpId = record.id;
     const documentNumber = record.name || `DOC-${erpId}`;
     const state = record.state || 'draft';
@@ -1527,12 +1536,7 @@ export class ErpDocumentReferenceService {
 
       const newObj: any = {};
       for (const key of Object.keys(obj)) {
-        if (
-          key === 'id' &&
-          !isProduct &&
-          !isGateOpProduct
-        )
-          continue;
+        if (key === 'id' && !isProduct && !isGateOpProduct) continue;
         newObj[key] = this.stripIdField(obj[key]);
       }
       return newObj;

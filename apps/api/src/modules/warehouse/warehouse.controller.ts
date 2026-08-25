@@ -32,7 +32,6 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 
-
 @Controller('warehouses')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
 @UseInterceptors(AuditLogInterceptor)

@@ -106,10 +106,11 @@ export function useWarehouseLocations() {
   };
 }
 
-export function useProducts(query?: { search?: string; selectedId?: number; onlyAvailable?: boolean }) {
+export function useProducts(query?: { search?: string; selectedId?: number; selectedUuid?: string; onlyAvailable?: boolean }) {
   const searchParams = new URLSearchParams();
   if (query?.search) searchParams.append("search", query.search);
   if (query?.selectedId) searchParams.append("selectedId", String(query.selectedId));
+  if (query?.selectedUuid) searchParams.append("selectedUuid", query.selectedUuid);
   if (query?.onlyAvailable) searchParams.append("onlyAvailable", "true");
 
   const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";

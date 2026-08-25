@@ -895,6 +895,11 @@ export default function GateOperationDetailPage() {
                     colorClass = "bg-red-500";
                     description = `Verifikasi dibatalkan oleh auditor.`;
                     break;
+                  case 'GATE_OPERATION_REJECT':
+                    title = "Verifikasi Ditolak (REJECT)";
+                    colorClass = "bg-red-650";
+                    description = `Verifikasi ditolak. Alasan: "${log.details?.reason || "-"}"`;
+                    break;
                   case 'GATE_OPERATION_CONFIRM':
                     title = "Verifikasi Dikonfirmasi (CONFIRM)";
                     colorClass = "bg-emerald-600";

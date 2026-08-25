@@ -48,6 +48,8 @@ export const API_ROUTES = {
       `/gate-operations/${operationUuid}/confirm`,
     history: (operationUuid: string) =>
       `/gate-operations/${operationUuid}/history`,
+    bulkApprove: "/gate-verifications/bulk-approve",
+    bulkReject: "/gate-verifications/bulk-reject",
   },
   erpDocumentReferences: {
     list: "/erp-document-references",

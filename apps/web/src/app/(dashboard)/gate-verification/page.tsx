@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { useGateOperations } from "@/hooks/useGate";
+import { useGate, useGateOperations } from "@/hooks/useGate";
 import { useAuthStore } from "@/store/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   ShieldCheck,
   Search,
@@ -15,6 +16,7 @@ import {
   Calendar,
   Info,
   Clock,
+  AlertTriangle,
 } from "lucide-react";
 
 const getProductDetails = (item: any) => {
@@ -48,6 +50,20 @@ export default function GateVerificationListPage() {
   const [page, setPage] = useState(1);
 
   const { activeWarehouse } = useAuthStore();
+  const { bulkApprove, bulkReject, refreshList } = useGate();
+  
+  // Selection and submission states
+  const [selectedUuids, setSelectedUuids] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Modal states
+  const [isApproveOpen, setIsApproveOpen] = useState(false);
+  const [isRejectOpen, setIsRejectOpen] = useState(false);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectError, setRejectError] = useState("");
+  const [summaryData, setSummaryData] = useState<any>(null);
+
   // Fetch gate operations with status and date filter for verification queue
   const { data, isLoading, error } = useGateOperations({
     search: debouncedSearch || undefined,
@@ -63,11 +79,11 @@ export default function GateVerificationListPage() {
   const getCardTypeBadge = (type: string) => {
     return type === "IN" ? (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-150">
-        📥 Masuk
+        Masuk
       </span>
     ) : (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-55 text-purple-700 border border-purple-150">
-        📤 Keluar
+        Keluar
       </span>
     );
   };
@@ -104,6 +120,116 @@ export default function GateVerificationListPage() {
             {statusValue}
           </span>
         );
+    }
+  };
+
+  // Derive selection helpers
+  const itemsList = data?.items || [];
+  const eligibleItems = itemsList.filter(
+    (item: any) => item.documentReference && item.status === "PENDING"
+  );
+  const selectedEligibleInPage = eligibleItems.filter((item: any) =>
+    selectedUuids.includes(item.uuid)
+  );
+  const isAllSelected =
+    eligibleItems.length > 0 &&
+    selectedEligibleInPage.length === eligibleItems.length;
+  const isIndeterminate =
+    selectedEligibleInPage.length > 0 &&
+    selectedEligibleInPage.length < eligibleItems.length;
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedUuids((prev) => {
+        const next = [...prev];
+        eligibleItems.forEach((item: any) => {
+          if (!next.includes(item.uuid)) {
+            next.push(item.uuid);
+          }
+        });
+        return next;
+      });
+    } else {
+      const pageUuids = eligibleItems.map((item: any) => item.uuid);
+      setSelectedUuids((prev) => prev.filter((uuid) => !pageUuids.includes(uuid)));
+    }
+  };
+
+  const handleSelectRow = (uuid: string, checked: boolean) => {
+    if (checked) {
+      setSelectedUuids((prev) => [...prev, uuid]);
+    } else {
+      setSelectedUuids((prev) => prev.filter((id) => id !== uuid));
+    }
+  };
+
+  const selectedItemsDetails = itemsList.filter((item: any) =>
+    selectedUuids.includes(item.uuid)
+  );
+
+  const handleBulkApproveSubmit = async () => {
+    setIsSubmitting(true);
+    setIsApproveOpen(false);
+    const toastId = toast.loading("Sedang memproses bulk approval...");
+    try {
+      const res = await bulkApprove({ ids: selectedUuids });
+      setSummaryData({
+        action: "Approve",
+        successCount: res.successCount,
+        failedCount: res.failedCount,
+        results: res.results.map((r: any) => {
+          const item = itemsList.find((i: any) => i.uuid === r.id);
+          return {
+            opNumber: item?.opNumber || r.id,
+            success: r.success,
+            message: r.message,
+          };
+        }),
+      });
+      toast.success("Bulk approval selesai diproses.", { id: toastId });
+      setSelectedUuids([]);
+      refreshList();
+      setIsSummaryOpen(true);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Gagal memproses bulk approval.", { id: toastId });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleBulkRejectSubmit = async () => {
+    if (!rejectReason || rejectReason.trim() === "") {
+      setRejectError("Alasan penolakan tidak boleh kosong.");
+      return;
+    }
+    setRejectError("");
+    setIsSubmitting(true);
+    setIsRejectOpen(false);
+    const toastId = toast.loading("Sedang memproses bulk rejection...");
+    try {
+      const res = await bulkReject({ ids: selectedUuids, reason: rejectReason.trim() });
+      setSummaryData({
+        action: "Reject",
+        successCount: res.successCount,
+        failedCount: res.failedCount,
+        results: res.results.map((r: any) => {
+          const item = itemsList.find((i: any) => i.uuid === r.id);
+          return {
+            opNumber: item?.opNumber || r.id,
+            success: r.success,
+            message: r.message,
+          };
+        }),
+      });
+      toast.success("Bulk rejection selesai diproses.", { id: toastId });
+      setSelectedUuids([]);
+      setRejectReason("");
+      refreshList();
+      setIsSummaryOpen(true);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Gagal memproses bulk rejection.", { id: toastId });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -223,6 +349,39 @@ export default function GateVerificationListPage() {
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedUuids.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-blue-800">
+              {selectedUuids.length} dokumen terpilih
+            </span>
+            <button
+              onClick={() => setSelectedUuids([])}
+              className="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline cursor-pointer"
+            >
+              Bersihkan Pilihan
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              disabled={isSubmitting}
+              onClick={() => setIsApproveOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-lg cursor-pointer transition flex items-center gap-1.5"
+            >
+              Approve
+            </button>
+            <button
+              disabled={isSubmitting}
+              onClick={() => setIsRejectOpen(true)}
+              className="bg-red-600 hover:bg-red-600 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-lg cursor-pointer transition flex items-center gap-1.5"
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Queue Table */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {isLoading ? (
@@ -269,6 +428,20 @@ export default function GateVerificationListPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider">
+                    <th className="px-4 py-4 w-12 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate = isIndeterminate;
+                          }
+                        }}
+                        onChange={handleSelectAll}
+                        disabled={eligibleItems.length === 0 || isSubmitting}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="px-6 py-4">Nomor Tiket</th>
                     <th className="px-6 py-4">Waktu</th>
                     <th className="px-6 py-4">Aksi</th>
@@ -290,6 +463,9 @@ export default function GateVerificationListPage() {
                       status={status}
                       startDate={startDate}
                       endDate={endDate}
+                      isSelected={selectedUuids.includes(item.uuid)}
+                      onSelectChange={handleSelectRow}
+                      isSubmitting={isSubmitting}
                     />
                   ))}
                 </tbody>
@@ -327,6 +503,175 @@ export default function GateVerificationListPage() {
           </>
         )}
       </div>
+
+      {/* Approve Confirmation Modal */}
+      {isApproveOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-emerald-600" />
+              Konfirmasi Bulk Approve
+            </h3>
+            <p className="text-sm text-slate-550">
+              Apakah Anda yakin ingin menyetujui{" "}
+              <strong>{selectedUuids.length}</strong> dokumen berikut?
+            </p>
+            <div className="max-h-48 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs text-slate-700">
+              {selectedItemsDetails.map((item: any) => (
+                <div key={item.uuid} className="flex justify-between border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                  <span className="font-mono font-bold">{item.opNumber}</span>
+                  <span className="text-slate-500">{item.driverName} ({item.licensePlate})</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setIsApproveOpen(false)}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-50 transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleBulkApproveSubmit}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              >
+                Setujui Semua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Modal */}
+      {isRejectOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Konfirmasi Bulk Reject
+            </h3>
+            <p className="text-sm text-slate-550">
+              Anda akan menolak <strong>{selectedUuids.length}</strong> dokumen terpilih. Harap isi alasan penolakan di bawah ini.
+            </p>
+            
+            <div className="max-h-32 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs text-slate-700">
+              {selectedItemsDetails.map((item: any) => (
+                <div key={item.uuid} className="flex justify-between border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                  <span className="font-mono font-bold">{item.opNumber}</span>
+                  <span className="text-slate-500">{item.driverName}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                Alasan Penolakan <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => {
+                  setRejectReason(e.target.value);
+                  if (e.target.value.trim() !== "") setRejectError("");
+                }}
+                placeholder="Tulis alasan mengapa dokumen-dokumen ini ditolak..."
+                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl p-3 focus:outline-none focus:border-blue-500 text-sm"
+              />
+              {rejectError && (
+                <p className="text-xs text-red-500 font-medium">{rejectError}</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setIsRejectOpen(false);
+                  setRejectReason("");
+                  setRejectError("");
+                }}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-50 transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleBulkRejectSubmit}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              >
+                Tolak Semua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Modal */}
+      {isSummaryOpen && summaryData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              Hasil Bulk {summaryData.action}
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <div className="text-2xl font-extrabold text-emerald-700">
+                  {summaryData.successCount}
+                </div>
+                <div className="text-xs text-emerald-600 font-bold uppercase tracking-wider mt-0.5">
+                  Berhasil
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                <div className="text-2xl font-extrabold text-red-700">
+                  {summaryData.failedCount}
+                </div>
+                <div className="text-xs text-red-600 font-bold uppercase tracking-wider mt-0.5">
+                  Gagal
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                Detail Status Setiap Dokumen
+              </span>
+              <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
+                {summaryData.results.map((r: any, idx: number) => (
+                  <div key={idx} className="p-3 flex items-start justify-between gap-4">
+                    <span className="font-mono font-bold text-slate-700 shrink-0">{r.opNumber}</span>
+                    <div className="text-right">
+                      {r.success ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-150 font-semibold">
+                          Berhasil
+                        </span>
+                      ) : (
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-150 font-semibold">
+                            Gagal
+                          </span>
+                          <p className="text-[11px] text-red-550 font-medium leading-normal">{r.message}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => {
+                  setIsSummaryOpen(false);
+                  setSummaryData(null);
+                }}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -340,6 +685,9 @@ function GateVerificationRow({
   status,
   startDate,
   endDate,
+  isSelected,
+  onSelectChange,
+  isSubmitting,
 }: {
   item: any;
   getCardTypeBadge: any;
@@ -349,6 +697,9 @@ function GateVerificationRow({
   status: string;
   startDate: string;
   endDate: string;
+  isSelected: boolean;
+  onSelectChange: (uuid: string, checked: boolean) => void;
+  isSubmitting: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -378,6 +729,15 @@ function GateVerificationRow({
           isExpanded ? "bg-slate-50/40" : ""
         }`}
       >
+        <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            disabled={!item.documentReference || item.status !== "PENDING" || isSubmitting}
+            onChange={(e) => onSelectChange(item.uuid, e.target.checked)}
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+        </td>
         <td className="px-6 py-4 font-bold text-slate-900 tracking-tight flex items-center space-x-2">
           <div className="p-0.5 rounded-md hover:bg-slate-200 transition">
             {isExpanded ? (
@@ -399,7 +759,7 @@ function GateVerificationRow({
             </span>
           </div>
         </td>
-         <td className="px-6 py-4">{getCardTypeBadge(item.cardType)}</td>
+        <td className="px-6 py-4">{getCardTypeBadge(item.cardType)}</td>
         <td className="px-6 py-4 font-mono text-xs font-semibold">
           {item.documentReference?.documentNumber ? (
             <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-250">
@@ -442,7 +802,7 @@ function GateVerificationRow({
       {isExpanded && (
         <tr>
           <td
-            colSpan={7}
+            colSpan={8}
             className="bg-slate-50/50 px-12 py-4 border-b border-slate-200"
           >
             <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden max-w-3xl">

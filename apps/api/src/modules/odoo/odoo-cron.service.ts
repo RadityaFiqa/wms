@@ -18,7 +18,7 @@ export class OdooCronService {
   /**
    * Run every 30 minutes to synchronize ERP Documents and Inventory for all active Odoo configurations.
    */
-  @Cron('*/30 5-19 * * *', {timeZone: 'Asia/Makassar'})
+  @Cron('*/30 5-19 * * *', { timeZone: 'Asia/Makassar' })
   async runSyncEvery30Minutes() {
     this.logger.log(
       'Memulai sinkronisasi otomatis Odoo (ERP Documents & Inventory) setiap 30 menit...',

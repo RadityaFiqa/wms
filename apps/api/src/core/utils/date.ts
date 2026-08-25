@@ -26,7 +26,10 @@ export function getLocalEndOfDay(dateStr: string, timezone: string): Date {
  */
 function getTimezoneOffset(timeZone: string, date: Date): number {
   try {
-    const tzString = date.toLocaleString('en-US', { timeZone, timeZoneName: 'longOffset' });
+    const tzString = date.toLocaleString('en-US', {
+      timeZone,
+      timeZoneName: 'longOffset',
+    });
     const match = tzString.match(/GMT([-+])(\d{1,2})(?::(\d{2}))?$/);
     if (!match) return 0;
     const [_, sign, hours, minutes = '0'] = match;

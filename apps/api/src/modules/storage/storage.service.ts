@@ -183,7 +183,9 @@ export class StorageService implements OnModuleInit {
    * Generates public read URL of a file path.
    */
   getFilePublicUrl(filePath: string): string {
-    const publicUrl = this.configService.get<string>('MINIO_PUBLIC_URL') || 'http://localhost:9000';
+    const publicUrl =
+      this.configService.get<string>('MINIO_PUBLIC_URL') ||
+      'http://localhost:9000';
     return `${publicUrl}/${this.bucketName}/${filePath}`;
   }
 

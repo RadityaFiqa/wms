@@ -640,22 +640,21 @@ export class SignedDocumentService {
     });
 
     // Draw small text credentials overlay beside signature image for verification auditing
-    const signatureDate = data.clientTime ? new Date(data.clientTime) : new Date();
+    const signatureDate = data.clientTime
+      ? new Date(data.clientTime)
+      : new Date();
     const timezone = data.clientTimeZone || 'UTC';
     const formattedDate = signatureDate.toLocaleString('id-ID', {
       timeZone: timezone,
     });
 
-    page.drawText(
-      `Digitally Signed by ${user.name}\nDate: ${formattedDate}`,
-      {
-        x: sigX,
-        y: Math.max(5, sigY - 18),
-        size: 5.5,
-        color: rgb(0.12, 0.43, 0.76),
-        lineHeight: 7,
-      },
-    );
+    page.drawText(`Digitally Signed by ${user.name}\nDate: ${formattedDate}`, {
+      x: sigX,
+      y: Math.max(5, sigY - 18),
+      size: 5.5,
+      color: rgb(0.12, 0.43, 0.76),
+      lineHeight: 7,
+    });
 
     // B. Draw QR code image
     page.drawImage(qrImage, {

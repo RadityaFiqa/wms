@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
 import {
   ImportStackCardInput,
@@ -168,10 +172,22 @@ export class StackCardService {
         where.AND = [
           {
             OR: [
-              { inventory: { name: { contains: query.search, mode: 'insensitive' } } },
-              { inventory: { sku: { contains: query.search, mode: 'insensitive' } } },
+              {
+                inventory: {
+                  name: { contains: query.search, mode: 'insensitive' },
+                },
+              },
+              {
+                inventory: {
+                  sku: { contains: query.search, mode: 'insensitive' },
+                },
+              },
               { lotName: { contains: query.search, mode: 'insensitive' } },
-              { location: { displayName: { contains: query.search, mode: 'insensitive' } } },
+              {
+                location: {
+                  displayName: { contains: query.search, mode: 'insensitive' },
+                },
+              },
             ],
           },
         ];
@@ -359,11 +375,7 @@ export class StackCardService {
     return record;
   }
 
-  async update(
-    warehouseId: number,
-    uuid: string,
-    data: UpdateStackCardInput,
-  ) {
+  async update(warehouseId: number, uuid: string, data: UpdateStackCardInput) {
     const record = await this.findOne(warehouseId, uuid);
 
     const placementDateParsed = new Date(data.placementDate);
@@ -396,7 +408,10 @@ export class StackCardService {
         fumigasi: data.fumigasi || null,
         fogging: data.fogging || null,
         keterangan: data.keterangan || null,
-        isPublished: data.isPublished !== undefined ? data.isPublished : record.isPublished,
+        isPublished:
+          data.isPublished !== undefined
+            ? data.isPublished
+            : record.isPublished,
       },
     });
   }
@@ -521,7 +536,11 @@ export class StackCardService {
     return dates.map((d) => d.snapshotDate);
   }
 
-  async getLocations(warehouseId: number, onlyPublished = false, dataSource?: 'REAL_STOCK' | 'CSV') {
+  async getLocations(
+    warehouseId: number,
+    onlyPublished = false,
+    dataSource?: 'REAL_STOCK' | 'CSV',
+  ) {
     let effectiveDataSource = dataSource;
     if (!effectiveDataSource) {
       const warehouse = await this.prisma.warehouse.findUnique({
@@ -571,7 +590,10 @@ export class StackCardService {
     return locations.map((l) => l.locationName);
   }
 
-  async updateKartuTumpukanSource(warehouseId: number, source: 'REAL_STOCK' | 'CSV') {
+  async updateKartuTumpukanSource(
+    warehouseId: number,
+    source: 'REAL_STOCK' | 'CSV',
+  ) {
     const warehouse = await this.prisma.warehouse.update({
       where: { id: warehouseId },
       data: { kartuTumpukanSource: source },
@@ -583,4 +605,3 @@ export class StackCardService {
     };
   }
 }
-

@@ -20,8 +20,18 @@ import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { AuditLogAction } from '../audit-log/audit-log.decorator';
-import { CreateDocumentTemplateSchema, UpdateDocumentTemplateSchema, UpdateAssemblySchema, UpdatePlaceholdersSchema } from '@bulog-wms/schema';
-import type { CreateDocumentTemplateInput, UpdateDocumentTemplateInput, UpdateAssemblyInput, UpdatePlaceholdersInput } from '@bulog-wms/schema';
+import {
+  CreateDocumentTemplateSchema,
+  UpdateDocumentTemplateSchema,
+  UpdateAssemblySchema,
+  UpdatePlaceholdersSchema,
+} from '@bulog-wms/schema';
+import type {
+  CreateDocumentTemplateInput,
+  UpdateDocumentTemplateInput,
+  UpdateAssemblyInput,
+  UpdatePlaceholdersInput,
+} from '@bulog-wms/schema';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 
 @Controller('templates')

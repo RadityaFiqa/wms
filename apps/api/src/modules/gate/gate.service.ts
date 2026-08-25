@@ -8,6 +8,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 import { StorageService } from '../storage/storage.service';
 import { ConfigService } from '@nestjs/config';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import * as QRCode from 'qrcode';
 import type {
   CreateGateOperationInput,
@@ -15,7 +16,11 @@ import type {
 } from '@bulog-wms/schema';
 import { CardType, VerificationStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
-import { getLocalStartOfDay, getLocalEndOfDay, formatDateInTimezone } from '@/core/utils/date';
+import {
+  getLocalStartOfDay,
+  getLocalEndOfDay,
+  formatDateInTimezone,
+} from '@/core/utils/date';
 import { getReconciledStockForQuants } from '@/core/utils/stock-reconciliation';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -30,6 +35,7 @@ export class GateService {
     private readonly warehouseContext: WarehouseContextService,
     private readonly storageService: StorageService,
     private readonly configService: ConfigService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   /**
@@ -45,8 +51,22 @@ export class GateService {
         path.join(__dirname, '..', '..', 'assets', 'logo-bulog.png'),
         path.join(process.cwd(), 'src', 'assets', 'logo-bulog.png'),
         path.join(process.cwd(), 'dist', 'assets', 'logo-bulog.png'),
-        path.join(process.cwd(), 'apps', 'api', 'src', 'assets', 'logo-bulog.png'),
-        path.join(process.cwd(), 'apps', 'api', 'dist', 'assets', 'logo-bulog.png'),
+        path.join(
+          process.cwd(),
+          'apps',
+          'api',
+          'src',
+          'assets',
+          'logo-bulog.png',
+        ),
+        path.join(
+          process.cwd(),
+          'apps',
+          'api',
+          'dist',
+          'assets',
+          'logo-bulog.png',
+        ),
       ];
 
       let resolvedPath = '';
@@ -63,10 +83,14 @@ export class GateService {
         return this.logoBufferCache;
       }
 
-      this.logger.warn('BULOG logo file not found in API assets. Using vector fallback.');
+      this.logger.warn(
+        'BULOG logo file not found in API assets. Using vector fallback.',
+      );
       return null;
     } catch (err: any) {
-      this.logger.warn(`Failed to read BULOG logo: ${err.message}. Using vector fallback.`);
+      this.logger.warn(
+        `Failed to read BULOG logo: ${err.message}. Using vector fallback.`,
+      );
       return null;
     }
   }
@@ -140,17 +164,14 @@ export class GateService {
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Generate sequential number
-      const opNumber = await this.generateOpNumber(
-        tx,
-        body.cardType as CardType,
-      );
+      const opNumber = await this.generateOpNumber(tx, body.cardType);
       const docRefId = (body as any).documentReferenceId;
 
       // 2. Create Gate Operation
       const gateOperation = await tx.gateOperation.create({
         data: {
           opNumber,
-          cardType: body.cardType as CardType,
+          cardType: body.cardType,
           driverName: body.driverName,
           licensePlate: body.licensePlate.toUpperCase(),
           clientPartner: body.clientPartner || null,
@@ -184,7 +205,7 @@ export class GateService {
           // Validate stack/quant quantity limits
           await this.validateStackQuantity(
             tx,
-            body.cardType as CardType,
+            body.cardType,
             prod.productId,
             prod.quantity,
             prod.quantId,
@@ -204,7 +225,7 @@ export class GateService {
           if (prod.quantId && prod.quantId !== null) {
             await this.reserveQuantStock(
               tx,
-              body.cardType as CardType,
+              body.cardType,
               prod.quantId,
               prod.quantity,
             );
@@ -212,7 +233,7 @@ export class GateService {
         }
       }
 
-      return { uuid : gateOperation.uuid };
+      return { uuid: gateOperation.uuid };
     });
   }
 
@@ -264,7 +285,9 @@ export class GateService {
         {
           documentReference: {
             OR: [
-              { documentNumber: { contains: query.search, mode: 'insensitive' } },
+              {
+                documentNumber: { contains: query.search, mode: 'insensitive' },
+              },
               { origin: { contains: query.search, mode: 'insensitive' } },
             ],
           },
@@ -505,17 +528,17 @@ export class GateService {
   /**
    * Helper to recalculate GateOperation status and synchronization properties.
    */
-  private async updateGateStatusAndRealisasi(
-    tx: any,
-    gateOperationId: number,
-  ) {
+  private async updateGateStatusAndRealisasi(tx: any, gateOperationId: number) {
     const gateOperation = await tx.gateOperation.findUnique({
       where: { id: gateOperationId },
     });
 
     if (!gateOperation) return;
 
-    if (gateOperation.status === 'VERIFIED' || gateOperation.status === 'CANCELED') {
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
       return;
     }
 
@@ -596,17 +619,19 @@ export class GateService {
               (item: any) => item.inventoryId === gp.inventoryId,
             );
             if (docItem) {
-              const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
-                where: {
-                  inventoryId: gp.inventoryId,
-                  gateOperation: {
-                    documentReferenceId: newDocRefId,
-                    id: { not: gateOperation.id },
-                    status: { notIn: ['CANCELED', 'REJECTED'] },
+              const otherOpsAggregate = await tx.gateOperationProduct.aggregate(
+                {
+                  where: {
+                    inventoryId: gp.inventoryId,
+                    gateOperation: {
+                      documentReferenceId: newDocRefId,
+                      id: { not: gateOperation.id },
+                      status: { notIn: ['CANCELED', 'REJECTED'] },
+                    },
                   },
+                  _sum: { quantity: true },
                 },
-                _sum: { quantity: true },
-              });
+              );
               const otherUsed = otherOpsAggregate._sum.quantity || 0;
               const currentAssigned = gp.quantity;
 
@@ -681,10 +706,7 @@ export class GateService {
       }
 
       // Recalculate status and references list
-      await this.updateGateStatusAndRealisasi(
-        tx,
-        gateOperation.id,
-      );
+      await this.updateGateStatusAndRealisasi(tx, gateOperation.id);
 
       const result = await tx.gateOperation.findUnique({
         where: { id: gateOperation.id },
@@ -735,10 +757,7 @@ export class GateService {
       });
 
       // Release Reservations
-      if (
-        prevStatus !== 'CANCELED' &&
-        prevStatus !== 'VERIFIED'
-      ) {
+      if (prevStatus !== 'CANCELED' && prevStatus !== 'VERIFIED') {
         for (const p of gateOperation.products) {
           if (p.quantId) {
             await this.releaseQuantStock(
@@ -938,12 +957,7 @@ export class GateService {
 
       const newObj: any = {};
       for (const key of Object.keys(obj)) {
-        if (
-          key === 'id' &&
-          !isProduct &&
-          !isGateOpProduct
-        )
-          continue;
+        if (key === 'id' && !isProduct && !isGateOpProduct) continue;
         newObj[key] = this.stripIdField(obj[key]);
       }
       return newObj;
@@ -978,7 +992,9 @@ export class GateService {
         where: {
           gateOperation: {
             documentReferenceId,
-            id: excludeGateOperationId ? { not: excludeGateOperationId } : undefined,
+            id: excludeGateOperationId
+              ? { not: excludeGateOperationId }
+              : undefined,
             status: {
               notIn: ['CANCELED', 'REJECTED'],
             },
@@ -1001,7 +1017,10 @@ export class GateService {
             inventoryId: prod.productId,
           },
         });
-        currentOpQty = currentOpProducts.reduce((sum: number, p: any) => sum + p.quantity, 0);
+        currentOpQty = currentOpProducts.reduce(
+          (sum: number, p: any) => sum + p.quantity,
+          0,
+        );
       }
 
       const totalQty = otherOpsQty + currentOpQty + prod.quantity;
@@ -1246,7 +1265,10 @@ export class GateService {
             id: { not: cargoItem.id },
           },
         });
-        const currentOpOtherQty = currentOpProducts.reduce((sum: number, p: any) => sum + p.quantity, 0);
+        const currentOpOtherQty = currentOpProducts.reduce(
+          (sum: number, p: any) => sum + p.quantity,
+          0,
+        );
 
         const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
           where: {
@@ -1276,7 +1298,10 @@ export class GateService {
           const erpQty = docItem.productQty || docItem.quantity || 0;
           const totalQty = otherOpsQty + currentOpOtherQty + targetQuantity;
           if (totalQty > erpQty) {
-            const remainingQty = Math.max(0, erpQty - otherOpsQty - currentOpOtherQty);
+            const remainingQty = Math.max(
+              0,
+              erpQty - otherOpsQty - currentOpOtherQty,
+            );
             throw new BadRequestException(
               `Kuantitas barang (${targetQuantity} ${docItem.uom}) melebihi sisa kuantitas pada dokumen ERP untuk ${docItem.productName} (Sisa: ${remainingQty} ${docItem.uom}).`,
             );
@@ -1395,7 +1420,10 @@ export class GateService {
     // Quant table is read-only for transaction processes.
   }
 
-  async generateDeliveryOrderPdf(idOrUuid: string, userId?: number): Promise<Buffer> {
+  async generateDeliveryOrderPdf(
+    idOrUuid: string,
+    userId?: number,
+  ): Promise<Buffer> {
     const gateOperation = await this.prisma.gateOperation.findFirst({
       where: {
         OR: [
@@ -1461,9 +1489,13 @@ export class GateService {
 
     if (activeSig?.fileKey) {
       try {
-        signatureBuffer = await this.storageService.getFileBuffer(activeSig.fileKey);
+        signatureBuffer = await this.storageService.getFileBuffer(
+          activeSig.fileKey,
+        );
       } catch (err: any) {
-        this.logger.warn(`Failed to fetch user signature image from storage: ${err.message}`);
+        this.logger.warn(
+          `Failed to fetch user signature image from storage: ${err.message}`,
+        );
       }
     }
 
@@ -1521,8 +1553,12 @@ export class GateService {
         const hLabel2 = label2 ? doc.heightOfString(label2, { width: 110 }) : 0;
 
         doc.font('Helvetica');
-        const hVal1 = label1 ? doc.heightOfString(`:  ${val1 || '-'}`, { width: 140 }) : 0;
-        const hVal2 = label2 ? doc.heightOfString(`:  ${val2 || '-'}`, { width: 125 }) : 0;
+        const hVal1 = label1
+          ? doc.heightOfString(`:  ${val1 || '-'}`, { width: 140 })
+          : 0;
+        const hVal2 = label2
+          ? doc.heightOfString(`:  ${val2 || '-'}`, { width: 125 })
+          : 0;
 
         const rowHeight = Math.max(hLabel1, hLabel2, hVal1, hVal2, 14);
 
@@ -1640,12 +1676,10 @@ export class GateService {
             width: 180,
             ellipsis: true,
           });
-        doc
-          .font('Helvetica')
-          .text(p.inventory?.sku || '-', 255, currentY + 6, {
-            width: 50,
-            ellipsis: true,
-          });
+        doc.font('Helvetica').text(p.inventory?.sku || '-', 255, currentY + 6, {
+          width: 50,
+          ellipsis: true,
+        });
         doc.text(p.inventory?.uom || '-', 310, currentY + 6, { width: 30 });
         doc.text(p.quantity.toLocaleString('id-ID'), 345, currentY + 6, {
           width: 45,
@@ -1687,8 +1721,9 @@ export class GateService {
       });
 
       const secQtyEntries = Array.from(secondaryQtyMap.entries());
-      const numSecQtyLines = secQtyEntries.length > 0 ? secQtyEntries.length : 1;
-      const rectHeight = 40 + (numSecQtyLines * 14);
+      const numSecQtyLines =
+        secQtyEntries.length > 0 ? secQtyEntries.length : 1;
+      const rectHeight = 40 + numSecQtyLines * 14;
 
       doc.fillColor('#f8fafc').rect(320, currentY, 235, rectHeight).fill();
       doc.fillColor('#475569').fontSize(8.5).font('Helvetica-Bold');
@@ -1703,9 +1738,13 @@ export class GateService {
         doc.text(`:  0 Kg`, 430, currentY + 36);
       } else {
         secQtyEntries.forEach(([unit, sumSecQty], index) => {
-          const lineY = currentY + 36 + (index * 14);
+          const lineY = currentY + 36 + index * 14;
           doc.text(index === 0 ? 'Total Kuantum' : '', 330, lineY);
-          doc.text(`:  ${sumSecQty.toLocaleString('id-ID')} ${unit}`, 430, lineY);
+          doc.text(
+            `:  ${sumSecQty.toLocaleString('id-ID')} ${unit}`,
+            430,
+            lineY,
+          );
         });
       }
 
@@ -1723,7 +1762,7 @@ export class GateService {
           'Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.',
           40,
           currentY,
-          { width: 515, align: 'center' }
+          { width: 515, align: 'center' },
         );
 
       currentY += 25;
@@ -1742,12 +1781,20 @@ export class GateService {
 
       if (signatureBuffer && activeSig?.fileKey) {
         const fileKeyLower = activeSig.fileKey.toLowerCase();
-        if (fileKeyLower.endsWith('.png') || fileKeyLower.endsWith('.jpg') || fileKeyLower.endsWith('.jpeg')) {
+        if (
+          fileKeyLower.endsWith('.png') ||
+          fileKeyLower.endsWith('.jpg') ||
+          fileKeyLower.endsWith('.jpeg')
+        ) {
           const imageX = 375 + (150 - 100) / 2;
           try {
-            doc.image(signatureBuffer, imageX, currentY + 15, { fit: [100, 45] });
+            doc.image(signatureBuffer, imageX, currentY + 15, {
+              fit: [100, 45],
+            });
           } catch (err: any) {
-            this.logger.warn(`Failed to render signature image in PDF: ${err.message}`);
+            this.logger.warn(
+              `Failed to render signature image in PDF: ${err.message}`,
+            );
           }
         }
       }
@@ -1769,7 +1816,10 @@ export class GateService {
     });
   }
 
-  async generateDeliveryOrderHtml(idOrUuid: string, userId?: number): Promise<string> {
+  async generateDeliveryOrderHtml(
+    idOrUuid: string,
+    userId?: number,
+  ): Promise<string> {
     const gateOperation = await this.prisma.gateOperation.findFirst({
       where: {
         OR: [
@@ -1802,14 +1852,18 @@ export class GateService {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
 
-    const appDomain = this.configService.get<string>('APP_DOMAIN') || 'localhost:3001';
-    const useSSL = this.configService.get<string>('FRONTEND_USE_SSL') === 'true';
+    const appDomain =
+      this.configService.get<string>('APP_DOMAIN') || 'localhost:3001';
+    const useSSL =
+      this.configService.get<string>('FRONTEND_USE_SSL') === 'true';
     const protocol = useSSL ? 'https' : 'http';
     const verificationUrl = `${protocol}://${appDomain}/gate-operations/${gateOperation.uuid}`;
 
     const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl);
     const logoBuffer = await this.getLogoBuffer();
-    const logoUrl = logoBuffer ? `data:image/png;base64,${logoBuffer.toString('base64')}` : null;
+    const logoUrl = logoBuffer
+      ? `data:image/png;base64,${logoBuffer.toString('base64')}`
+      : null;
 
     let signatureUrl: string | null = null;
     let verifierName = '........................';
@@ -1831,20 +1885,27 @@ export class GateService {
         verifierName = user.name;
         activeSig = user.signatures?.[0];
       }
-    } 
+    }
 
     if (activeSig?.fileKey) {
       try {
-        const sigBuffer = await this.storageService.getFileBuffer(activeSig.fileKey);
+        const sigBuffer = await this.storageService.getFileBuffer(
+          activeSig.fileKey,
+        );
         let mimeType = 'image/png';
-        if (activeSig.fileKey.toLowerCase().endsWith('.jpg') || activeSig.fileKey.toLowerCase().endsWith('.jpeg')) {
+        if (
+          activeSig.fileKey.toLowerCase().endsWith('.jpg') ||
+          activeSig.fileKey.toLowerCase().endsWith('.jpeg')
+        ) {
           mimeType = 'image/jpeg';
         } else if (activeSig.fileKey.toLowerCase().endsWith('.svg')) {
           mimeType = 'image/svg+xml';
         }
         signatureUrl = `data:${mimeType};base64,${sigBuffer.toString('base64')}`;
       } catch (err: any) {
-        this.logger.warn(`Failed to fetch user signature image for HTML: ${err.message}`);
+        this.logger.warn(
+          `Failed to fetch user signature image for HTML: ${err.message}`,
+        );
       }
     }
 
@@ -1890,24 +1951,32 @@ export class GateService {
     });
 
     const secQtyEntries = Array.from(secondaryQtyMap.entries());
-    const totalKuantumRowsHtml = secQtyEntries.length === 0
-      ? `
+    const totalKuantumRowsHtml =
+      secQtyEntries.length === 0
+        ? `
         <div class="summary-row" style="margin-top: 5px; border-top: 1px solid #cbd5e1; padding-top: 5px;">
           <div class="summary-label">Total Kuantum</div>
           <div class="summary-value">0 Kg</div>
         </div>
       `
-      : secQtyEntries.map(([unit, sumSecQty], idx) => `
+        : secQtyEntries
+            .map(
+              ([unit, sumSecQty], idx) => `
         <div class="summary-row" style="margin-top: 5px; ${idx === 0 ? 'border-top: 1px solid #cbd5e1; padding-top: 5px;' : ''}">
           <div class="summary-label">${idx === 0 ? 'Total Kuantum' : ''}</div>
           <div class="summary-value">${sumSecQty.toLocaleString('id-ID')} ${unit}</div>
         </div>
-      `).join('');
+      `,
+            )
+            .join('');
 
     const rowsHtml = products
       .map((p, idx) => {
         const locationName = p.location?.displayName || '-';
-        const secondaryQtyStr = this.formatSecondaryQty(p.quantity, p.inventory?.uom);
+        const secondaryQtyStr = this.formatSecondaryQty(
+          p.quantity,
+          p.inventory?.uom,
+        );
         return `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
@@ -2254,6 +2323,7 @@ export class GateService {
             'GATE_OPERATION_VERIFY',
             'GATE_OPERATION_CANCEL',
             'GATE_OPERATION_CONFIRM',
+            'GATE_OPERATION_REJECT',
             'GATE_OPERATION_ASSIGN_REFERENCES',
             'GATE_OPERATION_UNASSIGN_REFERENCE',
             'GATE_OPERATION_CARGO_ADD',
@@ -2289,5 +2359,151 @@ export class GateService {
         details: parsedDetails,
       };
     });
+  }
+
+  async bulkApprove(uuids: string[], userId: number) {
+    let successCount = 0;
+    let failedCount = 0;
+    const results: Array<{ id: string; success: boolean; message?: string }> =
+      [];
+
+    for (const uuid of uuids) {
+      try {
+        const gateOperation = await this.prisma.gateOperation.findUnique({
+          where: { uuid },
+        });
+
+        if (!gateOperation) {
+          throw new NotFoundException('Gate operation tidak ditemukan.');
+        }
+
+        if (gateOperation.status !== 'PENDING') {
+          throw new BadRequestException(
+            'Operasi gerbang tidak dalam status PENDING.',
+          );
+        }
+
+        if (!gateOperation.documentReferenceId) {
+          throw new BadRequestException('Dokumen referensi tidak ditemukan.');
+        }
+
+        // Call the single confirm verification business logic
+        await this.confirmGateVerification(uuid, userId);
+
+        // Record individual audit log
+        await this.auditLogService.log({
+          actorId: userId,
+          action: 'GATE_OPERATION_CONFIRM',
+          details: {
+            operationUuid: uuid,
+            bulk: true,
+          },
+        });
+
+        successCount++;
+        results.push({ id: uuid, success: true });
+      } catch (error: any) {
+        failedCount++;
+        results.push({
+          id: uuid,
+          success: false,
+          message: error.message || 'Gagal menyetujui dokumen.',
+        });
+      }
+    }
+
+    return { successCount, failedCount, results };
+  }
+
+  async bulkReject(uuids: string[], reason: string, userId: number) {
+    if (!reason || reason.trim() === '') {
+      throw new BadRequestException('Alasan penolakan tidak boleh kosong.');
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    const results: Array<{ id: string; success: boolean; message?: string }> =
+      [];
+
+    for (const uuid of uuids) {
+      try {
+        const gateOperation = await this.prisma.gateOperation.findUnique({
+          where: { uuid },
+          include: {
+            products: true,
+          },
+        });
+
+        if (!gateOperation) {
+          throw new NotFoundException('Gate operation tidak ditemukan.');
+        }
+
+        if (gateOperation.status !== 'PENDING') {
+          throw new BadRequestException(
+            'Operasi gerbang tidak dalam status PENDING.',
+          );
+        }
+
+        if (!gateOperation.documentReferenceId) {
+          throw new BadRequestException('Dokumen referensi tidak ditemukan.');
+        }
+
+        await this.prisma.$transaction(async (tx) => {
+          const prevStatus = gateOperation.status;
+
+          // Update status to REJECTED
+          await tx.gateOperation.update({
+            where: { id: gateOperation.id },
+            data: {
+              status: 'REJECTED',
+              verifiedById: userId,
+              verifiedAt: new Date(),
+              verificationNotes: reason,
+            },
+          });
+
+          // Release Reservations
+          if (
+            prevStatus !== 'CANCELED' &&
+            prevStatus !== 'VERIFIED' &&
+            prevStatus !== 'REJECTED'
+          ) {
+            for (const p of gateOperation.products) {
+              if (p.quantId) {
+                await this.releaseQuantStock(
+                  tx,
+                  gateOperation.cardType,
+                  p.quantId,
+                  p.quantity,
+                );
+              }
+            }
+          }
+        });
+
+        // Record individual audit log
+        await this.auditLogService.log({
+          actorId: userId,
+          action: 'GATE_OPERATION_REJECT',
+          details: {
+            operationUuid: uuid,
+            reason,
+            bulk: true,
+          },
+        });
+
+        successCount++;
+        results.push({ id: uuid, success: true });
+      } catch (error: any) {
+        failedCount++;
+        results.push({
+          id: uuid,
+          success: false,
+          message: error.message || 'Gagal menolak dokumen.',
+        });
+      }
+    }
+
+    return { successCount, failedCount, results };
   }
 }

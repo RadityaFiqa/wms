@@ -1,8 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
-import type { CreateDocumentTemplateInput, UpdateDocumentTemplateInput, UpdateAssemblyInput, UpdatePlaceholdersInput } from '@bulog-wms/schema';
+import type {
+  CreateDocumentTemplateInput,
+  UpdateDocumentTemplateInput,
+  UpdateAssemblyInput,
+  UpdatePlaceholdersInput,
+} from '@bulog-wms/schema';
 import PizZip = require('pizzip');
 import Docxtemplater = require('docxtemplater');
 
@@ -29,7 +38,12 @@ export class DocumentTemplateService {
       doc.compile();
       const tags = inspectModule.getAllTags();
 
-      const placeholders: Array<{ key: string; label: string; type: string; required: boolean }> = [];
+      const placeholders: Array<{
+        key: string;
+        label: string;
+        type: string;
+        required: boolean;
+      }> = [];
       const processTags = (obj: any, prefix = '') => {
         for (const key of Object.keys(obj)) {
           const fullKey = prefix ? `${prefix}.${key}` : key;
@@ -56,7 +70,9 @@ export class DocumentTemplateService {
       processTags(tags);
       return placeholders;
     } catch (e: any) {
-      throw new BadRequestException(`Gagal membaca template DOCX: ${e.message}`);
+      throw new BadRequestException(
+        `Gagal membaca template DOCX: ${e.message}`,
+      );
     }
   }
 
@@ -73,9 +89,26 @@ export class DocumentTemplateService {
     if (lower.includes('date') || lower.includes('tanggal')) return 'DATE';
     if (lower.includes('time') || lower.includes('jam')) return 'TIME';
     if (lower.includes('email')) return 'TEXT';
-    if (lower.includes('amount') || lower.includes('price') || lower.includes('harga') || lower.includes('total')) return 'CURRENCY';
-    if (lower.includes('qty') || lower.includes('quantity') || lower.includes('jumlah') || lower.includes('count')) return 'NUMBER';
-    if (lower.includes('is_') || lower.includes('has_') || lower.includes('status')) return 'BOOLEAN';
+    if (
+      lower.includes('amount') ||
+      lower.includes('price') ||
+      lower.includes('harga') ||
+      lower.includes('total')
+    )
+      return 'CURRENCY';
+    if (
+      lower.includes('qty') ||
+      lower.includes('quantity') ||
+      lower.includes('jumlah') ||
+      lower.includes('count')
+    )
+      return 'NUMBER';
+    if (
+      lower.includes('is_') ||
+      lower.includes('has_') ||
+      lower.includes('status')
+    )
+      return 'BOOLEAN';
     return 'TEXT';
   }
 
@@ -110,7 +143,11 @@ export class DocumentTemplateService {
         where: {
           OR: [
             { uuid: params.categoryId },
-            { id: isNaN(Number(params.categoryId)) ? -1 : Number(params.categoryId) },
+            {
+              id: isNaN(Number(params.categoryId))
+                ? -1
+                : Number(params.categoryId),
+            },
           ],
           deletedAt: null,
         },
@@ -118,7 +155,10 @@ export class DocumentTemplateService {
       if (category) {
         where.categoryId = category.id;
       } else {
-        return { data: [], pagination: { total: 0, page, limit, totalPages: 0 } };
+        return {
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
       }
     }
 
@@ -181,7 +221,11 @@ export class DocumentTemplateService {
   /**
    * Create template and auto detect placeholders
    */
-  async create(body: CreateDocumentTemplateInput, file: Express.Multer.File, userId: number) {
+  async create(
+    body: CreateDocumentTemplateInput,
+    file: Express.Multer.File,
+    userId: number,
+  ) {
     // Check if code is unique
     const existing = await this.prisma.documentTemplate.findFirst({
       where: { code: body.code, deletedAt: null },
@@ -206,12 +250,18 @@ export class DocumentTemplateService {
 
     // Upload template DOCX to MinIO
     const warehouseId = this.warehouseContext.getWarehouseId();
-    const folder = warehouseId ? `templates/wh-${warehouseId}` : 'templates/global';
-    
+    const folder = warehouseId
+      ? `templates/wh-${warehouseId}`
+      : 'templates/global';
+
     // Auto-detect placeholders
     const placeholders = this.extractPlaceholders(file.buffer);
 
-    const attachment = await this.storageService.uploadFile(file, folder, userId);
+    const attachment = await this.storageService.uploadFile(
+      file,
+      folder,
+      userId,
+    );
 
     return this.prisma.documentTemplate.create({
       data: {
@@ -247,7 +297,11 @@ export class DocumentTemplateService {
   /**
    * Upload new version of template
    */
-  async uploadNewVersion(uuid: string, file: Express.Multer.File, userId: number) {
+  async uploadNewVersion(
+    uuid: string,
+    file: Express.Multer.File,
+    userId: number,
+  ) {
     const template = await this.findOne(uuid);
 
     // Auto-detect placeholders of the new file
@@ -255,8 +309,14 @@ export class DocumentTemplateService {
 
     // Upload new template DOCX to MinIO
     const warehouseId = this.warehouseContext.getWarehouseId();
-    const folder = warehouseId ? `templates/wh-${warehouseId}` : 'templates/global';
-    const attachment = await this.storageService.uploadFile(file, folder, userId);
+    const folder = warehouseId
+      ? `templates/wh-${warehouseId}`
+      : 'templates/global';
+    const attachment = await this.storageService.uploadFile(
+      file,
+      folder,
+      userId,
+    );
 
     return this.prisma.documentTemplate.update({
       where: { id: template.id },
@@ -303,7 +363,9 @@ export class DocumentTemplateService {
           where: { code: item.templateCode, deletedAt: null },
         });
         if (!exist) {
-          throw new BadRequestException(`Template dengan kode "${item.templateCode}" di assembly tidak ditemukan.`);
+          throw new BadRequestException(
+            `Template dengan kode "${item.templateCode}" di assembly tidak ditemukan.`,
+          );
         }
       }
     }

@@ -58,6 +58,7 @@ export class InventoryController {
   async findAllProducts(
     @Query('search') search?: string,
     @Query('selectedId') selectedId?: string,
+    @Query('selectedUuid') selectedUuid?: string,
     @Query('onlyAvailable') onlyAvailable?: string,
     @Query('limit') limit?: string,
   ) {
@@ -105,6 +106,20 @@ export class InventoryController {
         const selectedProduct = await this.prisma.inventory.findFirst({
           where: {
             id: selId,
+            warehouseId,
+          },
+        });
+        if (selectedProduct) {
+          products.unshift(selectedProduct);
+        }
+      }
+    }
+
+    if (selectedUuid) {
+      if (!products.some((p) => p.uuid === selectedUuid)) {
+        const selectedProduct = await this.prisma.inventory.findFirst({
+          where: {
+            uuid: selectedUuid,
             warehouseId,
           },
         });

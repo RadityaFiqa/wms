@@ -5,7 +5,6 @@ import { API_ROUTES } from "@/lib/api-routes";
 import { useAuthStore } from "@/store/auth";
 
 export function useGate() {
-  const { activeWarehouse } = useAuthStore();
 
   const refreshList = useCallback(() => {
     mutate(
@@ -69,6 +68,30 @@ export function useGate() {
       );
       refreshList();
       mutate(API_ROUTES.gateOperations.detail(operationUuid));
+      return res.data;
+    },
+    [refreshList],
+  );
+
+  const bulkApprove = useCallback(
+    async (payload: { ids: string[] }) => {
+      const res = await api.post(
+        API_ROUTES.gateVerifications.bulkApprove,
+        payload,
+      );
+      refreshList();
+      return res.data;
+    },
+    [refreshList],
+  );
+
+  const bulkReject = useCallback(
+    async (payload: { ids: string[]; reason: string }) => {
+      const res = await api.post(
+        API_ROUTES.gateVerifications.bulkReject,
+        payload,
+      );
+      refreshList();
       return res.data;
     },
     [refreshList],
@@ -148,6 +171,8 @@ export function useGate() {
     verifyGateOperation,
     cancelGateVerification,
     confirmGateVerification,
+    bulkApprove,
+    bulkReject,
     updateNotesAttachments,
     addCargoItem,
     deleteCargoItem,

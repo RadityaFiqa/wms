@@ -5,7 +5,8 @@ import {
   useReconciliation,
   useReconciliationDetail,
 } from "@/hooks/useReconciliation";
-import { useProducts, useWarehouseLocations } from "@/hooks/useInventory";
+import { useWarehouseLocations } from "@/hooks/useInventory";
+import { ProductSearchSelect } from "@/components/ProductSearchSelect";
 import { useAuthStore } from "@/store/auth";
 import { formatSecondaryQty } from "@/lib/quantity";
 import {
@@ -31,7 +32,7 @@ export default function ReconciliationPage() {
     locationId,
   });
 
-  const { products } = useProducts();
+  // Product filter is handled server-side by ProductSearchSelect
   const { locations } = useWarehouseLocations();
 
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -101,18 +102,12 @@ export default function ReconciliationPage() {
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Filter Produk
             </label>
-            <select
+            <ProductSearchSelect
               value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="">Semua Produk</option>
-              {products.map((p: any) => (
-                <option key={p.uuid} value={p.uuid}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={(val) => setProductId(val)}
+              placeholder="Semua Produk"
+              clearable
+            />
           </div>
 
           {/* Location Filter */}

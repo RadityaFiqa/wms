@@ -113,7 +113,9 @@ export class InventoryService {
             barcode: {},
             name: {},
             is_published: {},
-            product_template_variant_value_ids: { fields: { display_name: {} } },
+            product_template_variant_value_ids: {
+              fields: { display_name: {} },
+            },
             company_id: { fields: { display_name: {} } },
             lst_price: {},
             standard_price: {},
@@ -149,7 +151,9 @@ export class InventoryService {
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));
-      throw new BadRequestException(`Gagal memanggil API Odoo product.product: ${err.message}`);
+      throw new BadRequestException(
+        `Gagal memanggil API Odoo product.product: ${err.message}`,
+      );
     }
 
     const products = productResponse?.records || [];
@@ -219,7 +223,9 @@ export class InventoryService {
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));
-      throw new BadRequestException(`Gagal memanggil API Odoo stock.location: ${err.message}`);
+      throw new BadRequestException(
+        `Gagal memanggil API Odoo stock.location: ${err.message}`,
+      );
     }
 
     const locations = locationResponse?.records || [];
@@ -285,7 +291,9 @@ export class InventoryService {
           },
         })
         .catch((e) => console.error('Failed to log sync status error', e));
-      throw new BadRequestException(`Gagal memanggil API Odoo stock.quant: ${err.message}`);
+      throw new BadRequestException(
+        `Gagal memanggil API Odoo stock.quant: ${err.message}`,
+      );
     }
 
     const records = response?.records || [];
@@ -294,12 +302,18 @@ export class InventoryService {
       // 5. DB Transaction to save results locally
       await this.prisma.$transaction(
         async (tx) => {
-          await this.saveInventorySyncData(tx, warehouseId, products, locations, records);
+          await this.saveInventorySyncData(
+            tx,
+            warehouseId,
+            products,
+            locations,
+            records,
+          );
         },
         { timeout: 900_000 },
       );
 
-      console.log(`completed`)
+      console.log(`completed`);
 
       const finishedAt = new Date();
       await this.prisma.odooAccount.update({
@@ -346,7 +360,9 @@ export class InventoryService {
       where: { id: { in: allProductIds } },
       select: { id: true, sku: true, name: true, uom: true, warehouseId: true },
     });
-    const existingMap = new Map<number, typeof existingInv[number]>(existingInv.map(p => [p.id, p]));
+    const existingMap = new Map<number, (typeof existingInv)[number]>(
+      existingInv.map((p) => [p.id, p]),
+    );
 
     const productsToCreate: any[] = [];
     const productsToUpdate: any[] = [];
@@ -354,7 +370,8 @@ export class InventoryService {
     for (const record of products) {
       const odooProdId = record.id;
       const rawSku = record.default_code;
-      const productName = record.name || record.display_name || 'Unnamed Product';
+      const productName =
+        record.name || record.display_name || 'Unnamed Product';
       const sku =
         rawSku && typeof rawSku === 'string' && rawSku.trim() !== ''
           ? rawSku.trim()
@@ -406,12 +423,14 @@ export class InventoryService {
     }
 
     // Safety check: process any products from stock.quant records that might not be in the products list
-    const quantProductIds = records.map((r: any) => r.product_id?.id).filter(Boolean);
+    const quantProductIds = records
+      .map((r: any) => r.product_id?.id)
+      .filter(Boolean);
     const finalExistingInv = await tx.inventory.findMany({
       where: { id: { in: quantProductIds } },
       select: { id: true },
     });
-    const finalExistingInvIds = new Set(finalExistingInv.map(p => p.id));
+    const finalExistingInvIds = new Set(finalExistingInv.map((p) => p.id));
 
     for (const record of records) {
       const odooProd = record.product_id;
@@ -451,14 +470,17 @@ export class InventoryService {
       where: { id: { in: allLocIds } },
       select: { id: true, displayName: true, warehouseId: true },
     });
-    const existingLocMap = new Map<number, typeof existingLocs[number]>(existingLocs.map(l => [l.id, l]));
+    const existingLocMap = new Map<number, (typeof existingLocs)[number]>(
+      existingLocs.map((l) => [l.id, l]),
+    );
 
     const locsToCreate: any[] = [];
     const locsToUpdate: any[] = [];
 
     for (const record of locations) {
       const odooLocId = record.id;
-      const displayName = record.complete_name || record.display_name || 'Unnamed Location';
+      const displayName =
+        record.complete_name || record.display_name || 'Unnamed Location';
 
       const existing = existingLocMap.get(odooLocId);
       if (!existing) {
@@ -497,12 +519,14 @@ export class InventoryService {
     }
 
     // Safety check: collect unique locations from stock.quant records and Upsert them
-    const quantLocIds = records.map((r: any) => r.location_id?.id).filter(Boolean);
+    const quantLocIds = records
+      .map((r: any) => r.location_id?.id)
+      .filter(Boolean);
     const finalExistingLoc = await tx.location.findMany({
       where: { id: { in: quantLocIds } },
       select: { id: true },
     });
-    const finalExistingLocIds = new Set(finalExistingLoc.map(l => l.id));
+    const finalExistingLocIds = new Set(finalExistingLoc.map((l) => l.id));
 
     const uniqueQuantLocations = new Map<number, string>();
     for (const record of records) {
@@ -543,7 +567,9 @@ export class InventoryService {
       },
       select: { id: true },
     });
-    const existingQuantIds = new Set<number>(existingQuants.map((q: any) => q.id));
+    const existingQuantIds = new Set<number>(
+      existingQuants.map((q: any) => q.id),
+    );
 
     // Prepare quants to create and update
     const quantsToCreate: any[] = [];
@@ -560,9 +586,7 @@ export class InventoryService {
       const quantId = record.id;
       incomingQuantIds.add(quantId);
 
-      const lotName = record.lot_id
-        ? record.lot_id.display_name || null
-        : null;
+      const lotName = record.lot_id ? record.lot_id.display_name || null : null;
       const quantity = Number(record.quantity) || 0.0;
       const reservedQuantity = Number(record.reserved_quantity) || 0.0;
       const availableQuantity = Number(record.available_quantity) || 0.0;
@@ -611,7 +635,9 @@ export class InventoryService {
 
     // Set quants that are NOT in the incoming list to 0 quantity instead of deleting them,
     // to preserve their references in GateOperationProduct (due to ON DELETE SET NULL)
-    const quantIdsToZero = [...existingQuantIds].filter((id) => !incomingQuantIds.has(id));
+    const quantIdsToZero = [...existingQuantIds].filter(
+      (id) => !incomingQuantIds.has(id),
+    );
     if (quantIdsToZero.length > 0) {
       await tx.quant.updateMany({
         where: {

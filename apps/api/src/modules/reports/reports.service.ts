@@ -154,37 +154,38 @@ export class ReportsService {
     });
 
     // Fetch all completed independent ERP Document References that happened yesterday (across all warehouses)
-    const yesterdayIndependentDocs = await this.prisma.documentReference.findMany({
-      where: {
-        state: 'done',
-        pickingTypeCode: { in: ['incoming', 'outgoing'] },
-        gateOperations: {
-          none: {
-            status: {
-              in: ['PENDING', 'VERIFIED'],
+    const yesterdayIndependentDocs =
+      await this.prisma.documentReference.findMany({
+        where: {
+          state: 'done',
+          pickingTypeCode: { in: ['incoming', 'outgoing'] },
+          gateOperations: {
+            none: {
+              status: {
+                in: ['PENDING', 'VERIFIED'],
+              },
             },
           },
+          OR: [
+            {
+              dateDone: {
+                gte: start,
+                lte: end,
+              },
+            },
+            {
+              dateDone: null,
+              updatedAt: {
+                gte: start,
+                lte: end,
+              },
+            },
+          ],
         },
-        OR: [
-          {
-            dateDone: {
-              gte: start,
-              lte: end,
-            },
-          },
-          {
-            dateDone: null,
-            updatedAt: {
-              gte: start,
-              lte: end,
-            },
-          },
-        ],
-      },
-      include: {
-        items: true,
-      },
-    });
+        include: {
+          items: true,
+        },
+      });
 
     // Fetch all completed Document References in the system (up to the snapshot end date)
     const completedDocs = await this.prisma.documentReference.findMany({
@@ -226,13 +227,22 @@ export class ReportsService {
       }
 
       // Group gate operations products by inventoryId
-      const docGateProductsMap = new Map<number, { total: number; locations: Map<number, number> }>();
+      const docGateProductsMap = new Map<
+        number,
+        { total: number; locations: Map<number, number> }
+      >();
       for (const op of doc.gateOperations) {
         for (const gp of op.products) {
-          const current = docGateProductsMap.get(gp.inventoryId) || { total: 0, locations: new Map<number, number>() };
+          const current = docGateProductsMap.get(gp.inventoryId) || {
+            total: 0,
+            locations: new Map<number, number>(),
+          };
           current.total += gp.quantity;
           if (gp.locationId) {
-            current.locations.set(gp.locationId, (current.locations.get(gp.locationId) || 0) + gp.quantity);
+            current.locations.set(
+              gp.locationId,
+              (current.locations.get(gp.locationId) || 0) + gp.quantity,
+            );
           }
           docGateProductsMap.set(gp.inventoryId, current);
         }
@@ -241,7 +251,10 @@ export class ReportsService {
       for (const item of doc.items) {
         const invId = item.inventoryId;
         const erpQty = item.productQty;
-        const gateInfo = docGateProductsMap.get(invId) || { total: 0, locations: new Map<number, number>() };
+        const gateInfo = docGateProductsMap.get(invId) || {
+          total: 0,
+          locations: new Map<number, number>(),
+        };
         const sumGateQty = gateInfo.total;
 
         if (sumGateQty !== erpQty) {
@@ -255,8 +268,13 @@ export class ReportsService {
           if (adjustment !== 0) {
             // Distribute adjustment to locations
             if (gateInfo.locations.size > 0) {
-              const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
-              const distributed = this.distributeAdjustment(adjustment, locList);
+              const locList = Array.from(gateInfo.locations.entries()).map(
+                ([id, qty]) => ({ id, qty }),
+              );
+              const distributed = this.distributeAdjustment(
+                adjustment,
+                locList,
+              );
               for (const [locId, locAdj] of distributed.entries()) {
                 const key = `${locId}_${invId}`;
                 locationAdjustmentsMap.set(
@@ -335,16 +353,30 @@ export class ReportsService {
       for (const item of doc.items) {
         const prodId = item.inventoryId;
         const cacheKey = `${doc.warehouseId}_${prodId}`;
-        
+
         let mismatchMap = mismatchMapsCache.get(cacheKey);
         if (!mismatchMap) {
-          const productQuants = currentQuants.filter((q) => q.inventoryId === prodId);
-          mismatchMap = await this.getProductMismatchMap(doc.warehouseId, prodId, whLocs, productQuants);
+          const productQuants = currentQuants.filter(
+            (q) => q.inventoryId === prodId,
+          );
+          mismatchMap = await this.getProductMismatchMap(
+            doc.warehouseId,
+            prodId,
+            whLocs,
+            productQuants,
+          );
           mismatchMapsCache.set(cacheKey, mismatchMap);
         }
 
-        const productQuants = currentQuants.filter((q) => q.inventoryId === prodId);
-        const mappedLocId = this.getBestMismatchLocation(whLocs, mismatchMap, productQuants, fallbackLocId);
+        const productQuants = currentQuants.filter(
+          (q) => q.inventoryId === prodId,
+        );
+        const mappedLocId = this.getBestMismatchLocation(
+          whLocs,
+          mismatchMap,
+          productQuants,
+          fallbackLocId,
+        );
 
         const currentMismatch = mismatchMap.get(mappedLocId) || 0;
         const qty = item.productQty;
@@ -400,7 +432,8 @@ export class ReportsService {
 
       // 3. closingStock
       const adjustmentQty = locationAdjustmentsMap.get(key) || 0;
-      const closingStock = erpStock + pendingInQty - pendingOutQty + adjustmentQty;
+      const closingStock =
+        erpStock + pendingInQty - pendingOutQty + adjustmentQty;
 
       // 4. openingStock
       const prevSnap = prevSnapsMap.get(key);
@@ -653,38 +686,39 @@ export class ReportsService {
     });
 
     // Fetch independent completed Document References (up to TODAY)
-    const independentCompletedDocs = await this.prisma.documentReference.findMany({
-      where: {
-        warehouseId,
-        state: 'done',
-        pickingTypeCode: { in: ['incoming', 'outgoing'] },
-        gateOperations: {
-          none: {
-            status: {
-              in: ['PENDING', 'VERIFIED'],
+    const independentCompletedDocs =
+      await this.prisma.documentReference.findMany({
+        where: {
+          warehouseId,
+          state: 'done',
+          pickingTypeCode: { in: ['incoming', 'outgoing'] },
+          gateOperations: {
+            none: {
+              status: {
+                in: ['PENDING', 'VERIFIED'],
+              },
             },
           },
+          OR: [
+            {
+              dateDone: {
+                gte: start,
+                lte: today,
+              },
+            },
+            {
+              dateDone: null,
+              updatedAt: {
+                gte: start,
+                lte: today,
+              },
+            },
+          ],
         },
-        OR: [
-          {
-            dateDone: {
-              gte: start,
-              lte: today,
-            },
-          },
-          {
-            dateDone: null,
-            updatedAt: {
-              gte: start,
-              lte: today,
-            },
-          },
-        ],
-      },
-      include: {
-        items: true,
-      },
-    });
+        include: {
+          items: true,
+        },
+      });
 
     // Process independent completed document references to find products with movement
     for (const doc of independentCompletedDocs) {
@@ -707,13 +741,22 @@ export class ReportsService {
       }
 
       // Group gate operations products by inventoryId
-      const docGateProductsMap = new Map<number, { total: number; locations: Map<number, number> }>();
+      const docGateProductsMap = new Map<
+        number,
+        { total: number; locations: Map<number, number> }
+      >();
       for (const op of doc.gateOperations) {
         for (const gp of op.products) {
-          const current = docGateProductsMap.get(gp.inventoryId) || { total: 0, locations: new Map<number, number>() };
+          const current = docGateProductsMap.get(gp.inventoryId) || {
+            total: 0,
+            locations: new Map<number, number>(),
+          };
           current.total += gp.quantity;
           if (gp.locationId) {
-            current.locations.set(gp.locationId, (current.locations.get(gp.locationId) || 0) + gp.quantity);
+            current.locations.set(
+              gp.locationId,
+              (current.locations.get(gp.locationId) || 0) + gp.quantity,
+            );
           }
           docGateProductsMap.set(gp.inventoryId, current);
         }
@@ -726,7 +769,10 @@ export class ReportsService {
       for (const item of doc.items) {
         const invId = item.inventoryId;
         const erpQty = item.productQty;
-        const gateInfo = docGateProductsMap.get(invId) || { total: 0, locations: new Map<number, number>() };
+        const gateInfo = docGateProductsMap.get(invId) || {
+          total: 0,
+          locations: new Map<number, number>(),
+        };
         const sumGateQty = gateInfo.total;
 
         if (sumGateQty !== erpQty) {
@@ -740,8 +786,13 @@ export class ReportsService {
           if (adjustment !== 0) {
             // Distribute to cumulative location map (for today's stock tracker)
             if (gateInfo.locations.size > 0) {
-              const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
-              const distributed = this.distributeAdjustment(adjustment, locList);
+              const locList = Array.from(gateInfo.locations.entries()).map(
+                ([id, qty]) => ({ id, qty }),
+              );
+              const distributed = this.distributeAdjustment(
+                adjustment,
+                locList,
+              );
               for (const [locId, locAdj] of distributed.entries()) {
                 const key = `${locId}_${invId}`;
                 cumulativeLocationAdjustmentsMap.set(
@@ -770,7 +821,8 @@ export class ReportsService {
     }
 
     for (const op of gateOps) {
-      const opDate = op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt);
+      const opDate =
+        op.cardType === 'OUT' ? op.createdAt : op.verifiedAt || op.createdAt;
       if (opDate && opDate >= dateRangeStart && opDate <= dateRangeEnd) {
         for (const p of op.products) {
           movedProductIdsSet.add(p.inventoryId);
@@ -831,7 +883,9 @@ export class ReportsService {
         activeLocationIds.add(q.locationId);
       }
       for (const op of gateOps) {
-        const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
+        const matchingProducts = op.products.filter(
+          (p) => p.inventoryId === prod.id,
+        );
         for (const opProd of matchingProducts) {
           if (opProd.locationId) {
             activeLocationIds.add(opProd.locationId);
@@ -839,7 +893,9 @@ export class ReportsService {
         }
       }
       for (const op of activePendingOps) {
-        const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
+        const matchingProducts = op.products.filter(
+          (p) => p.inventoryId === prod.id,
+        );
         for (const opProd of matchingProducts) {
           if (opProd.locationId) {
             activeLocationIds.add(opProd.locationId);
@@ -856,7 +912,12 @@ export class ReportsService {
 
       // Get discrepancy-based mismatch map for this product
       const productQuants = prod.quants;
-      const mismatchMap = await this.getProductMismatchMap(warehouseId, prod.id, dbLocations, productQuants);
+      const mismatchMap = await this.getProductMismatchMap(
+        warehouseId,
+        prod.id,
+        dbLocations,
+        productQuants,
+      );
 
       const fallbackLocId = dbLocations[0]?.id;
       const mappedIndependentDocs: any[] = [];
@@ -874,7 +935,12 @@ export class ReportsService {
         const item = doc.items.find((i) => i.inventoryId === prod.id);
         if (!item) continue;
 
-        const mappedLocId = this.getBestMismatchLocation(dbLocations, mismatchMap, productQuants, fallbackLocId);
+        const mappedLocId = this.getBestMismatchLocation(
+          dbLocations,
+          mismatchMap,
+          productQuants,
+          fallbackLocId,
+        );
 
         // Update mismatch for the mapped location
         const currentMismatch = mismatchMap.get(mappedLocId) || 0;
@@ -915,7 +981,8 @@ export class ReportsService {
           }
         }
 
-        const adj = cumulativeLocationAdjustmentsMap.get(`${locId}_${prod.id}`) || 0;
+        const adj =
+          cumulativeLocationAdjustmentsMap.get(`${locId}_${prod.id}`) || 0;
         const realStock = erpStock + pendingInQty - pendingOutQty + adj;
         currentStockTrackerMap.set(locId, realStock);
       }
@@ -942,7 +1009,9 @@ export class ReportsService {
       }[] = [];
 
       for (const op of gateOps) {
-        const matchingProducts = op.products.filter((p) => p.inventoryId === prod.id);
+        const matchingProducts = op.products.filter(
+          (p) => p.inventoryId === prod.id,
+        );
         for (const opProd of matchingProducts) {
           if (!opProd.locationId) continue;
 
@@ -952,11 +1021,14 @@ export class ReportsService {
             driverName: op.driverName,
             licensePlate: op.licensePlate,
             clientPartner: op.clientPartner || '-',
-            cardType: op.cardType as 'IN' | 'OUT',
+            cardType: op.cardType,
             quantity: opProd.quantity,
             referenceDocument: op.documentReference?.documentNumber || '-',
             status: op.status,
-            effectiveDate: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
+            effectiveDate:
+              op.cardType === 'OUT'
+                ? op.createdAt
+                : op.verifiedAt || op.createdAt,
             stack: opProd.quant?.lotName || '-',
             type: 'GATE_OPERATION',
             locationId: opProd.locationId,
@@ -995,7 +1067,9 @@ export class ReportsService {
         const gateInfo = adjInfo.gateInfo;
 
         if (gateInfo.locations.size > 0) {
-          const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
+          const locList = Array.from(gateInfo.locations.entries()).map(
+            ([id, qty]) => ({ id, qty }),
+          );
           const distributed = this.distributeAdjustment(adjustment, locList);
           for (const [locId, locAdjustment] of distributed.entries()) {
             if (locAdjustment === 0) continue;
@@ -1075,25 +1149,30 @@ export class ReportsService {
 
         // 1. Calculate opening stock at start date
         // Query latest snapshot prior to start date
-        const prevSnap = await this.prisma.dailyLocationStockSnapshot.findFirst({
-          where: {
-            warehouseId,
-            locationId: locId,
-            inventoryId: prod.id,
-            date: {
-              lt: start,
+        const prevSnap = await this.prisma.dailyLocationStockSnapshot.findFirst(
+          {
+            where: {
+              warehouseId,
+              locationId: locId,
+              inventoryId: prod.id,
+              date: {
+                lt: start,
+              },
+            },
+            orderBy: {
+              date: 'desc',
             },
           },
-          orderBy: {
-            date: 'desc',
-          },
-        });
+        );
 
         let openingStockAtStart = 0;
         if (prevSnap) {
           openingStockAtStart = prevSnap.closingStock;
           const lastSnapDate = prevSnap.date;
-          const lastSnapEnd = getLocalEndOfDay(formatDateInTimezone(lastSnapDate, timezone), timezone);
+          const lastSnapEnd = getLocalEndOfDay(
+            formatDateInTimezone(lastSnapDate, timezone),
+            timezone,
+          );
           const gapTx = locTransactions.filter(
             (tx) => tx.effectiveDate > lastSnapEnd && tx.effectiveDate < start,
           );
@@ -1107,7 +1186,9 @@ export class ReportsService {
         } else {
           // Backward calculation from today's real physical stock
           const currentStockToday = currentStockTrackerMap.get(locId) || 0;
-          const reportAndLaterTx = locTransactions.filter((tx) => tx.effectiveDate >= start);
+          const reportAndLaterTx = locTransactions.filter(
+            (tx) => tx.effectiveDate >= start,
+          );
 
           let calculatedStock = currentStockToday;
           for (let i = reportAndLaterTx.length - 1; i >= 0; i--) {
@@ -1143,7 +1224,9 @@ export class ReportsService {
 
           for (const tx of dayTx) {
             const txDetail = {
-              uuid: tx.txUuid.includes('_adj_') ? tx.txUuid.split('_adj_')[0] : tx.txUuid,
+              uuid: tx.txUuid.includes('_adj_')
+                ? tx.txUuid.split('_adj_')[0]
+                : tx.txUuid,
               opNumber: tx.opNumber,
               driverName: tx.driverName,
               licensePlate: tx.licensePlate,
@@ -1313,47 +1396,48 @@ export class ReportsService {
     const today = getLocalEndOfDay(todayStr, timezone);
 
     // 1. Fetch independent ERP receipts and deliveries for this product on this day (and up to today for backward stock calculation)
-    const independentCompletedDocs = await this.prisma.documentReference.findMany({
-      where: {
-        warehouseId,
-        state: 'done',
-        pickingTypeCode: { in: ['incoming', 'outgoing'] },
-        items: {
-          some: {
-            inventoryId: inventory.id,
+    const independentCompletedDocs =
+      await this.prisma.documentReference.findMany({
+        where: {
+          warehouseId,
+          state: 'done',
+          pickingTypeCode: { in: ['incoming', 'outgoing'] },
+          items: {
+            some: {
+              inventoryId: inventory.id,
+            },
           },
+          gateOperations: {
+            none: {
+              status: {
+                in: ['PENDING', 'VERIFIED'],
+              },
+            },
+          },
+          OR: [
+            {
+              dateDone: {
+                gte: start,
+                lte: today,
+              },
+            },
+            {
+              dateDone: null,
+              updatedAt: {
+                gte: start,
+                lte: today,
+              },
+            },
+          ],
         },
-        gateOperations: {
-          none: {
-            status: {
-              in: ['PENDING', 'VERIFIED'],
+        include: {
+          items: {
+            where: {
+              inventoryId: inventory.id,
             },
           },
         },
-        OR: [
-          {
-            dateDone: {
-              gte: start,
-              lte: today,
-            },
-          },
-          {
-            dateDone: null,
-            updatedAt: {
-              gte: start,
-              lte: today,
-            },
-          },
-        ],
-      },
-      include: {
-        items: {
-          where: {
-            inventoryId: inventory.id,
-          },
-        },
-      },
-    });
+      });
 
     const targetDayIndependentDocs = independentCompletedDocs.filter((doc) => {
       const docDate = doc.dateDone || doc.updatedAt || doc.createdAt;
@@ -1364,10 +1448,7 @@ export class ReportsService {
       const item = doc.items[0];
       return {
         documentNumber: doc.documentNumber,
-        partnerName:
-          doc.partnerName ||
-          doc.purchaseName ||
-          'Tanpa Partner',
+        partnerName: doc.partnerName || doc.purchaseName || 'Tanpa Partner',
         pickingTypeCode: doc.pickingTypeCode, // incoming / outgoing
         quantity: item ? item.productQty : 0,
         scheduledDate: doc.dateDone || doc.updatedAt || doc.createdAt,
@@ -1439,10 +1520,12 @@ export class ReportsService {
     const unreconciledGateOps = gateOps.flatMap((op) => {
       return op.products.map((opProd) => ({
         documentNumber: op.opNumber,
-        partnerName: op.clientPartner || op.driverName + ' (' + op.licensePlate + ')',
+        partnerName:
+          op.clientPartner || op.driverName + ' (' + op.licensePlate + ')',
         pickingTypeCode: op.cardType === 'IN' ? 'incoming' : 'outgoing',
         quantity: opProd.quantity,
-        scheduledDate: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
+        scheduledDate:
+          op.cardType === 'OUT' ? op.createdAt : op.verifiedAt || op.createdAt,
         type: 'GATE_OPERATION',
       }));
     });
@@ -1509,7 +1592,10 @@ export class ReportsService {
         for (const gp of op.products) {
           sumGateQty += gp.quantity;
           if (gp.locationId) {
-            locQties.set(gp.locationId, (locQties.get(gp.locationId) || 0) + gp.quantity);
+            locQties.set(
+              gp.locationId,
+              (locQties.get(gp.locationId) || 0) + gp.quantity,
+            );
           }
         }
       }
@@ -1525,7 +1611,10 @@ export class ReportsService {
         if (adjustment !== 0) {
           // Distribute to cumulative location map (for today's stock tracker)
           if (locQties.size > 0) {
-            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({ id, qty }));
+            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({
+              id,
+              qty,
+            }));
             const distributed = this.distributeAdjustment(adjustment, locList);
             for (const [locId, locAdj] of distributed.entries()) {
               const key = `${locId}_${inventory.id}`;
@@ -1556,7 +1645,9 @@ export class ReportsService {
             if (docDate >= start && docDate <= end) {
               adjustmentTransactionsOnTargetDay.push({
                 documentNumber: doc.documentNumber,
-                partnerName: doc.partnerName || 'Partial physical realization after ERP completion',
+                partnerName:
+                  doc.partnerName ||
+                  'Partial physical realization after ERP completion',
                 pickingTypeCode: adjustment > 0 ? 'incoming' : 'outgoing',
                 quantity: Math.abs(adjustment),
                 scheduledDate: docDate,
@@ -1574,13 +1665,17 @@ export class ReportsService {
     const incomingTransactions = [
       ...erpTransactions.filter((tx) => tx.pickingTypeCode === 'incoming'),
       ...unreconciledGateOps.filter((tx) => tx.pickingTypeCode === 'incoming'),
-      ...adjustmentTransactionsOnTargetDay.filter((tx) => tx.pickingTypeCode === 'incoming'),
+      ...adjustmentTransactionsOnTargetDay.filter(
+        (tx) => tx.pickingTypeCode === 'incoming',
+      ),
     ];
 
     const outgoingTransactions = [
       ...erpTransactions.filter((tx) => tx.pickingTypeCode === 'outgoing'),
       ...unreconciledGateOps.filter((tx) => tx.pickingTypeCode === 'outgoing'),
-      ...adjustmentTransactionsOnTargetDay.filter((tx) => tx.pickingTypeCode === 'outgoing'),
+      ...adjustmentTransactionsOnTargetDay.filter(
+        (tx) => tx.pickingTypeCode === 'outgoing',
+      ),
     ];
 
     // 3. Calculate opening stock and closing stock for this product on this day
@@ -1687,7 +1782,9 @@ export class ReportsService {
       activeLocationIds.add(q.locationId);
     }
     for (const op of gateOpsForProd) {
-      const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
+      const matchingProducts = op.products.filter(
+        (p) => p.inventoryId === inventory.id,
+      );
       for (const opProd of matchingProducts) {
         if (opProd.locationId) {
           activeLocationIds.add(opProd.locationId);
@@ -1695,7 +1792,9 @@ export class ReportsService {
       }
     }
     for (const op of activePendingOps) {
-      const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
+      const matchingProducts = op.products.filter(
+        (p) => p.inventoryId === inventory.id,
+      );
       for (const opProd of matchingProducts) {
         if (opProd.locationId) {
           activeLocationIds.add(opProd.locationId);
@@ -1710,7 +1809,12 @@ export class ReportsService {
     }
 
     // Get discrepancy-based mismatch map for this product
-    const mismatchMap = await this.getProductMismatchMap(warehouseId, inventory.id, dbLocations, quants);
+    const mismatchMap = await this.getProductMismatchMap(
+      warehouseId,
+      inventory.id,
+      dbLocations,
+      quants,
+    );
 
     const fallbackLocId = dbLocations[0]?.id;
     const mappedIndependentDocs: any[] = [];
@@ -1726,7 +1830,12 @@ export class ReportsService {
       const item = doc.items.find((i) => i.inventoryId === inventory.id);
       if (!item) continue;
 
-      const mappedLocId = this.getBestMismatchLocation(dbLocations, mismatchMap, quants, fallbackLocId);
+      const mappedLocId = this.getBestMismatchLocation(
+        dbLocations,
+        mismatchMap,
+        quants,
+        fallbackLocId,
+      );
 
       // Update mismatch for the mapped location
       const currentMismatch = mismatchMap.get(mappedLocId) || 0;
@@ -1767,7 +1876,9 @@ export class ReportsService {
     }[] = [];
 
     for (const op of gateOpsForProd) {
-      const matchingProducts = op.products.filter((p) => p.inventoryId === inventory.id);
+      const matchingProducts = op.products.filter(
+        (p) => p.inventoryId === inventory.id,
+      );
       for (const opProd of matchingProducts) {
         if (!opProd.locationId) continue;
 
@@ -1777,11 +1888,14 @@ export class ReportsService {
           driverName: op.driverName,
           licensePlate: op.licensePlate,
           clientPartner: op.clientPartner || '-',
-          cardType: op.cardType as 'IN' | 'OUT',
+          cardType: op.cardType,
           quantity: opProd.quantity,
           referenceDocument: op.documentReference?.documentNumber || '-',
           status: op.status,
-          effectiveDate: op.cardType === 'OUT' ? op.createdAt : (op.verifiedAt || op.createdAt),
+          effectiveDate:
+            op.cardType === 'OUT'
+              ? op.createdAt
+              : op.verifiedAt || op.createdAt,
           stack: opProd.quant?.lotName || '-',
           type: 'GATE_OPERATION',
           locationId: opProd.locationId,
@@ -1818,7 +1932,9 @@ export class ReportsService {
       const gateInfo = adjInfo.gateInfo;
 
       if (gateInfo.locations.size > 0) {
-        const locList = Array.from(gateInfo.locations.entries()).map(([id, qty]) => ({ id, qty }));
+        const locList = Array.from(gateInfo.locations.entries()).map(
+          ([id, qty]) => ({ id, qty }),
+        );
         const distributed = this.distributeAdjustment(adjustment, locList);
         for (const [locId, locAdjustment] of distributed.entries()) {
           if (locAdjustment === 0) continue;
@@ -1890,7 +2006,8 @@ export class ReportsService {
         }
       }
 
-      const adj = cumulativeLocationAdjustmentsMap.get(`${locId}_${inventory.id}`) || 0;
+      const adj =
+        cumulativeLocationAdjustmentsMap.get(`${locId}_${inventory.id}`) || 0;
       const realStock = erpStock + pendingInQty - pendingOutQty + adj;
       currentStockTrackerMap.set(locId, realStock);
     }
@@ -1931,7 +2048,10 @@ export class ReportsService {
       if (prevSnap) {
         openingStockAtStart = prevSnap.closingStock;
         const lastSnapDate = prevSnap.date;
-        const lastSnapEnd = getLocalEndOfDay(formatDateInTimezone(lastSnapDate, timezone), timezone);
+        const lastSnapEnd = getLocalEndOfDay(
+          formatDateInTimezone(lastSnapDate, timezone),
+          timezone,
+        );
         const gapTx = locTransactions.filter(
           (tx) => tx.effectiveDate > lastSnapEnd && tx.effectiveDate < start,
         );
@@ -1945,7 +2065,9 @@ export class ReportsService {
       } else {
         // Backward calculation from today's real physical stock
         const currentStockToday = currentStockTrackerMap.get(locId) || 0;
-        const reportAndLaterTx = locTransactions.filter((tx) => tx.effectiveDate >= start);
+        const reportAndLaterTx = locTransactions.filter(
+          (tx) => tx.effectiveDate >= start,
+        );
 
         let calculatedStock = currentStockToday;
         for (let i = reportAndLaterTx.length - 1; i >= 0; i--) {
@@ -1978,7 +2100,7 @@ export class ReportsService {
       }
 
       dayOpening += openingStockAtStart;
-      dayClosing += (openingStockAtStart + inbound - outbound);
+      dayClosing += openingStockAtStart + inbound - outbound;
     }
 
     return {
