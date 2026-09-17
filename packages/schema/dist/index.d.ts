@@ -157,16 +157,19 @@ export declare const GateOperationProductSchema: z.ZodObject<{
     quantity: z.ZodNumber;
     quantId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     locationId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+    documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     productId: number;
     quantity: number;
     quantId?: number | null | undefined;
     locationId?: number | null | undefined;
+    documentReferenceId?: number | null | undefined;
 }, {
     productId: number;
     quantity: number;
     quantId?: number | null | undefined;
     locationId?: number | null | undefined;
+    documentReferenceId?: number | null | undefined;
 }>;
 export declare const CreateGateOperationSchema: z.ZodObject<{
     cardType: z.ZodEnum<["IN", "OUT"]>;
@@ -179,18 +182,22 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
         quantity: z.ZodNumber;
         quantId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
         locationId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+        documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     }, "strip", z.ZodTypeAny, {
         productId: number;
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }, {
         productId: number;
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }>, "many">>>;
     documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+    documentReferenceIds: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>>;
     clientPartner: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     driverPhone: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
@@ -204,7 +211,9 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }[];
+    documentReferenceIds: number[];
     documentReferenceId?: number | null | undefined;
     clientPartner?: string | null | undefined;
     driverPhone?: string | null | undefined;
@@ -213,14 +222,16 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
     driverName: string;
     licensePlate: string;
     notes: string;
+    documentReferenceId?: number | null | undefined;
     attachmentPaths?: string[] | undefined;
     products?: {
         productId: number;
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }[] | undefined;
-    documentReferenceId?: number | null | undefined;
+    documentReferenceIds?: number[] | undefined;
     clientPartner?: string | null | undefined;
     driverPhone?: string | null | undefined;
 }>;
@@ -234,18 +245,22 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         quantity: z.ZodNumber;
         quantId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
         locationId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+        documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     }, "strip", z.ZodTypeAny, {
         productId: number;
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }, {
         productId: number;
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }>, "many">>>;
     documentReferenceId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+    documentReferenceIds: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>>;
 }, "strip", z.ZodTypeAny, {
     status: "PENDING" | "CANCELED" | "VERIFIED" | "REJECTED";
     attachmentPaths: string[];
@@ -254,11 +269,14 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }[];
-    notes?: string | null | undefined;
+    documentReferenceIds: number[];
     documentReferenceId?: number | null | undefined;
+    notes?: string | null | undefined;
 }, {
     status: "PENDING" | "CANCELED" | "VERIFIED" | "REJECTED";
+    documentReferenceId?: number | null | undefined;
     notes?: string | null | undefined;
     attachmentPaths?: string[] | undefined;
     products?: {
@@ -266,10 +284,19 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         quantity: number;
         quantId?: number | null | undefined;
         locationId?: number | null | undefined;
+        documentReferenceId?: number | null | undefined;
     }[] | undefined;
-    documentReferenceId?: number | null | undefined;
+    documentReferenceIds?: number[] | undefined;
 }>;
 export type CreateGateVerificationInput = z.infer<typeof CreateGateVerificationSchema>;
+export declare const AttachDocumentReferenceSchema: z.ZodObject<{
+    documentReferenceId: z.ZodNumber;
+}, "strip", z.ZodTypeAny, {
+    documentReferenceId: number;
+}, {
+    documentReferenceId: number;
+}>;
+export type AttachDocumentReferenceInput = z.infer<typeof AttachDocumentReferenceSchema>;
 export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     search: z.ZodOptional<z.ZodString>;
     page: z.ZodOptional<z.ZodNumber>;

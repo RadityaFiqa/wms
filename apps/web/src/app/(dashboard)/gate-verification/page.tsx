@@ -17,6 +17,8 @@ import {
   Info,
   Clock,
   AlertTriangle,
+  FileText,
+  User,
 } from "lucide-react";
 
 const getProductDetails = (item: any) => {
@@ -444,9 +446,9 @@ export default function GateVerificationListPage() {
                     </th>
                     <th className="px-6 py-4">Nomor Tiket</th>
                     <th className="px-6 py-4">Waktu</th>
+                    <th className="px-6 py-4">Driver</th>
+                    <th className="px-6 py-4">Plat Nomor</th>
                     <th className="px-6 py-4">Aksi</th>
-                    <th className="px-6 py-4">Dokumen Referensi</th>
-                    <th className="px-6 py-4">Klien / Partner</th>
                     <th className="px-6 py-4">Status</th>
                     <th className="px-6 py-4 text-center">Aksi</th>
                   </tr>
@@ -703,21 +705,35 @@ function GateVerificationRow({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  const allDocs: any[] = item.documentReferences?.length
+    ? item.documentReferences.map((dr: any) => dr.documentReference || dr).filter(Boolean)
+    : item.documentReference
+    ? [item.documentReference]
+    : [];
+  const primaryDoc = allDocs[0];
+  const extraCount = allDocs.length > 1 ? allDocs.length - 1 : 0;
+
   // Map products to verify table rows
   const productRows =
     item.products?.map((gp: any) => {
-      const docItem = item.documentReference?.items?.find(
-        (di: any) => di.inventoryId === gp.productId,
-      );
-      const erpQty = docItem ? (docItem.productQty || docItem.quantity) : 0;
+      const matchedDoc = allDocs.find((d: any) => d.id === gp.documentReferenceId);
+      const docNum =
+        gp.documentReference?.documentNumber ||
+        matchedDoc?.documentNumber ||
+        (allDocs.length === 1 ? primaryDoc?.documentNumber : null);
       const prodDetails = getProductDetails(gp);
+      const docPartner =
+        gp.documentReference?.partnerName ||
+        matchedDoc?.partnerName ||
+        (allDocs.length === 1 ? (primaryDoc?.partnerName || item.clientPartner) : null);
       return {
         productId: gp.productId,
         sku: prodDetails.sku,
         name: prodDetails.name,
         uom: prodDetails.uom,
         qtyCargo: gp.quantity,
-        qtyErp: erpQty,
+        docNum,
+        docPartner,
       };
     }) || [];
 
@@ -733,7 +749,7 @@ function GateVerificationRow({
           <input
             type="checkbox"
             checked={isSelected}
-            disabled={!item.documentReference || item.status !== "PENDING" || isSubmitting}
+            disabled={allDocs.length === 0 || item.status !== "PENDING" || isSubmitting}
             onChange={(e) => onSelectChange(item.uuid, e.target.checked)}
             className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           />
@@ -759,19 +775,18 @@ function GateVerificationRow({
             </span>
           </div>
         </td>
+        <td className="px-6 py-4">
+          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span className="truncate max-w-[140px]">{item.driverName || "-"}</span>
+          </div>
+        </td>
+        <td className="px-6 py-4">
+          <span className="font-mono font-bold text-xs bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-slate-800">
+            {item.licensePlate || "-"}
+          </span>
+        </td>
         <td className="px-6 py-4">{getCardTypeBadge(item.cardType)}</td>
-        <td className="px-6 py-4 font-mono text-xs font-semibold">
-          {item.documentReference?.documentNumber ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-250">
-              {item.documentReference.documentNumber}
-            </span>
-          ) : (
-            <span className="text-slate-400">-</span>
-          )}
-        </td>
-        <td className="px-6 py-4 font-semibold text-slate-800">
-          {item.clientPartner || "-"}
-        </td>
         <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
         <td
           className="px-6 py-4 text-center"
@@ -810,6 +825,7 @@ function GateVerificationRow({
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-2">Nama Produk</th>
+                    <th className="px-4 py-2">Dokumen Ref & Partner</th>
                     <th className="px-4 py-2 text-right">Cargo Qty</th>
                   </tr>
                 </thead>
@@ -831,6 +847,22 @@ function GateVerificationRow({
                           <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">
                             SKU: {r.sku}
                           </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {r.docNum ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-mono font-bold">
+                                {r.docNum}
+                              </span>
+                              {r.docPartner && (
+                                <span className="text-slate-600 text-[11px] font-medium">
+                                  ({r.docPartner})
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-right font-black text-slate-500">
                           {r.qtyCargo.toLocaleString("id-ID")} {r.uom}

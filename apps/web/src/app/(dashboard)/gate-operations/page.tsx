@@ -16,6 +16,8 @@ import {
   Calendar,
   Eye,
   Info,
+  FileText,
+  User,
 } from "lucide-react";
 
 export default function GateOperationsListPage() {
@@ -262,9 +264,9 @@ export default function GateOperationsListPage() {
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider">
                     <th className="px-6 py-4">Nomor Tiket</th>
                     <th className="px-6 py-4">Waktu</th>
+                    <th className="px-6 py-4">Driver</th>
+                    <th className="px-6 py-4">Plat Nomor</th>
                     <th className="px-6 py-4">Aksi</th>
-                    <th className="px-6 py-4">Dokumen Referensi</th>
-                    <th className="px-6 py-4">Klien / Partner</th>
                     <th className="px-6 py-4">Status</th>
                     <th className="px-6 py-4 text-center">Aksi</th>
                   </tr>
@@ -344,6 +346,14 @@ function GateOperationRow({
   const totalItemCount =
     item.products?.reduce((acc: number, p: any) => acc + p.quantity, 0) || 0;
 
+  const allDocs: any[] = item.documentReferences?.length
+    ? item.documentReferences.map((dr: any) => dr.documentReference || dr).filter(Boolean)
+    : item.documentReference
+    ? [item.documentReference]
+    : [];
+  const primaryDoc = allDocs[0];
+  const extraCount = allDocs.length > 1 ? allDocs.length - 1 : 0;
+
   return (
     <>
       <tr
@@ -373,19 +383,18 @@ function GateOperationRow({
             </span>
           </div>
         </td>
+        <td className="px-6 py-4">
+          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span className="truncate max-w-[140px]">{item.driverName || "-"}</span>
+          </div>
+        </td>
+        <td className="px-6 py-4">
+          <span className="font-mono font-bold text-xs bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-slate-800">
+            {item.licensePlate || "-"}
+          </span>
+        </td>
         <td className="px-6 py-4">{getCardTypeBadge(item.cardType)}</td>
-        <td className="px-6 py-4 font-mono text-xs font-semibold">
-          {item.documentReference?.documentNumber ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-250">
-              {item.documentReference.documentNumber}
-            </span>
-          ) : (
-            <span className="text-slate-400">-</span>
-          )}
-        </td>
-        <td className="px-6 py-4 font-semibold text-slate-800">
-          {item.clientPartner || "-"}
-        </td>
         <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
         <td
           className="px-6 py-4 text-center"
@@ -422,6 +431,7 @@ function GateOperationRow({
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-2">Nama Produk</th>
+                    <th className="px-4 py-2">Dokumen Ref & Partner</th>
                     <th className="px-4 py-2 text-right">Quantity</th>
                   </tr>
                 </thead>
@@ -429,30 +439,51 @@ function GateOperationRow({
                   {!item.products || item.products.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={2}
+                        colSpan={3}
                         className="px-4 py-4 text-center text-slate-400 italic"
                       >
                         Tidak ada barang logistik yang dicatat
                       </td>
                     </tr>
                   ) : (
-                    item.products.map((p: any) => (
-                      <tr
-                        key={p.id}
-                        className="hover:bg-slate-50/30 transition"
-                      >
-                        <td className="px-4 py-2.5 font-bold">
-                          {p.inventory?.name}{" "}
-                          <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">
-                            SKU: {p.inventory?.sku}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-black">
-                          {p.quantity.toLocaleString("id-ID")}{" "}
-                          {p.inventory?.uom || "Unit"}
-                        </td>
-                      </tr>
-                    ))
+                    item.products.map((p: any) => {
+                      const matchedDoc = allDocs.find((d: any) => d.id === p.documentReferenceId);
+                      const docNum = p.documentReference?.documentNumber || matchedDoc?.documentNumber || (allDocs.length === 1 ? primaryDoc?.documentNumber : null);
+                      const docPartner = p.documentReference?.partnerName || matchedDoc?.partnerName || (allDocs.length === 1 ? (primaryDoc?.partnerName || item.clientPartner) : null);
+                      return (
+                        <tr
+                          key={p.id}
+                          className="hover:bg-slate-50/30 transition"
+                        >
+                          <td className="px-4 py-2.5 font-bold">
+                            {p.inventory?.name}{" "}
+                            <span className="text-[10px] font-mono font-normal text-slate-450 ml-1">
+                              SKU: {p.inventory?.sku}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-xs">
+                            {docNum ? (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-mono font-bold">
+                                  {docNum}
+                                </span>
+                                {docPartner && (
+                                  <span className="text-slate-600 text-[11px] font-medium">
+                                    ({docPartner})
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[10px]">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-black">
+                            {p.quantity.toLocaleString("id-ID")}{" "}
+                            {p.inventory?.uom || "Unit"}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

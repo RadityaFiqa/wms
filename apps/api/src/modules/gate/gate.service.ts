@@ -165,7 +165,21 @@ export class GateService {
     return this.prisma.$transaction(async (tx) => {
       // 1. Generate sequential number
       const opNumber = await this.generateOpNumber(tx, body.cardType);
-      const docRefId = (body as any).documentReferenceId;
+
+      // Collect all docRef IDs
+      const rawDocRefIds: number[] = [];
+      if (
+        Array.isArray((body as any).documentReferenceIds) &&
+        (body as any).documentReferenceIds.length > 0
+      ) {
+        rawDocRefIds.push(...(body as any).documentReferenceIds);
+      } else if ((body as any).documentReferenceId) {
+        rawDocRefIds.push((body as any).documentReferenceId);
+      }
+      const docRefIds = Array.from(
+        new Set(rawDocRefIds.filter((id) => typeof id === 'number' && id > 0)),
+      );
+      const primaryDocRefId = docRefIds.length > 0 ? docRefIds[0] : null;
 
       // 2. Create Gate Operation
       const gateOperation = await tx.gateOperation.create({
@@ -180,11 +194,23 @@ export class GateService {
           status: 'PENDING',
           warehouseId,
           createdByUserId,
-          documentReferenceId: docRefId || null,
+          documentReferenceId: primaryDocRefId,
         },
       });
 
-      // 3. Update attachments association
+      // 3. Create junction links for attached document references
+      if (docRefIds.length > 0) {
+        for (const docId of docRefIds) {
+          await tx.gateOperationDocumentReference.create({
+            data: {
+              gateOperationId: gateOperation.id,
+              documentReferenceId: docId,
+            },
+          });
+        }
+      }
+
+      // 4. Update attachments association
       if (body.attachmentPaths && body.attachmentPaths.length > 0) {
         await tx.fileAttachment.updateMany({
           where: { filePath: { in: body.attachmentPaths } },
@@ -192,16 +218,73 @@ export class GateService {
         });
       }
 
-      // 4. Create products associated if any
+      // 5. Create products associated if any
       if (body.products && body.products.length > 0) {
-        if (docRefId) {
-          await this.validateDocumentReferenceLimits(
-            tx,
-            docRefId,
-            body.products,
+        // Concurrency Lock: Lock DocumentReference rows
+        if (docRefIds.length > 0) {
+          await tx.$queryRawUnsafe(
+            'SELECT id FROM "DocumentReference" WHERE id = ANY($1::int[]) FOR UPDATE',
+            docRefIds,
           );
         }
-        for (const prod of body.products) {
+
+        // Fetch document items for all attached documents to assist with mapping/validation
+        const attachedDocItems =
+          docRefIds.length > 0
+            ? await tx.documentReferenceItem.findMany({
+                where: { documentReferenceId: { in: docRefIds } },
+              })
+            : [];
+
+        // Validate and assign documentReferenceId for each product
+        const productsWithDocRef = body.products.map((prod) => {
+          let assignedDocId = prod.documentReferenceId || null;
+          if (!assignedDocId && docRefIds.length === 1) {
+            assignedDocId = docRefIds[0];
+          } else if (!assignedDocId && docRefIds.length > 1) {
+            const matchingDocs = attachedDocItems.filter(
+              (it: any) => it.inventoryId === prod.productId,
+            );
+            const matchingDocIds = Array.from(
+              new Set(matchingDocs.map((it: any) => it.documentReferenceId)),
+            );
+            if (matchingDocIds.length === 1) {
+              assignedDocId = matchingDocIds[0];
+            } else if (matchingDocIds.length > 1) {
+              throw new BadRequestException(
+                `Produk ID ${prod.productId} terdapat pada beberapa dokumen referensi terpilih. Harap tentukan dokumen referensi untuk produk ini.`,
+              );
+            }
+          }
+          return { ...prod, assignedDocId };
+        });
+
+        // Group products by assigned document reference and validate limits
+        const docGroupedProducts: Record<
+          number,
+          Array<{ productId: number; quantity: number }>
+        > = {};
+        for (const p of productsWithDocRef) {
+          if (p.assignedDocId) {
+            if (!docGroupedProducts[p.assignedDocId]) {
+              docGroupedProducts[p.assignedDocId] = [];
+            }
+            docGroupedProducts[p.assignedDocId].push({
+              productId: p.productId,
+              quantity: p.quantity,
+            });
+          }
+        }
+
+        for (const [docIdStr, prods] of Object.entries(docGroupedProducts)) {
+          await this.validateDocumentReferenceLimits(
+            tx,
+            parseInt(docIdStr, 10),
+            prods,
+          );
+        }
+
+        for (const prod of productsWithDocRef) {
           // Validate stack/quant quantity limits
           await this.validateStackQuantity(
             tx,
@@ -219,6 +302,7 @@ export class GateService {
               quantity: prod.quantity,
               quantId: prod.quantId || null,
               locationId: prod.locationId || null,
+              documentReferenceId: prod.assignedDocId || null,
             },
           });
 
@@ -289,7 +373,23 @@ export class GateService {
                 documentNumber: { contains: query.search, mode: 'insensitive' },
               },
               { origin: { contains: query.search, mode: 'insensitive' } },
+              { partnerName: { contains: query.search, mode: 'insensitive' } },
             ],
+          },
+        },
+        {
+          documentReferences: {
+            some: {
+              documentReference: {
+                OR: [
+                  {
+                    documentNumber: { contains: query.search, mode: 'insensitive' },
+                  },
+                  { origin: { contains: query.search, mode: 'insensitive' } },
+                  { partnerName: { contains: query.search, mode: 'insensitive' } },
+                ],
+              },
+            },
           },
         },
       ];
@@ -319,11 +419,20 @@ export class GateService {
           documentReference: {
             include: { items: true },
           },
+          documentReferences: {
+            include: {
+              documentReference: {
+                include: { items: true },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
           products: {
             include: {
               inventory: true,
               quant: true,
               location: true,
+              documentReference: true,
             },
           },
           createdByUser: {
@@ -336,9 +445,21 @@ export class GateService {
       }),
     ]);
 
-    const enrichedItems: any[] = items.map((item) =>
-      this.mapOperationUrls(item),
-    );
+    const enrichedItems: any[] = items.map((item: any) => {
+      const mapped = this.mapOperationUrls(item);
+      const attachedDocs =
+        item.documentReferences && item.documentReferences.length > 0
+          ? item.documentReferences
+              .map((r: any) => r.documentReference)
+              .filter(Boolean)
+          : item.documentReference
+            ? [item.documentReference]
+            : [];
+      mapped.documentReferences = attachedDocs;
+      mapped.documentReference =
+        attachedDocs[0] || item.documentReference || null;
+      return mapped;
+    });
 
     return {
       total,
@@ -360,6 +481,14 @@ export class GateService {
         documentReference: {
           include: { items: true },
         },
+        documentReferences: {
+          include: {
+            documentReference: {
+              include: { items: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
         createdByUser: {
           select: { name: true, email: true },
         },
@@ -368,6 +497,7 @@ export class GateService {
             inventory: true,
             quant: true,
             location: true,
+            documentReference: true,
           },
         },
         verifiedBy: {
@@ -380,72 +510,155 @@ export class GateService {
       throw new NotFoundException('Gate operation tidak ditemukan.');
     }
 
-    let documentHistory: any = null;
-    if (item.documentReferenceId && item.documentReference) {
-      const otherOps = await this.prisma.gateOperation.findMany({
-        where: {
-          documentReferenceId: item.documentReferenceId,
-          uuid: { not: item.uuid },
-        },
-        include: {
-          products: {
-            include: { inventory: true },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      const docItemsSummary = await Promise.all(
-        item.documentReference.items.map(async (docItem) => {
-          const aggregate = await this.prisma.gateOperationProduct.aggregate({
-            where: {
-              inventoryId: docItem.inventoryId,
-              gateOperation: {
-                documentReferenceId: item.documentReferenceId,
-                status: { notIn: ['CANCELED', 'REJECTED'] },
-              },
-            },
-            _sum: { quantity: true },
-          });
-
-          const erpQty = docItem.productQty || docItem.quantity || 0;
-          const totalRealized = aggregate._sum.quantity || 0;
-          const remainingQty = Math.max(0, erpQty - totalRealized);
-
-          const inventory = await this.prisma.inventory.findUnique({
-            where: { id: docItem.inventoryId },
-            select: { sku: true },
-          });
-
-          let status = 'PENDING';
-          if (totalRealized >= erpQty) {
-            status = 'COMPLETED';
-          } else if (totalRealized > 0) {
-            status = 'PARTIAL';
-          }
-
-          return {
-            productId: docItem.inventoryId,
-            productName: docItem.productName,
-            sku: inventory?.sku || docItem.analyticAccountName || '',
-            uom: docItem.uom,
-            erpQty,
-            realizedQty: totalRealized,
-            remainingQty,
-            status,
-          };
-        }),
+    const attachedDocRefs: any[] = [];
+    if (item.documentReferences && item.documentReferences.length > 0) {
+      attachedDocRefs.push(
+        ...item.documentReferences
+          .map((link: any) => link.documentReference)
+          .filter(Boolean),
       );
-
-      documentHistory = {
-        otherOperations: otherOps.map((op: any) => this.mapOperationUrls(op)),
-        summary: docItemsSummary,
-      };
+    } else if (item.documentReference) {
+      attachedDocRefs.push(item.documentReference);
     }
+
+    const computedDocRefs = await Promise.all(
+      attachedDocRefs.map(async (doc: any) => {
+        const referenceQty = doc.items
+          ? doc.items.reduce(
+              (sum: number, it: any) =>
+                sum + (it.productQty || it.quantity || 0),
+              0,
+            )
+          : doc.totalQuantity || 0;
+
+        const otherOps = await this.prisma.gateOperation.findMany({
+          where: {
+            OR: [
+              {
+                documentReferences: {
+                  some: { documentReferenceId: doc.id },
+                },
+              },
+              { documentReferenceId: doc.id },
+            ],
+            uuid: { not: item.uuid },
+          },
+          include: {
+            products: {
+              where: {
+                OR: [
+                  { documentReferenceId: doc.id },
+                  {
+                    documentReferenceId: null,
+                    gateOperation: { documentReferenceId: doc.id },
+                  },
+                ],
+              },
+              include: { inventory: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        const docItemsSummary = await Promise.all(
+          (doc.items || []).map(async (docItem: any) => {
+            const aggregate = await this.prisma.gateOperationProduct.aggregate({
+              where: {
+                inventoryId: docItem.inventoryId,
+                OR: [
+                  { documentReferenceId: doc.id },
+                  {
+                    documentReferenceId: null,
+                    gateOperation: {
+                      documentReferenceId: doc.id,
+                    },
+                  },
+                ],
+                gateOperation: {
+                  status: { notIn: ['CANCELED', 'REJECTED'] },
+                },
+              },
+              _sum: { quantity: true },
+            });
+
+            const erpQty = docItem.productQty || docItem.quantity || 0;
+            const totalRealized = aggregate._sum.quantity || 0;
+            const remainingQty = Math.max(0, erpQty - totalRealized);
+
+            const inventory = await this.prisma.inventory.findUnique({
+              where: { id: docItem.inventoryId },
+              select: { sku: true },
+            });
+
+            let status = 'PENDING';
+            if (totalRealized >= erpQty) {
+              status = 'COMPLETED';
+            } else if (totalRealized > 0) {
+              status = 'PARTIAL';
+            }
+
+            return {
+              productId: docItem.inventoryId,
+              productName: docItem.productName,
+              sku: inventory?.sku || docItem.analyticAccountName || '',
+              uom: docItem.uom,
+              erpQty,
+              realizedQty: totalRealized,
+              remainingQty,
+              status,
+            };
+          }),
+        );
+
+        const docRealizedQty = docItemsSummary.reduce(
+          (sum: number, it: any) => sum + it.realizedQty,
+          0,
+        );
+        const docRemainingQty = Math.max(0, referenceQty - docRealizedQty);
+        let docStatus = 'PENDING';
+        if (docRealizedQty >= referenceQty && referenceQty > 0) {
+          docStatus = 'COMPLETED';
+        } else if (docRealizedQty > 0) {
+          docStatus = 'PARTIAL';
+        }
+
+        return {
+          ...this.mapOperationUrls(doc),
+          referenceQty,
+          realizedQty: docRealizedQty,
+          remainingQty: docRemainingQty,
+          status: docStatus,
+          summary: docItemsSummary,
+          otherOperations: otherOps.map((op: any) =>
+            this.mapOperationUrls(op),
+          ),
+        };
+      }),
+    );
+
+    const totalReferenceQty = computedDocRefs.reduce(
+      (sum, d) => sum + d.referenceQty,
+      0,
+    );
+    const totalRealizedQty = computedDocRefs.reduce(
+      (sum, d) => sum + d.realizedQty,
+      0,
+    );
+    const totalRemainingQty = Math.max(0, totalReferenceQty - totalRealizedQty);
 
     const resultObj = this.mapOperationUrls(item);
     if (resultObj) {
-      resultObj.documentHistory = documentHistory;
+      resultObj.documentReferences = computedDocRefs;
+      resultObj.documentReference = computedDocRefs[0] || null;
+      resultObj.totalReferenceQty = totalReferenceQty;
+      resultObj.totalRealizedQty = totalRealizedQty;
+      resultObj.totalRemainingQty = totalRemainingQty;
+      resultObj.documentHistory = computedDocRefs[0]
+        ? {
+            summary: computedDocRefs[0].summary,
+            otherOperations: computedDocRefs[0].otherOperations,
+          }
+        : null;
     }
     return resultObj;
   }
@@ -584,72 +797,83 @@ export class GateService {
 
     return this.prisma.$transaction(async (tx) => {
       // Handle Document Reference Update if provided
-      const newDocRefId = (body as any).documentReferenceId;
+      let newDocRefIds: number[] | null = null;
       if (
-        newDocRefId !== undefined &&
-        newDocRefId !== gateOperation.documentReferenceId
+        Array.isArray((body as any).documentReferenceIds) &&
+        (body as any).documentReferenceIds.length > 0
       ) {
-        if (newDocRefId) {
-          // 1. Ensure Gate Operation items match the new ERP document items
-          const docItems = await tx.documentReferenceItem.findMany({
-            where: { documentReferenceId: newDocRefId },
-          });
-          const docInventoryIds = new Set(
-            docItems.map((item: any) => item.inventoryId),
-          );
+        newDocRefIds = Array.from(
+          new Set(
+            (body as any).documentReferenceIds.filter(
+              (id: any) => typeof id === 'number' && id > 0,
+            ),
+          ),
+        );
+      } else if ((body as any).documentReferenceId !== undefined) {
+        newDocRefIds = (body as any).documentReferenceId
+          ? [(body as any).documentReferenceId]
+          : [];
+      }
 
-          const gateProducts = await tx.gateOperationProduct.findMany({
+      if (newDocRefIds !== null) {
+        const existingLinks =
+          await tx.gateOperationDocumentReference.findMany({
             where: { gateOperationId: gateOperation.id },
           });
+        const existingDocIds = existingLinks.map(
+          (l: any) => l.documentReferenceId,
+        );
+        if (existingDocIds.length === 0 && gateOperation.documentReferenceId) {
+          existingDocIds.push(gateOperation.documentReferenceId);
+        }
 
-          for (const gp of gateProducts) {
-            if (!docInventoryIds.has(gp.inventoryId)) {
-              const product = await tx.inventory.findUnique({
-                where: { id: gp.inventoryId },
-              });
-              throw new BadRequestException(
-                `Produk ${product?.name || gp.inventoryId} tidak terdaftar pada dokumen referensi ERP yang baru dipilih.`,
-              );
-            }
+        const removedDocIds = existingDocIds.filter(
+          (id: number) => !newDocRefIds!.includes(id),
+        );
+
+        if (removedDocIds.length > 0) {
+          const linkedProducts = await tx.gateOperationProduct.findMany({
+            where: {
+              gateOperationId: gateOperation.id,
+              OR: [
+                { documentReferenceId: { in: removedDocIds } },
+                {
+                  documentReferenceId: null,
+                  gateOperation: { documentReferenceId: { in: removedDocIds } },
+                },
+              ],
+            },
+          });
+          if (linkedProducts.length > 0) {
+            throw new BadRequestException(
+              'Tidak dapat menghapus dokumen referensi yang masih memiliki barang muatan terkait.',
+            );
           }
 
-          // 2. Ensure total realized qty per item does not exceed ERP productQty
-          for (const gp of gateProducts) {
-            const docItem = docItems.find(
-              (item: any) => item.inventoryId === gp.inventoryId,
-            );
-            if (docItem) {
-              const otherOpsAggregate = await tx.gateOperationProduct.aggregate(
-                {
-                  where: {
-                    inventoryId: gp.inventoryId,
-                    gateOperation: {
-                      documentReferenceId: newDocRefId,
-                      id: { not: gateOperation.id },
-                      status: { notIn: ['CANCELED', 'REJECTED'] },
-                    },
-                  },
-                  _sum: { quantity: true },
-                },
-              );
-              const otherUsed = otherOpsAggregate._sum.quantity || 0;
-              const currentAssigned = gp.quantity;
+          await tx.gateOperationDocumentReference.deleteMany({
+            where: {
+              gateOperationId: gateOperation.id,
+              documentReferenceId: { in: removedDocIds },
+            },
+          });
+        }
 
-              const totalRealized = otherUsed + currentAssigned;
-              if (totalRealized > docItem.productQty) {
-                throw new BadRequestException(
-                  `Total kuantitas realisasi untuk produk ${docItem.productName} (${totalRealized}) melebihi kuantitas dokumen ERP (${docItem.quantity}).`,
-                );
-              }
-            }
+        const existingSet = new Set(existingDocIds);
+        for (const docId of newDocRefIds) {
+          if (!existingSet.has(docId)) {
+            await tx.gateOperationDocumentReference.create({
+              data: {
+                gateOperationId: gateOperation.id,
+                documentReferenceId: docId,
+              },
+            });
           }
         }
 
-        // Update documentReferenceId on GateOperation
         await tx.gateOperation.update({
           where: { id: gateOperation.id },
           data: {
-            documentReferenceId: newDocRefId || null,
+            documentReferenceId: newDocRefIds[0] || null,
           },
         });
       }
@@ -897,6 +1121,23 @@ export class GateService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Lock attached document references for consistency
+      const junctionRefs = await tx.gateOperationDocumentReference.findMany({
+        where: { gateOperationId: gateOperation.id },
+      });
+      const docIds = new Set<number>();
+      junctionRefs.forEach((r: any) => docIds.add(r.documentReferenceId));
+      if (gateOperation.documentReferenceId) {
+        docIds.add(gateOperation.documentReferenceId);
+      }
+
+      if (docIds.size > 0) {
+        const sortedDocIds = Array.from(docIds).sort((a: number, b: number) => a - b);
+        for (const dId of sortedDocIds) {
+          await tx.$queryRaw`SELECT id FROM "DocumentReference" WHERE id = ${dId} FOR UPDATE`;
+        }
+      }
+
       await tx.gateOperation.update({
         where: { id: gateOperation.id },
         data: {
@@ -951,13 +1192,14 @@ export class GateService {
       return obj.map((item) => this.stripIdField(item));
     }
     if (typeof obj === 'object') {
-      // Retain 'id' for Inventory and GateOperationProduct because they are needed as references in the frontend/API
+      // Retain 'id' for Inventory, GateOperationProduct, and DocumentReference because they are needed as references in the frontend/API
       const isProduct = 'sku' in obj && 'name' in obj;
       const isGateOpProduct = 'gateOperationId' in obj && 'inventoryId' in obj;
+      const isDocRef = 'documentNumber' in obj && 'pickingTypeCode' in obj;
 
       const newObj: any = {};
       for (const key of Object.keys(obj)) {
-        if (key === 'id' && !isProduct && !isGateOpProduct) continue;
+        if (key === 'id' && !isProduct && !isGateOpProduct && !isDocRef) continue;
         newObj[key] = this.stripIdField(obj[key]);
       }
       return newObj;
@@ -970,7 +1212,14 @@ export class GateService {
     documentReferenceId: number,
     products: { productId: number; quantity: number }[],
     excludeGateOperationId?: number,
+    excludeCargoItemId?: number,
   ) {
+    // Concurrency lock on document reference
+    await tx.$queryRawUnsafe(
+      'SELECT id FROM "DocumentReference" WHERE id = $1 FOR UPDATE',
+      documentReferenceId,
+    );
+
     for (const prod of products) {
       const docItem = await tx.documentReferenceItem.findFirst({
         where: {
@@ -990,8 +1239,17 @@ export class GateService {
       // Sum of quantity in OTHER gate operations
       const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
         where: {
+          inventoryId: prod.productId,
+          OR: [
+            { documentReferenceId },
+            {
+              documentReferenceId: null,
+              gateOperation: {
+                documentReferenceId,
+              },
+            },
+          ],
           gateOperation: {
-            documentReferenceId,
             id: excludeGateOperationId
               ? { not: excludeGateOperationId }
               : undefined,
@@ -999,7 +1257,6 @@ export class GateService {
               notIn: ['CANCELED', 'REJECTED'],
             },
           },
-          inventoryId: prod.productId,
         },
         _sum: {
           quantity: true,
@@ -1008,13 +1265,23 @@ export class GateService {
 
       const otherOpsQty = otherOpsAggregate._sum.quantity || 0;
 
-      // Sum of quantity in the CURRENT gate operation (excluding the prod item if its ID is known, but here we just want other items of the same product)
+      // Sum of quantity in the CURRENT gate operation for this specific document reference
       let currentOpQty = 0;
       if (excludeGateOperationId) {
         const currentOpProducts = await tx.gateOperationProduct.findMany({
           where: {
             gateOperationId: excludeGateOperationId,
             inventoryId: prod.productId,
+            id: excludeCargoItemId ? { not: excludeCargoItemId } : undefined,
+            OR: [
+              { documentReferenceId },
+              {
+                documentReferenceId: null,
+                gateOperation: {
+                  documentReferenceId,
+                },
+              },
+            ],
           },
         });
         currentOpQty = currentOpProducts.reduce(
@@ -1042,6 +1309,7 @@ export class GateService {
       notes?: string;
       quantId?: number | null;
       locationId?: number | null;
+      documentReferenceId?: number | null;
     },
   ) {
     const { productId, quantity, notes, quantId, locationId } = body;
@@ -1053,6 +1321,9 @@ export class GateService {
       // Find the gate operation
       const gateOperation = await tx.gateOperation.findUnique({
         where: { uuid: operationUuid },
+        include: {
+          documentReferences: true,
+        },
       });
 
       if (!gateOperation) {
@@ -1076,6 +1347,43 @@ export class GateService {
         throw new NotFoundException('Produk tidak ditemukan');
       }
 
+      // Determine attached document IDs
+      const attachedDocIds = gateOperation.documentReferences.map(
+        (l: any) => l.documentReferenceId,
+      );
+      if (attachedDocIds.length === 0 && gateOperation.documentReferenceId) {
+        attachedDocIds.push(gateOperation.documentReferenceId);
+      }
+
+      let targetDocId = body.documentReferenceId || null;
+      if (targetDocId) {
+        if (!attachedDocIds.includes(targetDocId)) {
+          throw new BadRequestException(
+            'Dokumen referensi tidak terhubung dengan operasi gerbang ini.',
+          );
+        }
+      } else if (attachedDocIds.length === 1) {
+        targetDocId = attachedDocIds[0];
+      } else if (attachedDocIds.length > 1) {
+        // Look up which attached document has this productId
+        const matchingDocItems = await tx.documentReferenceItem.findMany({
+          where: {
+            documentReferenceId: { in: attachedDocIds },
+            inventoryId: productId,
+          },
+        });
+        const matchIds = Array.from(
+          new Set(matchingDocItems.map((m: any) => m.documentReferenceId)),
+        );
+        if (matchIds.length === 1) {
+          targetDocId = matchIds[0];
+        } else if (matchIds.length > 1) {
+          throw new BadRequestException(
+            'Produk terdapat pada beberapa dokumen referensi. Harap pilih dokumen referensi yang sesuai.',
+          );
+        }
+      }
+
       // Validate stack/quant quantity limits
       await this.validateStackQuantity(
         tx,
@@ -1087,22 +1395,23 @@ export class GateService {
       );
 
       // Validate document reference limits if linked
-      if (gateOperation.documentReferenceId) {
+      if (targetDocId) {
         await this.validateDocumentReferenceLimits(
           tx,
-          gateOperation.documentReferenceId,
-          [{ productId: productId, quantity: quantity }],
+          targetDocId,
+          [{ productId, quantity }],
           gateOperation.id,
         );
       }
 
-      // Check if product is already added in this gate operation
+      // Check if product is already added in this gate operation for the same quant, location, and docRef
       const existing = await tx.gateOperationProduct.findFirst({
         where: {
           gateOperationId: gateOperation.id,
           inventoryId: productId,
           quantId: quantId || null,
           locationId: locationId || null,
+          documentReferenceId: targetDocId || null,
         },
       });
       if (existing) {
@@ -1120,11 +1429,13 @@ export class GateService {
           notes: notes || null,
           quantId: quantId || null,
           locationId: locationId || null,
+          documentReferenceId: targetDocId || null,
         },
         include: {
           inventory: true,
           quant: true,
           location: true,
+          documentReference: true,
         },
       });
 
@@ -1200,9 +1511,10 @@ export class GateService {
       quantId?: number | null;
       locationId?: number | null;
       quantity?: number;
+      documentReferenceId?: number | null;
     },
   ) {
-    const { quantId, locationId, quantity } = body;
+    const { quantId, locationId, quantity, documentReferenceId } = body;
 
     return this.prisma.$transaction(async (tx) => {
       // Find the cargo item
@@ -1210,7 +1522,11 @@ export class GateService {
         where: { uuid: cargoItemUuid },
         include: {
           inventory: true,
-          gateOperation: true,
+          gateOperation: {
+            include: {
+              documentReferences: true,
+            },
+          },
         },
       });
 
@@ -1256,76 +1572,42 @@ export class GateService {
         gateOperation.id,
       );
 
-      // Validate document reference limits if linked
-      if (gateOperation.documentReferenceId) {
-        const currentOpProducts = await tx.gateOperationProduct.findMany({
-          where: {
-            gateOperationId: gateOperation.id,
-            inventoryId: cargoItem.inventoryId,
-            id: { not: cargoItem.id },
-          },
-        });
-        const currentOpOtherQty = currentOpProducts.reduce(
-          (sum: number, p: any) => sum + p.quantity,
-          0,
+      // 3. Validate document reference limits if linked
+      const targetDocId =
+        documentReferenceId !== undefined
+          ? documentReferenceId
+          : cargoItem.documentReferenceId || gateOperation.documentReferenceId;
+
+      if (targetDocId) {
+        await this.validateDocumentReferenceLimits(
+          tx,
+          targetDocId,
+          [{ productId: cargoItem.inventoryId, quantity: targetQuantity }],
+          gateOperation.id,
+          cargoItem.id,
         );
-
-        const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
-          where: {
-            gateOperation: {
-              documentReferenceId: gateOperation.documentReferenceId,
-              id: { not: gateOperation.id },
-              status: {
-                notIn: ['CANCELED', 'REJECTED'],
-              },
-            },
-            inventoryId: cargoItem.inventoryId,
-          },
-          _sum: {
-            quantity: true,
-          },
-        });
-        const otherOpsQty = otherOpsAggregate._sum.quantity || 0;
-
-        const docItem = await tx.documentReferenceItem.findFirst({
-          where: {
-            documentReferenceId: gateOperation.documentReferenceId,
-            inventoryId: cargoItem.inventoryId,
-          },
-        });
-
-        if (docItem) {
-          const erpQty = docItem.productQty || docItem.quantity || 0;
-          const totalQty = otherOpsQty + currentOpOtherQty + targetQuantity;
-          if (totalQty > erpQty) {
-            const remainingQty = Math.max(
-              0,
-              erpQty - otherOpsQty - currentOpOtherQty,
-            );
-            throw new BadRequestException(
-              `Kuantitas barang (${targetQuantity} ${docItem.uom}) melebihi sisa kuantitas pada dokumen ERP untuk ${docItem.productName} (Sisa: ${remainingQty} ${docItem.uom}).`,
-            );
-          }
-        }
       }
 
-      // 3. Update the cargo item
+      // 4. Update the cargo item
       const updated = await tx.gateOperationProduct.update({
         where: { id: cargoItem.id },
         data: {
-          quantId: quantId || null,
-          locationId: locationId || null,
+          quantId: quantId !== undefined ? quantId : cargoItem.quantId,
+          locationId:
+            locationId !== undefined ? locationId : cargoItem.locationId,
           quantity: targetQuantity,
+          documentReferenceId: targetDocId,
         },
         include: {
           inventory: true,
           quant: true,
           location: true,
           gateOperation: true,
+          documentReference: true,
         },
       });
 
-      // 4. Reserve new stock
+      // 5. Reserve new stock
       if (quantId && quantId !== null) {
         await this.reserveQuantStock(
           tx,
@@ -1335,10 +1617,139 @@ export class GateService {
         );
       }
 
-      // 5. Recalculate status and totals
+      // 6. Recalculate status and totals
       await this.updateGateStatusAndRealisasi(tx, gateOperation.id);
 
       return this.stripIdField(updated);
+    });
+  }
+
+  /**
+   * Attach a document reference to an existing Gate Operation.
+   */
+  async attachDocumentReference(uuid: string, documentReferenceId: number) {
+    const gateOperation = await this.prisma.gateOperation.findUnique({
+      where: { uuid },
+      include: {
+        documentReferences: true,
+      },
+    });
+
+    if (!gateOperation) {
+      throw new NotFoundException('Gate operation tidak ditemukan.');
+    }
+
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
+      throw new BadRequestException(
+        'Operasi gerbang sudah final dan tidak dapat diubah.',
+      );
+    }
+
+    const doc = await this.prisma.documentReference.findUnique({
+      where: { id: documentReferenceId },
+    });
+    if (!doc) {
+      throw new NotFoundException('Dokumen referensi tidak ditemukan.');
+    }
+
+    const isAlreadyAttached =
+      gateOperation.documentReferences.some(
+        (ref) => ref.documentReferenceId === documentReferenceId,
+      ) || gateOperation.documentReferenceId === documentReferenceId;
+
+    if (isAlreadyAttached) {
+      throw new BadRequestException(
+        'Dokumen referensi sudah terhubung dengan operasi gerbang ini.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.gateOperationDocumentReference.create({
+        data: {
+          gateOperationId: gateOperation.id,
+          documentReferenceId,
+        },
+      });
+
+      if (!gateOperation.documentReferenceId) {
+        await tx.gateOperation.update({
+          where: { id: gateOperation.id },
+          data: { documentReferenceId },
+        });
+      }
+
+      return this.getGateOperationByUuid(uuid);
+    });
+  }
+
+  /**
+   * Remove an attached document reference from a Gate Operation.
+   */
+  async removeDocumentReference(uuid: string, documentReferenceId: number) {
+    const gateOperation = await this.prisma.gateOperation.findUnique({
+      where: { uuid },
+      include: {
+        documentReferences: true,
+        products: true,
+      },
+    });
+
+    if (!gateOperation) {
+      throw new NotFoundException('Gate operation tidak ditemukan.');
+    }
+
+    if (
+      gateOperation.status === 'VERIFIED' ||
+      gateOperation.status === 'CANCELED'
+    ) {
+      throw new BadRequestException(
+        'Operasi gerbang sudah final dan tidak dapat diubah.',
+      );
+    }
+
+    // Check if any products in this gate operation belong to this documentReferenceId
+    const linkedProducts = gateOperation.products.filter(
+      (p) =>
+        p.documentReferenceId === documentReferenceId ||
+        (!p.documentReferenceId &&
+          gateOperation.documentReferenceId === documentReferenceId),
+    );
+
+    if (linkedProducts.length > 0) {
+      throw new BadRequestException(
+        'Tidak dapat menghapus dokumen referensi yang masih memiliki barang muatan terkait.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.gateOperationDocumentReference.deleteMany({
+        where: {
+          gateOperationId: gateOperation.id,
+          documentReferenceId,
+        },
+      });
+
+      // If this was the primary documentReferenceId, reassign or set null
+      if (gateOperation.documentReferenceId === documentReferenceId) {
+        const remainingDoc =
+          await tx.gateOperationDocumentReference.findFirst({
+            where: { gateOperationId: gateOperation.id },
+            orderBy: { createdAt: 'asc' },
+          });
+        await tx.gateOperation.update({
+          where: { id: gateOperation.id },
+          data: {
+            documentReferenceId: remainingDoc
+              ? remainingDoc.documentReferenceId
+              : null,
+          },
+        });
+      }
+
+      return this.getGateOperationByUuid(uuid);
     });
   }
 
@@ -1435,6 +1846,13 @@ export class GateService {
         documentReference: {
           include: { items: true },
         },
+        documentReferences: {
+          include: {
+            documentReference: {
+              include: { items: true },
+            },
+          },
+        },
         products: {
           include: {
             inventory: true,
@@ -1501,6 +1919,108 @@ export class GateService {
 
     const logoBuffer = await this.getLogoBuffer();
 
+    // Aggregate all document references and partners
+    const rawDocRefs = gateOperation.documentReferences?.length
+      ? gateOperation.documentReferences
+          .map((r: any) => r.documentReference)
+          .filter(Boolean)
+      : (gateOperation.documentReference ? [gateOperation.documentReference] : []);
+
+    const partners = Array.from(
+      new Set(
+        rawDocRefs
+          .map((doc: any) => doc.partnerName || gateOperation.clientPartner)
+          .filter((name: any): name is string => Boolean(name && name.trim())),
+      ),
+    );
+
+    if (partners.length === 0 && gateOperation.clientPartner) {
+      partners.push(gateOperation.clientPartner);
+    }
+
+    const docList = rawDocRefs.length > 0
+      ? Array.from(
+          new Set(
+            rawDocRefs
+              .map((d: any) => d.origin || d.documentNumber)
+              .filter((n: any): n is string => Boolean(n && n.trim())),
+          ),
+        )
+      : (gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber
+          ? [gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber]
+          : []);
+
+    // 3 Copies configuration: Driver, Petugas, Pos Satpam
+    const copies = [
+      {
+        key: 'DRIVER',
+        titleLabel: 'Lembar Untuk: Driver',
+        hasBadge: true,
+        badgeText: '[ LEMBAR DRIVER ]',
+        badgeBorder: '#1e3a8a',
+        badgeBg: '#eff6ff',
+        badgeTextColor: '#1e3a8a',
+        needSignature: false,
+      },
+      {
+        key: 'PETUGAS',
+        titleLabel: 'Lembar Untuk: Petugas',
+        hasBadge: false, // Petugas tetap barcode di pojok kanan atas tanpa tanda/label
+        needSignature: true,
+      },
+      {
+        key: 'POS_SATPAM',
+        titleLabel: 'Lembar Untuk: Pos Satpam',
+        hasBadge: true,
+        badgeText: '[ POS SATPAM ]',
+        badgeBorder: '#b91c1c',
+        badgeBg: '#fef2f2',
+        badgeTextColor: '#b91c1c',
+        needSignature: false,
+      },
+    ];
+
+    const rawProducts = gateOperation.products || [];
+    const prodMap = new Map<string, any>();
+    rawProducts.forEach((p: any) => {
+      const key = `${p.inventoryId || 0}_${p.locationId || 0}`;
+      if (prodMap.has(key)) {
+        const existing = prodMap.get(key);
+        existing.quantity += p.quantity;
+        if (p.notes && p.notes.trim()) {
+          existing.notes = existing.notes
+            ? `${existing.notes}, ${p.notes}`
+            : p.notes;
+        }
+      } else {
+        prodMap.set(key, {
+          ...p,
+          inventory: p.inventory ? { ...p.inventory } : null,
+          location: p.location ? { ...p.location } : null,
+          quant: p.quant ? { ...p.quant } : null,
+        });
+      }
+    });
+    const products = Array.from(prodMap.values());
+
+    const secondaryQtyMap = new Map<string, number>();
+    products.forEach((p: any) => {
+      const secQty = this.getSecondaryQty(p.quantity, p.inventory?.uom);
+      const secUnit = this.getSecondaryUnit(p.inventory?.uom);
+      const current = secondaryQtyMap.get(secUnit) || 0;
+      secondaryQtyMap.set(secUnit, current + secQty);
+    });
+    const secQtyEntries = Array.from(secondaryQtyMap.entries());
+
+    const dateStr = new Date(gateOperation.createdAt).toLocaleDateString(
+      'id-ID',
+      {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      },
+    );
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const buffers: Buffer[] = [];
@@ -1509,307 +2029,315 @@ export class GateService {
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', (err) => reject(err));
 
-      // Draw Top Header
-      // Logo (Left)
-      if (logoBuffer) {
-        doc.image(logoBuffer, 40, 40, { fit: [70, 40] });
-      } else {
-        doc.rect(40, 40, 50, 40).fill('#1e3a8a');
-        doc
-          .fillColor('#ffffff')
-          .fontSize(11)
-          .font('Helvetica-Bold')
-          .text('BULOG', 45, 48);
-        doc.fontSize(8).text('WMS', 54, 62);
-      }
+      copies.forEach((copy, copyIdx) => {
+        if (copyIdx > 0) {
+          doc.addPage({ margin: 40, size: 'A4' });
+        }
 
-      // Header Text (Center)
-      doc
-        .fillColor('#1e293b')
-        .fontSize(14)
-        .font('Helvetica-Bold')
-        .text('SURAT PENGANTAR / SURAT JALAN', 110, 50, {
-          align: 'center',
-          width: 380,
+        // Draw Top Header
+        // Logo (Left)
+        if (logoBuffer) {
+          doc.image(logoBuffer, 40, 35, { fit: [70, 40] });
+        } else {
+          doc.rect(40, 35, 50, 40).fill('#1e3a8a');
+          doc
+            .fillColor('#ffffff')
+            .fontSize(11)
+            .font('Helvetica-Bold')
+            .text('BULOG', 45, 43);
+          doc.fontSize(8).text('WMS', 54, 57);
+        }
+
+        // Header Text (Center)
+        doc
+          .fillColor('#1e293b')
+          .fontSize(13)
+          .font('Helvetica-Bold')
+          .text('SURAT PENGANTAR / SURAT JALAN', 115, 38, {
+            align: 'center',
+            width: 280,
+          });
+
+        doc
+          .fillColor(
+            copy.hasBadge && copy.badgeTextColor
+              ? copy.badgeTextColor
+              : '#64748b',
+          )
+          .fontSize(8.5)
+          .font('Helvetica-Bold')
+          .text(copy.titleLabel, 115, 55, {
+            align: 'center',
+            width: 280,
+          });
+
+        // Top Right Corner element
+        if (
+          copy.hasBadge &&
+          copy.badgeText &&
+          copy.badgeBg &&
+          copy.badgeBorder &&
+          copy.badgeTextColor
+        ) {
+          // Driver & Pos Satpam: clear prominent badge at top-right corner
+          doc.save();
+          doc
+            .roundedRect(405, 30, 150, 24, 4)
+            .lineWidth(1.5)
+            .fillAndStroke(copy.badgeBg, copy.badgeBorder);
+          doc
+            .fillColor(copy.badgeTextColor)
+            .fontSize(10)
+            .font('Helvetica-Bold')
+            .text(copy.badgeText, 405, 37, { width: 150, align: 'center' });
+          doc.restore();
+
+          // Barcode / QR beside or below
+          doc.image(qrCodeBuffer, 515, 58, { width: 38, height: 38 });
+        } else {
+          // Petugas: barcode di pojok kanan atas tanpa tanda / label
+          doc.image(qrCodeBuffer, 505, 35, { width: 50, height: 50 });
+        }
+
+        doc.moveTo(40, 100).lineTo(555, 100).lineWidth(1.5).stroke('#1e3a8a');
+
+        // General Info Section
+        doc.fillColor('#334155').fontSize(9).font('Helvetica');
+        let currentY = 112;
+
+        const formatValueText = (val: string | string[]) => {
+          if (!val) return '-';
+          if (Array.isArray(val)) {
+            if (val.length === 0) return '-';
+            return val.map((item) => `•  ${item}`).join('\n');
+          }
+          return val;
+        };
+
+        const drawInfoRow = (
+          label1: string,
+          val1: string | string[],
+          label2: string,
+          val2: string | string[],
+        ) => {
+          doc.font('Helvetica-Bold');
+          const hLabel1 = label1 ? doc.heightOfString(label1, { width: 120 }) : 0;
+          const hLabel2 = label2 ? doc.heightOfString(label2, { width: 110 }) : 0;
+
+          const valText1 = formatValueText(val1);
+          const valText2 = formatValueText(val2);
+
+          doc.font('Helvetica');
+          const hVal1 = label1
+            ? doc.heightOfString(valText1, { width: 132 })
+            : 0;
+          const hVal2 = label2
+            ? doc.heightOfString(valText2, { width: 117 })
+            : 0;
+
+          const rowHeight = Math.max(hLabel1, hLabel2, hVal1, hVal2, 14);
+
+          if (label1) {
+            doc
+              .font('Helvetica-Bold')
+              .fillColor('#64748b')
+              .text(label1, 40, currentY, { width: 120 });
+            doc
+              .font('Helvetica')
+              .fillColor('#1e293b')
+              .text(':', 160, currentY, { width: 8 });
+            doc
+              .font('Helvetica')
+              .fillColor('#1e293b')
+              .text(valText1, 168, currentY, { width: 132 });
+          }
+
+          if (label2) {
+            doc
+              .font('Helvetica-Bold')
+              .fillColor('#64748b')
+              .text(label2, 320, currentY, { width: 110 });
+            doc
+              .font('Helvetica')
+              .fillColor('#1e293b')
+              .text(':', 430, currentY, { width: 8 });
+            doc
+              .font('Helvetica')
+              .fillColor('#1e293b')
+              .text(valText2, 438, currentY, { width: 117 });
+          }
+
+          currentY += rowHeight + 4;
+        };
+
+        drawInfoRow(
+          'No Tiket',
+          gateOperation.opNumber,
+          'Tujuan / Partner',
+          partners,
+        );
+        drawInfoRow('Tanggal', dateStr, 'Nama Driver', gateOperation.driverName);
+        drawInfoRow(
+          'No. Dokumen Ref',
+          docList,
+          'Nomor Plat',
+          gateOperation.licensePlate,
+        );
+        drawInfoRow('No. Telp Driver', gateOperation.driverPhone || '-', '', '');
+
+        doc
+          .moveTo(40, currentY + 5)
+          .lineTo(555, currentY + 5)
+          .lineWidth(0.5)
+          .stroke('#cbd5e1');
+        currentY += 15;
+
+        // Table Header
+        doc.fillColor('#f8fafc').rect(40, currentY, 515, 20).fill();
+        doc.fillColor('#475569').fontSize(8).font('Helvetica-Bold');
+        doc.text('No', 45, currentY + 6, { width: 20 });
+        doc.text('Nama Produk', 70, currentY + 6, { width: 180 });
+        doc.text('SKU', 255, currentY + 6, { width: 50 });
+        doc.text('UOM', 310, currentY + 6, { width: 30 });
+        doc.text('Jumlah', 345, currentY + 6, { width: 45, align: 'right' });
+        doc.text('Kuantum', 395, currentY + 6, { width: 60, align: 'right' });
+        doc.text('Location', 460, currentY + 6, { width: 95 });
+
+        currentY += 20;
+
+        // Table Rows
+        let totalQty = 0;
+        products.forEach((p: any, idx: number) => {
+          if (currentY + 25 > 720) {
+            doc.addPage();
+            currentY = 50;
+          }
+
+          const locationName = p.location?.displayName || '-';
+          doc.fillColor('#1e293b').fontSize(8).font('Helvetica');
+          doc.text(String(idx + 1), 45, currentY + 4, { width: 20 });
+          doc.text(p.inventory?.name || '-', 70, currentY + 4, { width: 180 });
+          doc.text(p.inventory?.sku || '-', 255, currentY + 4, { width: 50 });
+          doc.text(p.inventory?.uom || '-', 310, currentY + 4, { width: 30 });
+          doc.text(p.quantity.toLocaleString('id-ID'), 345, currentY + 4, {
+            width: 45,
+            align: 'right',
+          });
+          doc.text(
+            this.formatSecondaryQty(p.quantity, p.inventory?.uom),
+            395,
+            currentY + 4,
+            { width: 60, align: 'right' },
+          );
+          doc.text(locationName, 460, currentY + 4, { width: 95 });
+
+          totalQty += p.quantity;
+
+          doc
+            .moveTo(40, currentY + 18)
+            .lineTo(555, currentY + 18)
+            .lineWidth(0.5)
+            .stroke('#e2e8f0');
+          currentY += 18;
         });
 
-      // QR Code (Right)
-      doc.image(qrCodeBuffer, 505, 40, { width: 50, height: 50 });
-
-      doc.moveTo(40, 95).lineTo(555, 95).lineWidth(1.5).stroke('#1e3a8a');
-
-      // General Info Section
-      doc.fillColor('#334155').fontSize(9).font('Helvetica');
-      let currentY = 115;
-
-      const drawInfoRow = (
-        label1: string,
-        val1: string,
-        label2: string,
-        val2: string,
-      ) => {
-        doc.font('Helvetica-Bold');
-        const hLabel1 = label1 ? doc.heightOfString(label1, { width: 120 }) : 0;
-        const hLabel2 = label2 ? doc.heightOfString(label2, { width: 110 }) : 0;
-
-        doc.font('Helvetica');
-        const hVal1 = label1
-          ? doc.heightOfString(`:  ${val1 || '-'}`, { width: 140 })
-          : 0;
-        const hVal2 = label2
-          ? doc.heightOfString(`:  ${val2 || '-'}`, { width: 125 })
-          : 0;
-
-        const rowHeight = Math.max(hLabel1, hLabel2, hVal1, hVal2, 14);
-
-        if (label1) {
-          doc
-            .font('Helvetica-Bold')
-            .fillColor('#64748b')
-            .text(label1, 40, currentY, { width: 120 });
-          doc
-            .font('Helvetica')
-            .fillColor('#1e293b')
-            .text(`:  ${val1 || '-'}`, 160, currentY, { width: 140 });
-        }
-
-        if (label2) {
-          doc
-            .font('Helvetica-Bold')
-            .fillColor('#64748b')
-            .text(label2, 320, currentY, { width: 110 });
-          doc
-            .font('Helvetica')
-            .fillColor('#1e293b')
-            .text(`:  ${val2 || '-'}`, 430, currentY, { width: 125 });
-        }
-
-        currentY += rowHeight + 4;
-      };
-
-      const dateStr = new Date(gateOperation.createdAt).toLocaleDateString(
-        'id-ID',
-        {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        },
-      );
-
-      drawInfoRow(
-        'No Tiket',
-        gateOperation.opNumber,
-        'Tujuan / Partner',
-        gateOperation.clientPartner ||
-          gateOperation.documentReference?.partnerName ||
-          '-',
-      );
-      drawInfoRow('Tanggal', dateStr, 'Nama Driver', gateOperation.driverName);
-      drawInfoRow(
-        'No. Dokumen Ref',
-        gateOperation.documentReference?.origin ||
-          gateOperation.documentReference?.documentNumber ||
-          '-',
-        'Nomor Plat',
-        gateOperation.licensePlate,
-      );
-      drawInfoRow('No. Telp Driver', gateOperation.driverPhone || '-', '', '');
-
-      doc
-        .moveTo(40, currentY + 5)
-        .lineTo(555, currentY + 5)
-        .lineWidth(0.5)
-        .stroke('#cbd5e1');
-      currentY += 15;
-
-      // Table Header
-      doc.fillColor('#f8fafc').rect(40, currentY, 515, 20).fill();
-      doc.fillColor('#475569').fontSize(8).font('Helvetica-Bold');
-      doc.text('No', 45, currentY + 6, { width: 20 });
-      doc.text('Nama Produk', 70, currentY + 6, { width: 180 });
-      doc.text('SKU', 255, currentY + 6, { width: 50 });
-      doc.text('UOM', 310, currentY + 6, { width: 30 });
-      doc.text('Jumlah', 345, currentY + 6, { width: 45, align: 'right' });
-      doc.text('Kuantum', 395, currentY + 6, { width: 60, align: 'right' });
-      doc.text('Location', 460, currentY + 6, { width: 95 });
-
-      currentY += 20;
-
-      // Table Rows
-      let totalQty = 0;
-      const rawProducts = gateOperation.products || [];
-      const prodMap = new Map<string, any>();
-      rawProducts.forEach((p: any) => {
-        const key = `${p.inventoryId || 0}_${p.locationId || 0}`;
-        if (prodMap.has(key)) {
-          const existing = prodMap.get(key);
-          existing.quantity += p.quantity;
-          if (p.notes && p.notes.trim()) {
-            existing.notes = existing.notes
-              ? `${existing.notes}, ${p.notes}`
-              : p.notes;
-          }
-        } else {
-          prodMap.set(key, {
-            ...p,
-            inventory: p.inventory ? { ...p.inventory } : null,
-            location: p.location ? { ...p.location } : null,
-            quant: p.quant ? { ...p.quant } : null,
-          });
-        }
-      });
-      const products = Array.from(prodMap.values());
-
-      products.forEach((p: any, idx: number) => {
-        if (currentY + 25 > 720) {
+        // Summary Card
+        currentY += 10;
+        if (currentY + 120 > 750) {
           doc.addPage();
           currentY = 50;
         }
 
-        const locationName = p.location?.displayName || '-';
+        const numSecQtyLines =
+          secQtyEntries.length > 0 ? secQtyEntries.length : 1;
+        const rectHeight = 40 + numSecQtyLines * 14;
 
-        doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica');
-        doc.text(String(idx + 1), 45, currentY + 6, { width: 20 });
-        doc
-          .font('Helvetica-Bold')
-          .text(p.inventory?.name || '-', 70, currentY + 6, {
-            width: 180,
-            ellipsis: true,
-          });
-        doc.font('Helvetica').text(p.inventory?.sku || '-', 255, currentY + 6, {
-          width: 50,
-          ellipsis: true,
-        });
-        doc.text(p.inventory?.uom || '-', 310, currentY + 6, { width: 30 });
-        doc.text(p.quantity.toLocaleString('id-ID'), 345, currentY + 6, {
-          width: 45,
-          align: 'right',
-        });
-        doc.text(
-          this.formatSecondaryQty(p.quantity, p.inventory?.uom),
-          395,
-          currentY + 6,
-          {
-            width: 60,
-            align: 'right',
-          },
-        );
-        doc.text(locationName, 460, currentY + 6, {
-          width: 95,
-          ellipsis: true,
-        });
+        doc.fillColor('#f8fafc').rect(320, currentY, 235, rectHeight).fill();
+        doc.fillColor('#475569').fontSize(8.5).font('Helvetica-Bold');
+        doc.text('Total Jenis Barang', 330, currentY + 8);
+        doc.text(`:  ${products.length}`, 430, currentY + 8);
 
-        totalQty += p.quantity;
+        doc.text('Total Quantity', 330, currentY + 22);
+        doc.text(`:  ${totalQty.toLocaleString('id-ID')}`, 430, currentY + 22);
 
-        doc
-          .moveTo(40, currentY + 18)
-          .lineTo(555, currentY + 18)
-          .lineWidth(0.3)
-          .stroke('#e2e8f0');
-        currentY += 18;
-      });
-
-      // Ringkasan Section
-      currentY += 10;
-
-      const secondaryQtyMap = new Map<string, number>();
-      products.forEach((p: any) => {
-        const secQty = this.getSecondaryQty(p.quantity, p.inventory?.uom);
-        const secUnit = this.getSecondaryUnit(p.inventory?.uom);
-        const current = secondaryQtyMap.get(secUnit) || 0;
-        secondaryQtyMap.set(secUnit, current + secQty);
-      });
-
-      const secQtyEntries = Array.from(secondaryQtyMap.entries());
-      const numSecQtyLines =
-        secQtyEntries.length > 0 ? secQtyEntries.length : 1;
-      const rectHeight = 40 + numSecQtyLines * 14;
-
-      doc.fillColor('#f8fafc').rect(320, currentY, 235, rectHeight).fill();
-      doc.fillColor('#475569').fontSize(8.5).font('Helvetica-Bold');
-      doc.text('Total Jenis Barang', 330, currentY + 8);
-      doc.text(`:  ${products.length}`, 430, currentY + 8);
-
-      doc.text('Total Quantity', 330, currentY + 22);
-      doc.text(`:  ${totalQty.toLocaleString('id-ID')}`, 430, currentY + 22);
-
-      if (secQtyEntries.length === 0) {
-        doc.text('Total Kuantum', 330, currentY + 36);
-        doc.text(`:  0 Kg`, 430, currentY + 36);
-      } else {
-        secQtyEntries.forEach(([unit, sumSecQty], index) => {
-          const lineY = currentY + 36 + index * 14;
-          doc.text(index === 0 ? 'Total Kuantum' : '', 330, lineY);
-          doc.text(
-            `:  ${sumSecQty.toLocaleString('id-ID')} ${unit}`,
-            430,
-            lineY,
-          );
-        });
-      }
-
-      // Warning Note Section
-      currentY += rectHeight + 15;
-      if (currentY + 20 > 750) {
-        doc.addPage();
-        currentY = 50;
-      }
-      doc
-        .fillColor('#ef4444')
-        .fontSize(8)
-        .font('Helvetica-Oblique')
-        .text(
-          'Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.',
-          40,
-          currentY,
-          { width: 515, align: 'center' },
-        );
-
-      currentY += 25;
-
-      // Signatures
-      if (currentY + 80 > 750) {
-        doc.addPage();
-        currentY = 50;
-      }
-      doc.fillColor('#1e293b').fontSize(9).font('Helvetica');
-      doc.text('Pengangkut / Driver', 70, currentY, {
-        width: 150,
-        align: 'center',
-      });
-      doc.text('Mengetahui', 375, currentY, { width: 150, align: 'center' });
-
-      if (signatureBuffer && activeSig?.fileKey) {
-        const fileKeyLower = activeSig.fileKey.toLowerCase();
-        if (
-          fileKeyLower.endsWith('.png') ||
-          fileKeyLower.endsWith('.jpg') ||
-          fileKeyLower.endsWith('.jpeg')
-        ) {
-          const imageX = 375 + (150 - 100) / 2;
-          try {
-            doc.image(signatureBuffer, imageX, currentY + 15, {
-              fit: [100, 45],
-            });
-          } catch (err: any) {
-            this.logger.warn(
-              `Failed to render signature image in PDF: ${err.message}`,
+        if (secQtyEntries.length === 0) {
+          doc.text('Total Kuantum', 330, currentY + 36);
+          doc.text(`:  0 Kg`, 430, currentY + 36);
+        } else {
+          secQtyEntries.forEach(([unit, sumSecQty], index) => {
+            const lineY = currentY + 36 + index * 14;
+            doc.text(index === 0 ? 'Total Kuantum' : '', 330, lineY);
+            doc.text(
+              `:  ${sumSecQty.toLocaleString('id-ID')} ${unit}`,
+              430,
+              lineY,
             );
-          }
+          });
         }
-      }
 
-      currentY += 65;
-      doc
-        .font('Helvetica-Bold')
-        .text(`(  ${gateOperation.driverName}  )`, 70, currentY, {
+        // Warning Note Section
+        currentY += rectHeight + 15;
+        if (currentY + 20 > 750) {
+          doc.addPage();
+          currentY = 50;
+        }
+        doc
+          .fillColor('#ef4444')
+          .fontSize(8)
+          .font('Helvetica-Oblique')
+          .text(
+            'Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.',
+            40,
+            currentY,
+            { width: 515, align: 'center' },
+          );
+
+        currentY += 25;
+
+        // Signatures
+        if (currentY + 80 > 750) {
+          doc.addPage();
+          currentY = 50;
+        }
+        doc.fillColor('#1e293b').fontSize(9).font('Helvetica');
+        doc.text('Pengangkut / Driver', 70, currentY, {
           width: 150,
           align: 'center',
         });
+        doc.text('Mengetahui', 375, currentY, { width: 150, align: 'center' });
 
-      doc.font('Helvetica-Bold').text(`(  ${verifierName}  )`, 375, currentY, {
-        width: 150,
-        align: 'center',
+        if (signatureBuffer && activeSig?.fileKey) {
+          const fileKeyLower = activeSig.fileKey.toLowerCase();
+          if (
+            fileKeyLower.endsWith('.png') ||
+            fileKeyLower.endsWith('.jpg') ||
+            fileKeyLower.endsWith('.jpeg')
+          ) {
+            const imageX = 375 + (150 - 100) / 2;
+            try {
+              doc.image(signatureBuffer, imageX, currentY + 15, {
+                fit: [100, 45],
+              });
+            } catch (err: any) {
+              this.logger.warn(
+                `Failed to render signature image in PDF: ${err.message}`,
+              );
+            }
+          }
+        }
+
+        currentY += 65;
+        doc
+          .font('Helvetica-Bold')
+          .text(`(  ${gateOperation.driverName}  )`, 70, currentY, {
+            width: 150,
+            align: 'center',
+          });
+
+        doc.font('Helvetica-Bold').text(`(  ${verifierName}  )`, 375, currentY, {
+          width: 150,
+          align: 'center',
+        });
       });
 
       doc.end();
@@ -1830,6 +2358,13 @@ export class GateService {
       include: {
         documentReference: {
           include: { items: true },
+        },
+        documentReferences: {
+          include: {
+            documentReference: {
+              include: { items: true },
+            },
+          },
         },
         products: {
           include: {
@@ -1918,6 +2453,60 @@ export class GateService {
       },
     );
 
+    const rawDocRefs = gateOperation.documentReferences?.length
+      ? gateOperation.documentReferences
+          .map((r: any) => r.documentReference)
+          .filter(Boolean)
+      : (gateOperation.documentReference ? [gateOperation.documentReference] : []);
+
+    const partners = Array.from(
+      new Set(
+        rawDocRefs
+          .map((doc: any) => doc.partnerName || gateOperation.clientPartner)
+          .filter((name: any): name is string => Boolean(name && name.trim())),
+      ),
+    );
+
+    if (partners.length === 0 && gateOperation.clientPartner) {
+      partners.push(gateOperation.clientPartner);
+    }
+
+    const docList = rawDocRefs.length > 0
+      ? Array.from(
+          new Set(
+            rawDocRefs
+              .map((d: any) => d.origin || d.documentNumber)
+              .filter((n: any): n is string => Boolean(n && n.trim())),
+          ),
+        )
+      : (gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber
+          ? [gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber]
+          : []);
+
+    const docNumberListHtml =
+      docList.length === 0
+        ? ': -'
+        : `
+          <div style="display: flex; gap: 4px; align-items: flex-start;">
+            <span style="line-height: 1.5;">:</span>
+            <ul style="margin: 0; padding-left: 16px; list-style-type: disc;">
+              ${docList.map((d) => `<li style="margin-bottom: 2px;">${d}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+
+    const partnerListHtml =
+      partners.length === 0
+        ? ': -'
+        : `
+          <div style="display: flex; gap: 4px; align-items: flex-start;">
+            <span style="line-height: 1.5;">:</span>
+            <ul style="margin: 0; padding-left: 16px; list-style-type: disc;">
+              ${partners.map((p) => `<li style="margin-bottom: 2px;">${p}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+
     const rawProducts = gateOperation.products || [];
     const prodMap = new Map<string, any>();
     rawProducts.forEach((p: any) => {
@@ -1991,12 +2580,171 @@ export class GateService {
       })
       .join('');
 
+    const copies = [
+      {
+        key: 'DRIVER',
+        label: '',
+        hasBadge: true,
+        badgeText: '[ DRIVER ]',
+        badgeBorder: '#1e3a8a',
+        badgeBg: '#eff6ff',
+        badgeTextColor: '#1e3a8a',
+        needSignature: false,
+      },
+      {
+        key: 'PETUGAS',
+        label: '',
+        hasBadge: false, // Petugas tetap barcode di pojok kanan atas tanpa tanda/label
+        needSignature: true,
+      },
+      {
+        key: 'POS_SATPAM',
+        label: '',
+        hasBadge: true,
+        badgeText: '[ POS SATPAM ]',
+        badgeBorder: '#b91c1c',
+        badgeBg: '#fef2f2',
+        badgeTextColor: '#b91c1c',
+        needSignature: false,
+      },
+    ];
+
+    const copyContainersHtml = copies
+      .map((copy) => {
+        const topHeaderRightHtml = copy.hasBadge
+          ? `
+            <div style="text-align: right; min-width: 140px;">
+              <div style="display: inline-block; border: 2px solid ${copy.badgeBorder}; background: ${copy.badgeBg}; color: ${copy.badgeTextColor}; font-weight: 800; font-size: 12px; padding: 4px 12px; border-radius: 6px; text-align: center; letter-spacing: 0.5px;">
+                ${copy.badgeText}
+              </div>
+            </div>
+          `
+          : `
+            <div class="qr-box">
+              <img src="${qrCodeDataUrl}" style="width: 55px; height: 55px; display: inline-block;" alt="Verification QR" />
+            </div>
+          `;
+
+        return `
+        <div class="copy-page container">
+          <div class="header">
+            <div class="logo-box-img">
+              ${
+                logoUrl
+                  ? `<img src="${logoUrl}" style="height: 40px; max-width: 100%; object-fit: contain;" alt="Logo BULOG" />`
+                  : `<div class="logo-box">BULOG<span class="logo-sub">WMS</span></div>`
+              }
+            </div>
+            <div class="title">
+              SURAT PENGANTAR / SURAT JALAN
+              <div style="font-size: 11px; font-weight: bold; color: ${copy.hasBadge ? copy.badgeTextColor : '#64748b'}; margin-top: 3px;">
+                ${copy.label}
+              </div>
+            </div>
+            ${topHeaderRightHtml}
+          </div>
+          
+          <div class="info-grid">
+            <div class="info-col">
+              <table>
+                <tr>
+                  <td class="info-label">No Tiket</td>
+                  <td class="info-value">: ${gateOperation.opNumber}</td>
+                </tr>
+                <tr>
+                  <td class="info-label">Tanggal</td>
+                  <td class="info-value">: ${dateStr}</td>
+                </tr>
+                <tr>
+                  <td class="info-label">Nomor Dokumen Referensi</td>
+                  <td class="info-value">${docNumberListHtml}</td>
+                </tr>
+              </table>
+            </div>
+            <div class="info-col">
+              <table>
+                <tr>
+                  <td class="info-label">Tujuan / Partner</td>
+                  <td class="info-value">${partnerListHtml}</td>
+                </tr>
+                <tr>
+                  <td class="info-label">Nama Driver</td>
+                  <td class="info-value">: ${gateOperation.driverName}</td>
+                </tr>
+                <tr>
+                  <td class="info-label">Nomor Plat</td>
+                  <td class="info-value">: ${gateOperation.licensePlate}</td>
+                </tr>
+                <tr>
+                  <td class="info-label">No. Telp Driver</td>
+                  <td class="info-value">: ${gateOperation.driverPhone || '-'}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <table class="cargo-table">
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">No</th>
+                <th style="width: 250px;">Nama Produk</th>
+                <th style="width: 80px;">SKU</th>
+                <th style="width: 50px; text-align: center;">UOM</th>
+                <th style="width: 90px; text-align: right;">Jumlah Muatan</th>
+                <th style="width: 90px; text-align: right;">Kuantum</th>
+                <th style="width: 120px;">Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="summary-card">
+            <div class="summary-row">
+              <div class="summary-label">Total Jenis Barang</div>
+              <div class="summary-value">${products.length}</div>
+            </div>
+            <div class="summary-row" style="margin-top: 5px; border-top: 1px solid #cbd5e1; padding-top: 5px;">
+              <div class="summary-label">Total Quantity</div>
+              <div class="summary-value">${totalQty.toLocaleString('id-ID')}</div>
+            </div>
+            ${totalKuantumRowsHtml}
+          </div>
+
+          <div style="margin-top: 20px; margin-bottom: 20px; font-style: italic; color: #ef4444; font-size: 10px; text-align: center; border: 1px dashed #fca5a5; padding: 8px; border-radius: 4px; background-color: #fef2f2;">
+            Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.
+          </div>
+
+          <div class="signatures" style="display: ${copy.needSignature ? 'flex' : 'none'}">
+            <div class="signature-box">
+              <div>Pengangkut / Driver</div>
+              <div class="signature-space"></div>
+              <div class="signature-name">${gateOperation.driverName}</div>
+            </div>
+            <div class="signature-box">
+              <div>Mengetahui</div>
+              <div class="signature-space" style="display: flex; align-items: center; justify-content: center; height: 60px;">
+                ${
+                  signatureUrl
+                    ? `<img src="${signatureUrl}" style="max-height: 55px; max-width: 150px; object-fit: contain;" alt="Signature" />`
+                    : ''
+                }
+              </div>
+              <div class="signature-name">${verifierName}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      })
+      .join('<div class="no-print" style="margin: 30px auto; border-top: 2px dashed #cbd5e1; max-width: 800px;"></div>');
+
     return `
       <!DOCTYPE html>
       <html lang="id">
       <head>
         <meta charset="UTF-8">
-        <title>Surat Jalan - ${gateOperation.opNumber}</title>
+        <title>Surat Jalan (3 Lembar) - ${gateOperation.opNumber}</title>
         <style>
           @page {
             size: A4 portrait;
@@ -2014,7 +2762,7 @@ export class GateService {
           }
           .container {
             max-width: 800px;
-            margin: 0 auto;
+            margin: 0 auto 30px auto;
             background: #fff;
           }
           .header {
@@ -2142,129 +2890,38 @@ export class GateService {
               font-size: 11px;
             }
             .no-print {
-              display: none;
+              display: none !important;
             }
             .container {
               width: 100%;
+              margin: 0;
+            }
+            .copy-page {
+              page-break-after: always;
+              break-after: page;
+            }
+            .copy-page:last-child {
+              page-break-after: auto;
+              break-after: auto;
             }
           }
         </style>
       </head>
       <body>
-        <div class="no-print" style="background: #f1f5f9; padding: 10px; text-align: right; border-bottom: 1px solid #e2e8f0; margin-bottom: 20px;">
-          <button onclick="window.print()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; font-weight: bold; border-radius: 4px; cursor: pointer;">Print Surat Jalan</button>
+        <div class="no-print" style="background: #1e293b; color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <div>
+            <strong style="font-size: 14px;">Print Preview Surat Jalan (3 Lembar Otomatis)</strong>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Dokumen ini akan mencetak 3 copy otomatis: LEMBAR DRIVER, PETUGAS (Barcode pojok kanan), dan POS SATPAM.</div>
+          </div>
+          <button onclick="window.print()" style="background: #2563eb; color: white; border: none; padding: 9px 20px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            🖨️ Print 3 Copy Sekarang
+          </button>
         </div>
-        <div class="container">
-          <div class="header">
-            <div class="logo-box-img">
-              ${
-                logoUrl
-                  ? `<img src="${logoUrl}" style="height: 40px; max-width: 100%; object-fit: contain;" alt="Logo BULOG" />`
-                  : `<div class="logo-box">BULOG<span class="logo-sub">WMS</span></div>`
-              }
-            </div>
-            <div class="title">SURAT PENGANTAR / SURAT JALAN</div>
-            <div class="qr-box">
-              <img src="${qrCodeDataUrl}" style="width: 55px; height: 55px; display: inline-block;" alt="Verification QR" />
-            </div>
-          </div>
-          
-          <div class="info-grid">
-            <div class="info-col">
-              <table>
-                <tr>
-                  <td class="info-label">No Tiket</td>
-                  <td class="info-value">: ${gateOperation.opNumber}</td>
-                </tr>
-                <tr>
-                  <td class="info-label">Tanggal</td>
-                  <td class="info-value">: ${dateStr}</td>
-                </tr>
-                <tr>
-                  <td class="info-label">Nomor Dokumen Referensi</td>
-                  <td class="info-value">: ${gateOperation.documentReference?.origin || gateOperation.documentReference?.documentNumber || '-'}</td>
-                </tr>
-              </table>
-            </div>
-            <div class="info-col">
-              <table>
-                <tr>
-                  <td class="info-label">Tujuan / Partner</td>
-                  <td class="info-value">: ${gateOperation.clientPartner || gateOperation.documentReference?.partnerName || '-'}</td>
-                </tr>
-                <tr>
-                  <td class="info-label">Nama Driver</td>
-                  <td class="info-value">: ${gateOperation.driverName}</td>
-                </tr>
-                <tr>
-                  <td class="info-label">Nomor Plat</td>
-                  <td class="info-value">: ${gateOperation.licensePlate}</td>
-                </tr>
-                <tr>
-                  <td class="info-label">No. Telp Driver</td>
-                  <td class="info-value">: ${gateOperation.driverPhone || '-'}</td>
-                </tr>
-              </table>
-            </div>
-          </div>
-
-          <table class="cargo-table">
-            <thead>
-              <tr>
-                <th style="width: 30px; text-align: center;">No</th>
-                <th style="width: 250px;">Nama Produk</th>
-                <th style="width: 80px;">SKU</th>
-                <th style="width: 50px; text-align: center;">UOM</th>
-                <th style="width: 90px; text-align: right;">Jumlah Muatan</th>
-                <th style="width: 90px; text-align: right;">Kuantum</th>
-                <th style="width: 120px;">Location</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-
-          <div class="summary-card">
-            <div class="summary-row">
-              <div class="summary-label">Total Jenis Barang</div>
-              <div class="summary-value">${products.length}</div>
-            </div>
-            <div class="summary-row" style="margin-top: 5px; border-top: 1px solid #cbd5e1; padding-top: 5px;">
-              <div class="summary-label">Total Quantity</div>
-              <div class="summary-value">${totalQty.toLocaleString('id-ID')}</div>
-            </div>
-            ${totalKuantumRowsHtml}
-          </div>
-
-          <div style="margin-top: 20px; margin-bottom: 20px; font-style: italic; color: #ef4444; font-size: 10px; text-align: center; border: 1px dashed #fca5a5; padding: 8px; border-radius: 4px; background-color: #fef2f2;">
-            Catatan: Barang atau muatan setelah meninggalkan Gudang menjadi tanggung jawab Driver / Penerima.
-          </div>
-
-          <div class="signatures">
-            <div class="signature-box">
-              <div>Pengangkut / Driver</div>
-              <div class="signature-space"></div>
-              <div class="signature-name">${gateOperation.driverName}</div>
-            </div>
-            <div class="signature-box">
-              <div>Mengetahui</div>
-              <div class="signature-space" style="display: flex; align-items: center; justify-content: center; height: 60px;">
-                ${
-                  signatureUrl
-                    ? `<img src="${signatureUrl}" style="max-height: 55px; max-width: 150px; object-fit: contain;" alt="Signature" />`
-                    : ''
-                }
-              </div>
-              <div class="signature-name">${verifierName}</div>
-            </div>
-          </div>
-        </div>
+        ${copyContainersHtml}
       </body>
       </html>
     `;
   }
-
   private getSecondaryQty(qty: number, uom?: string | null): number {
     if (!uom) return qty;
     // Match the first sequence of digits potentially including a decimal point
@@ -2371,6 +3028,9 @@ export class GateService {
       try {
         const gateOperation = await this.prisma.gateOperation.findUnique({
           where: { uuid },
+          include: {
+            documentReferences: true,
+          },
         });
 
         if (!gateOperation) {
@@ -2383,7 +3043,12 @@ export class GateService {
           );
         }
 
-        if (!gateOperation.documentReferenceId) {
+        const hasDocRefs =
+          gateOperation.documentReferenceId ||
+          (gateOperation.documentReferences &&
+            gateOperation.documentReferences.length > 0);
+
+        if (!hasDocRefs) {
           throw new BadRequestException('Dokumen referensi tidak ditemukan.');
         }
 
@@ -2431,6 +3096,7 @@ export class GateService {
           where: { uuid },
           include: {
             products: true,
+            documentReferences: true,
           },
         });
 
@@ -2444,7 +3110,12 @@ export class GateService {
           );
         }
 
-        if (!gateOperation.documentReferenceId) {
+        const hasDocRefs =
+          gateOperation.documentReferenceId ||
+          (gateOperation.documentReferences &&
+            gateOperation.documentReferences.length > 0);
+
+        if (!hasDocRefs) {
           throw new BadRequestException('Dokumen referensi tidak ditemukan.');
         }
 

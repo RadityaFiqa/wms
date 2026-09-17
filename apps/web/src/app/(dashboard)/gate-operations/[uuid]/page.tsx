@@ -138,6 +138,7 @@ export default function GateOperationDetailPage() {
   const [isAddCargoOpen, setIsAddCargoOpen] = useState(false);
   const [editingCargoItem, setEditingCargoItem] = useState<any>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedHistoryDocUuid, setSelectedHistoryDocUuid] = useState<string | null>(null);
 
   const [isPrintingPdf, setIsPrintingPdf] = useState(false);
   const [isOpeningPreview, setIsOpeningPreview] = useState(false);
@@ -154,6 +155,8 @@ export default function GateOperationDetailPage() {
     addCargoItem,
     deleteCargoItem,
     updateCargoItem,
+    attachDocumentReference,
+    removeDocumentReference,
   } = useGate();
   const { user, hasPermission } = useAuthStore();
   
@@ -165,6 +168,116 @@ export default function GateOperationDetailPage() {
 
   // 1. Verification history timeline hook
   const { data: timelineHistory, refresh: refreshTimeline } = useGateVerificationHistory(uuid);
+
+  // Attached documents list for multi-document support
+  const attachedDocs: any[] = React.useMemo(() => {
+    if (gateOperation?.documentReferences && gateOperation.documentReferences.length > 0) {
+      return gateOperation.documentReferences.map((r: any) => {
+        const docRef = r.documentReference || r;
+        return {
+          id: docRef.id || r.documentReferenceId || r.id,
+          uuid: docRef.uuid || r.uuid,
+          documentNumber: docRef.documentNumber || r.documentNumber || "-",
+          origin: docRef.origin || r.origin,
+          partnerName: docRef.partnerName || r.partnerName || gateOperation?.clientPartner,
+          referenceQty: r.referenceQty ?? docRef.referenceQty ?? 0,
+          realizedQty: r.realizedQty ?? docRef.realizedQty ?? 0,
+          remainingQty: r.remainingQty ?? docRef.remainingQty ?? 0,
+          status: r.status || docRef.status,
+          items: docRef.items || r.items || [],
+          summary: r.summary || r.products || docRef.summary || [],
+          otherOperations: r.otherOperations || docRef.otherOperations || [],
+          preloadedHistory: {
+            otherOperations: r.otherOperations || docRef.otherOperations || [],
+            summary: r.summary || r.products || docRef.summary || [],
+          },
+        };
+      });
+    }
+    if (gateOperation?.documentReference) {
+      const docRef = gateOperation.documentReference;
+      return [
+        {
+          id: docRef.id,
+          uuid: docRef.uuid,
+          documentNumber: docRef.documentNumber || "-",
+          origin: docRef.origin,
+          partnerName: docRef.partnerName || gateOperation?.clientPartner,
+          referenceQty: gateOperation.totalReferenceQty ?? docRef.referenceQty ?? 0,
+          realizedQty: gateOperation.totalRealizedQty ?? docRef.realizedQty ?? 0,
+          remainingQty: gateOperation.totalRemainingQty ?? docRef.remainingQty ?? 0,
+          status: docRef.status || "PARTIAL",
+          items: docRef.items || [],
+          summary: docRef.summary || [],
+          otherOperations: docRef.otherOperations || [],
+          preloadedHistory: {
+            otherOperations: docRef.otherOperations || [],
+            summary: docRef.summary || [],
+          },
+        },
+      ];
+    }
+    return [];
+  }, [gateOperation]);
+
+  // Distinct client partners across all attached documents & operation
+  const allPartners: string[] = React.useMemo(() => {
+    const list: string[] = [];
+    if (attachedDocs && attachedDocs.length > 0) {
+      attachedDocs.forEach((d: any) => {
+        if (d.partnerName && typeof d.partnerName === "string" && d.partnerName.trim()) {
+          list.push(d.partnerName.trim());
+        }
+      });
+    }
+    if (gateOperation?.clientPartner && typeof gateOperation.clientPartner === "string" && gateOperation.clientPartner.trim()) {
+      list.push(gateOperation.clientPartner.trim());
+    }
+    if (gateOperation?.documentReference?.partnerName && typeof gateOperation.documentReference.partnerName === "string" && gateOperation.documentReference.partnerName.trim()) {
+      list.push(gateOperation.documentReference.partnerName.trim());
+    }
+    return Array.from(new Set(list));
+  }, [attachedDocs, gateOperation]);
+
+  const handleRemoveDocRef = async (docRefId: number) => {
+    if (
+      !window.confirm(
+        "Apakah Anda yakin ingin melepas dokumen referensi ini dari operasi gerbang?",
+      )
+    ) {
+      return;
+    }
+    const toastId = toast.loading("Melepas dokumen referensi...");
+    try {
+      await removeDocumentReference(uuid, docRefId);
+      toast.success("Dokumen referensi berhasil dilepas.", { id: toastId });
+      refreshDetail();
+      refreshTimeline();
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Gagal melepas dokumen referensi.",
+        { id: toastId },
+      );
+    }
+  };
+
+  const handleAttachDocRef = async (docRef: any) => {
+    if (!docRef) return;
+    const toastId = toast.loading("Menghubungkan dokumen referensi...");
+    try {
+      await attachDocumentReference(uuid, docRef.id);
+      toast.success(`Dokumen ${docRef.documentNumber} berhasil dihubungkan.`, {
+        id: toastId,
+      });
+      refreshDetail();
+      refreshTimeline();
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Gagal menghubungkan dokumen referensi.",
+        { id: toastId },
+      );
+    }
+  };
 
   // Unique references computed from gateOperation.references list
   const uniqueReferences = React.useMemo(() => {
@@ -178,7 +291,11 @@ export default function GateOperationDetailPage() {
     if (!gateOperation) return false;
 
     // Document reference must be selected
-    if (!gateOperation.documentReferenceId) return false;
+    const hasDoc =
+      gateOperation.documentReferenceId ||
+      (gateOperation.documentReferences &&
+        gateOperation.documentReferences.length > 0);
+    if (!hasDoc) return false;
 
     // All cargo items must have location and stack selected
     const hasMissingLocationOrStack = gateOperation.products?.some(
@@ -742,16 +859,6 @@ export default function GateOperationDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <span className="font-bold text-slate-400 uppercase tracking-wider block">
-                  Client Partner
-                </span>
-                <span className="text-sm font-bold text-slate-850 mt-1 block">
-                  {gateOperation.clientPartner ||
-                    gateOperation.documentReference?.partnerName ||
-                    "-"}
-                </span>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase tracking-wider block">
                   Reporter / Tanggal
                 </span>
                 <span className="text-sm font-semibold text-slate-700 mt-1 block flex flex-col gap-0.5">
@@ -767,82 +874,168 @@ export default function GateOperationDetailPage() {
               </div>
             </div>
 
-            <div className="border-t border-slate-100 pt-3">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Dokumen Referensi ERP {isReadOnly ? "" : "(Editable)"}
-              </label>
-              {isReadOnly ? (
-                <div className="flex items-center gap-2">
-                  {gateOperation.documentReference ? (
-                    <>
-                      <span className="text-blue-700 font-bold bg-blue-50 border border-blue-200 px-2.5 py-1 rounded text-xs font-mono">
-                        {gateOperation.documentReference.documentNumber}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setIsHistoryOpen(true)}
-                        className="text-blue-600 hover:text-blue-750 font-bold text-xs flex items-center hover:underline cursor-pointer ml-2"
-                      >
-                        <FileText className="h-3.5 w-3.5 mr-1" />
-                        Lihat Riwayat Dokumen
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-sm text-slate-500 font-medium">-</span>
-                  )}
+            <div className="border-t border-slate-100 pt-3 space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Dokumen Referensi ERP ({attachedDocs.length} Terhubung)
+                </label>
+                {attachedDocs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedHistoryDocUuid(null);
+                      setIsHistoryOpen(true);
+                    }}
+                    className="text-blue-600 hover:text-blue-750 font-bold text-xs flex items-center hover:underline cursor-pointer"
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1" />
+                    Lihat Riwayat Dokumen
+                  </button>
+                )}
+              </div>
+
+              {/* Summary Metrics Banner if documents attached */}
+              {attachedDocs.length > 0 && (
+                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 space-y-2">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white border border-blue-100 rounded-lg p-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">
+                        Total Referensi
+                      </div>
+                      <div className="text-xs font-black text-slate-800">
+                        {(
+                          gateOperation.totalReferenceQty ||
+                          attachedDocs.reduce((s: number, d: any) => s + (d.referenceQty || 0), 0)
+                        ).toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                    <div className="bg-white border border-blue-100 rounded-lg p-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">
+                        Total Realisasi
+                      </div>
+                      <div className="text-xs font-black text-blue-700">
+                        {(
+                          gateOperation.totalRealizedQty ||
+                          attachedDocs.reduce((s: number, d: any) => s + (d.realizedQty || 0), 0)
+                        ).toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                    <div className="bg-white border border-blue-100 rounded-lg p-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">
+                        Total Sisa Kuota
+                      </div>
+                      <div className="text-xs font-black text-emerald-700">
+                        {(
+                          gateOperation.totalRemainingQty ||
+                          attachedDocs.reduce((s: number, d: any) => s + (d.remainingQty || 0), 0)
+                        ).toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* List of attached documents */}
+              {attachedDocs.length > 0 ? (
+                <div className="space-y-2.5">
+                  {attachedDocs.map((doc, idx) => (
+                    <div
+                      key={doc.id}
+                      className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1.5 min-w-0">
+                          <div className="flex items-center gap-1.5 font-mono flex-wrap">
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-[11px] text-slate-500 uppercase font-sans font-bold">No. Dokumen:</span>
+                            <span className="text-blue-700 font-bold">{doc.documentNumber}</span>
+                            {doc.origin && (
+                              <span className="text-slate-400 font-sans text-[11px]">
+                                ({doc.origin})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-700 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-slate-500 font-bold uppercase text-[10px]">Partner / Klien:</span>
+                            <span className="font-semibold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-xs">
+                              {doc.partnerName || gateOperation?.clientPartner || "-"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {doc.status && (
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                doc.status === "COMPLETED"
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : doc.status === "PARTIAL"
+                                  ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                  : "bg-amber-100 text-amber-800 border border-amber-200"
+                              }`}
+                            >
+                              {doc.status}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedHistoryDocUuid(doc.uuid || null);
+                              setIsHistoryOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-100 transition cursor-pointer"
+                            title="Lihat Riwayat Dokumen Ini"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </button>
+                          {!isReadOnly && attachedDocs.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDocRef(doc.id)}
+                              className="p-1.5 rounded-lg text-red-600 hover:bg-red-100 transition cursor-pointer"
+                              title="Hapus Dokumen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-200/60 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Target Qty</span>
+                          <span className="font-bold text-slate-700">{(doc.referenceQty || 0).toLocaleString("id-ID")}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Realisasi</span>
+                          <span className="font-bold text-blue-700">{(doc.realizedQty || 0).toLocaleString("id-ID")}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Sisa Kuota</span>
+                          <span className="font-bold text-emerald-700">{(doc.remainingQty || 0).toLocaleString("id-ID")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <>
-                  <Controller
-                    control={control}
-                    name="documentReferenceId"
-                    render={({ field }) => (
-                      <DocumentReferenceSelector
-                        value={field.value ?? null}
-                        cardType={gateOperation.cardType as "IN" | "OUT"}
-                        gateOperationUuid={gateOperation.uuid}
-                        onChange={async (docRef: any) => {
-                          const newId = docRef ? docRef.id : null;
-                          field.onChange(newId);
+                <span className="text-sm text-slate-500 font-medium">-</span>
+              )}
 
-                          const toastId = toast.loading(
-                            "Mengubah dokumen referensi ERP...",
-                          );
-                          try {
-                            await verifyGateOperation(uuid, {
-                              status: watch("status"),
-                              notes: watch("notes"),
-                              documentReferenceId: newId,
-                            });
-                            toast.success(
-                              "Dokumen referensi ERP berhasil diubah.",
-                              { id: toastId },
-                            );
-                            refreshDetail();
-                            refreshTimeline();
-                          } catch (err: any) {
-                            toast.error(
-                              err.response?.data?.message ||
-                                "Gagal mengubah dokumen referensi.",
-                              { id: toastId },
-                            );
-                          }
-                        }}
-                        disabled={isReadOnly}
-                      />
-                    )}
+              {/* Selector to attach additional document */}
+              {!isReadOnly && (
+                <div className="pt-2">
+                  <span className="text-[11px] font-bold text-slate-500 block mb-1.5">
+                    + Hubungkan Dokumen Referensi Tambahan:
+                  </span>
+                  <DocumentReferenceSelector
+                    value={null}
+                    cardType={gateOperation.cardType as "IN" | "OUT"}
+                    gateOperationUuid={gateOperation.uuid}
+                    onChange={handleAttachDocRef}
+                    disabled={isReadOnly}
                   />
-                  {gateOperation.documentReference && (
-                    <button
-                      type="button"
-                      onClick={() => setIsHistoryOpen(true)}
-                      className="text-blue-600 hover:text-blue-750 font-bold text-xs mt-2 flex items-center hover:underline cursor-pointer"
-                    >
-                      <FileText className="h-3.5 w-3.5 mr-1" />
-                      Lihat Riwayat Dokumen
-                    </button>
-                  )}
-                </>
+                </div>
               )}
             </div>
 
@@ -980,6 +1173,7 @@ export default function GateOperationDetailPage() {
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-3">Nama Produk</th>
+                    <th className="px-4 py-3">Dokumen Ref</th>
                     <th className="px-4 py-3 text-right">Cargo Qty</th>
                     <th className="px-4 py-3 text-center">Aksi</th>
                   </tr>
@@ -1049,8 +1243,29 @@ export default function GateOperationDetailPage() {
                                 </span>
                               )}
                             </div>
-
-
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {(() => {
+                              const docId =
+                                originalItem?.documentReferenceId ||
+                                (field as any).documentReferenceId;
+                              const matchedDoc = attachedDocs.find(
+                                (d) => d.id === docId,
+                              );
+                              const docNum =
+                                originalItem?.documentReference
+                                  ?.documentNumber ||
+                                matchedDoc?.documentNumber;
+                              return docNum ? (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                                  {docNum}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[10px]">
+                                  -
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end">
@@ -1157,12 +1372,16 @@ export default function GateOperationDetailPage() {
       {/* Document History Drawer */}
       <DocumentReferenceHistoryDrawer
         isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        docRefUuid={gateOperation.documentReference?.uuid}
-        documentNumber={gateOperation.documentReference?.documentNumber}
-        preloadedHistory={gateOperation.documentHistory}
+        onClose={() => {
+          setIsHistoryOpen(false);
+          setSelectedHistoryDocUuid(null);
+        }}
+        docRefUuid={selectedHistoryDocUuid || gateOperation?.documentReference?.uuid}
+        documentNumber={gateOperation?.documentReference?.documentNumber}
+        preloadedHistory={gateOperation?.documentHistory}
+        documents={attachedDocs}
+        selectedDocUuid={selectedHistoryDocUuid}
       />
-
 
       {/* Add Cargo Item Drawer */}
       <AddCargoItemDrawer
@@ -1179,6 +1398,7 @@ export default function GateOperationDetailPage() {
                 quantity: editingCargoItem.quantity,
                 locationId: editingCargoItem.locationId,
                 quantId: editingCargoItem.quantId,
+                documentReferenceId: editingCargoItem.documentReferenceId,
                 name: getProductDetails(editingCargoItem).name,
                 sku: getProductDetails(editingCargoItem).sku,
                 uom: getProductDetails(editingCargoItem).uom,
@@ -1188,7 +1408,8 @@ export default function GateOperationDetailPage() {
               }
             : null
         }
-        documentReferenceItems={gateOperation?.documentHistory?.summary || undefined}
+        attachedDocuments={attachedDocs}
+        documentReferenceItems={attachedDocs.flatMap((d) => d.items || [])}
         onAdd={async (data) => {
           if (editingCargoItem) {
             const toastId = toast.loading(
@@ -1199,6 +1420,7 @@ export default function GateOperationDetailPage() {
                 quantId: data.quantId,
                 locationId: data.locationId,
                 quantity: data.quantity,
+                documentReferenceId: data.documentReferenceId,
               });
               toast.success("Pilihan lokasi & tumpukan berhasil disimpan!", {
                 id: toastId,
@@ -1221,6 +1443,7 @@ export default function GateOperationDetailPage() {
                 quantity: data.quantity,
                 quantId: data.quantId,
                 locationId: data.locationId,
+                documentReferenceId: data.documentReferenceId,
               });
               toast.success("Barang muatan berhasil ditambahkan!", {
                 id: toastId,

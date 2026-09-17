@@ -26,10 +26,12 @@ import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import {
   CreateGateOperationSchema,
   CreateGateVerificationSchema,
+  AttachDocumentReferenceSchema,
 } from '@bulog-wms/schema';
 import type {
   CreateGateOperationInput,
   CreateGateVerificationInput,
+  AttachDocumentReferenceInput,
 } from '@bulog-wms/schema';
 import { GateService } from './gate.service';
 
@@ -112,6 +114,7 @@ export class GateOperationController {
       notes?: string;
       quantId?: number;
       locationId?: number;
+      documentReferenceId?: number | null;
     },
   ) {
     const user = req.user;
@@ -135,6 +138,7 @@ export class GateOperationController {
       notes: result.notes,
       quantId: result.quantId,
       locationId: result.locationId,
+      documentReferenceId: result.documentReferenceId,
     };
     return result;
   }
@@ -150,6 +154,7 @@ export class GateOperationController {
       quantId?: number | null;
       locationId?: number | null;
       quantity?: number;
+      documentReferenceId?: number | null;
     },
   ) {
     const user = req.user;
@@ -173,6 +178,46 @@ export class GateOperationController {
       notes: result.notes,
       quantId: result.quantId,
       locationId: result.locationId,
+      documentReferenceId: result.documentReferenceId,
+    };
+    return result;
+  }
+
+  @Post(':uuid/document-references')
+  @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
+  @AuditLogAction('GATE_OPERATION_ASSIGN_REFERENCES')
+  async attachDocumentReference(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(AttachDocumentReferenceSchema))
+    body: AttachDocumentReferenceInput,
+    @Req() req: any,
+  ) {
+    const result = await this.service.attachDocumentReference(
+      uuid,
+      body.documentReferenceId,
+    );
+    req.auditDetails = {
+      operationUuid: uuid,
+      documentReferenceId: body.documentReferenceId,
+    };
+    return result;
+  }
+
+  @Delete(':uuid/document-references/:docRefId')
+  @CheckPolicies((ability) => ability.can('update', 'GateOperation'))
+  @AuditLogAction('GATE_OPERATION_UNASSIGN_REFERENCE')
+  async removeDocumentReference(
+    @Param('uuid') uuid: string,
+    @Param('docRefId') docRefId: string,
+    @Req() req: any,
+  ) {
+    const result = await this.service.removeDocumentReference(
+      uuid,
+      parseInt(docRefId, 10),
+    );
+    req.auditDetails = {
+      operationUuid: uuid,
+      documentReferenceId: parseInt(docRefId, 10),
     };
     return result;
   }

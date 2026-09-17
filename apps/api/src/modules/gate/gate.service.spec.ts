@@ -26,6 +26,16 @@ describe('GateService - Bulk Operations', () => {
         findMany: jest.fn().mockResolvedValue([]),
         aggregate: jest.fn().mockResolvedValue({ _sum: { quantity: 0 } }),
       },
+      gateOperationDocumentReference: {
+        create: jest.fn(),
+        deleteMany: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      documentReference: {
+        findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       fileAttachment: {
         updateMany: jest.fn(),
       },
@@ -254,6 +264,157 @@ describe('GateService - Bulk Operations', () => {
       expect(result.results[0].message).toContain(
         'Dokumen referensi tidak ditemukan',
       );
+    });
+  });
+
+  describe('Multiple Document References', () => {
+    describe('attachDocumentReference', () => {
+      it('should throw NotFoundException if gate operation does not exist', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue(null);
+        await expect(
+          service.attachDocumentReference('invalid-uuid', 10),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('should throw BadRequestException if gate operation is already VERIFIED', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'VERIFIED',
+          documentReferences: [],
+        });
+        await expect(
+          service.attachDocumentReference('op-1', 10),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw NotFoundException if document reference does not exist', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          documentReferences: [],
+        });
+        prismaMock.documentReference.findUnique.mockResolvedValue(null);
+        await expect(
+          service.attachDocumentReference('op-1', 999),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('should throw BadRequestException if document is already attached', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          documentReferences: [{ documentReferenceId: 10 }],
+        });
+        prismaMock.documentReference.findUnique.mockResolvedValue({
+          id: 10,
+          documentNumber: 'DOC-10',
+        });
+        await expect(
+          service.attachDocumentReference('op-1', 10),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should successfully attach document reference and create junction record', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          documentReferenceId: 10,
+          documentReferences: [{ documentReferenceId: 10 }],
+        });
+        prismaMock.documentReference.findUnique.mockResolvedValue({
+          id: 20,
+          documentNumber: 'DOC-20',
+        });
+        prismaMock.gateOperationDocumentReference.create.mockResolvedValue({
+          id: 2,
+          gateOperationId: 1,
+          documentReferenceId: 20,
+        });
+        jest.spyOn(service, 'getGateOperationByUuid').mockResolvedValue({
+          uuid: 'op-1',
+        } as any);
+
+        const result = await service.attachDocumentReference('op-1', 20);
+        expect(
+          prismaMock.gateOperationDocumentReference.create,
+        ).toHaveBeenCalledWith({
+          data: {
+            gateOperationId: 1,
+            documentReferenceId: 20,
+          },
+        });
+        expect(result).toBeDefined();
+      });
+    });
+
+    describe('removeDocumentReference', () => {
+      it('should throw BadRequestException if operation is VERIFIED', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'VERIFIED',
+          documentReferences: [],
+          products: [],
+        });
+        await expect(
+          service.removeDocumentReference('op-1', 10),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw BadRequestException if cargo items are still linked to this document reference', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          documentReferenceId: 10,
+          documentReferences: [
+            { documentReferenceId: 10 },
+            { documentReferenceId: 20 },
+          ],
+          products: [{ id: 101, documentReferenceId: 20 }],
+        });
+        await expect(
+          service.removeDocumentReference('op-1', 20),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should successfully remove document reference and update primary if needed', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          documentReferenceId: 10,
+          documentReferences: [
+            { documentReferenceId: 10 },
+            { documentReferenceId: 20 },
+          ],
+          products: [],
+        });
+        prismaMock.gateOperationDocumentReference.findFirst.mockResolvedValue({
+          documentReferenceId: 20,
+        });
+        jest.spyOn(service, 'getGateOperationByUuid').mockResolvedValue({
+          uuid: 'op-1',
+        } as any);
+
+        await service.removeDocumentReference('op-1', 10);
+        expect(
+          prismaMock.gateOperationDocumentReference.deleteMany,
+        ).toHaveBeenCalledWith({
+          where: {
+            gateOperationId: 1,
+            documentReferenceId: 10,
+          },
+        });
+        expect(prismaMock.gateOperation.update).toHaveBeenCalledWith({
+          where: { id: 1 },
+          data: { documentReferenceId: 20 },
+        });
+      });
     });
   });
 });

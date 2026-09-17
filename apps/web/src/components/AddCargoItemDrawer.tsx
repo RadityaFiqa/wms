@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Loader2,
   Package,
+  FileText,
 } from "lucide-react";
 import Select, { components } from "react-select";
 import { ProductSelector } from "./ProductSelector";
@@ -27,6 +28,7 @@ interface AddCargoItemDrawerProps {
     quantity: number;
     quantId?: number | null;
     locationId?: number | null;
+    documentReferenceId?: number | null;
     productData: any;
   }) => void | Promise<void>;
   editData?: {
@@ -34,12 +36,20 @@ interface AddCargoItemDrawerProps {
     quantity: number;
     locationId?: number | null;
     quantId?: number | null;
+    documentReferenceId?: number | null;
     name: string;
     sku: string;
     uom: string;
     uuid?: string;
   } | null;
   documentReferenceItems?: any[];
+  attachedDocuments?: Array<{
+    id: number;
+    uuid?: string;
+    documentNumber: string;
+    origin?: string;
+    items?: any[];
+  }>;
 }
 
 export function AddCargoItemDrawer({
@@ -49,6 +59,7 @@ export function AddCargoItemDrawer({
   onAdd,
   editData,
   documentReferenceItems,
+  attachedDocuments,
 }: AddCargoItemDrawerProps) {
   // 1. Component State
   const [selectedProduct, setSelectedProduct] = useState<{
@@ -59,6 +70,7 @@ export function AddCargoItemDrawer({
     uuid?: string;
   } | null>(null);
 
+  const [selectedDocRefId, setSelectedDocRefId] = useState<number | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
     null,
   );
@@ -67,19 +79,45 @@ export function AddCargoItemDrawer({
   const [quantity, setQuantity] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Initialize or reset selectedDocRefId
+  useEffect(() => {
+    if (isOpen) {
+      if (editData && editData.documentReferenceId) {
+        setSelectedDocRefId(editData.documentReferenceId);
+      } else if (attachedDocuments && attachedDocuments.length > 0) {
+        setSelectedDocRefId(attachedDocuments[0].id);
+      } else {
+        setSelectedDocRefId(null);
+      }
+    }
+  }, [isOpen, editData, attachedDocuments]);
+
+  // Compute active items based on selected document reference
+  const activeItems = useMemo(() => {
+    if (selectedDocRefId && attachedDocuments && attachedDocuments.length > 0) {
+      const activeDoc = attachedDocuments.find((d) => d.id === selectedDocRefId);
+      if (activeDoc?.items && activeDoc.items.length > 0) {
+        return activeDoc.items;
+      }
+    }
+    return documentReferenceItems || [];
+  }, [selectedDocRefId, attachedDocuments, documentReferenceItems]);
+
   const allowedProductIds = useMemo(() => {
-    if (!documentReferenceItems) return undefined;
-    return documentReferenceItems.map((item: any) => item.productId || item.inventoryId).filter(Boolean);
-  }, [documentReferenceItems]);
+    if (!activeItems || activeItems.length === 0) return undefined;
+    return activeItems
+      .map((item: any) => item.productId || item.inventoryId)
+      .filter(Boolean);
+  }, [activeItems]);
 
   const erpItem = useMemo(() => {
-    if (!documentReferenceItems || !selectedProduct) return null;
-    return documentReferenceItems.find(
+    if (!activeItems || !selectedProduct) return null;
+    return activeItems.find(
       (item: any) =>
         item.productId === selectedProduct.id ||
         item.inventoryId === selectedProduct.id,
     );
-  }, [documentReferenceItems, selectedProduct]);
+  }, [activeItems, selectedProduct]);
 
   // 2. Data Fetching
   const { locations: allWarehouseLocations } = useWarehouseLocations();
@@ -325,6 +363,7 @@ export function AddCargoItemDrawer({
         quantity,
         quantId: selectedQuantId,
         locationId: selectedLocationId,
+        documentReferenceId: selectedDocRefId,
         productData: {
           id: selectedProduct.id,
           name: selectedProduct.name,
@@ -384,6 +423,55 @@ export function AddCargoItemDrawer({
 
         {/* Drawer Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          {/* Document Reference Selector (if attachedDocuments provided) */}
+          {attachedDocuments && attachedDocuments.length > 1 && (
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                    Dokumen Referensi
+                  </h4>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {attachedDocuments.length} Terhubung
+                </span>
+              </div>
+              <select
+                value={selectedDocRefId || ""}
+                onChange={(e) => {
+                  const newId = e.target.value ? Number(e.target.value) : null;
+                  setSelectedDocRefId(newId);
+                  setSelectedProduct(null);
+                  setSelectedLocationId(null);
+                  setSelectedQuantId(null);
+                  setSelectedStack(null);
+                  setQuantity(1);
+                }}
+                disabled={!!editData}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg p-2.5 text-xs font-bold focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-60"
+              >
+                {attachedDocuments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.documentNumber} {d.origin ? `(${d.origin})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {attachedDocuments && attachedDocuments.length === 1 && (
+            <div className="flex items-center justify-between px-3.5 py-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs">
+              <span className="text-slate-600 font-semibold flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-blue-600" />
+                Dokumen Ref:
+              </span>
+              <span className="font-mono font-bold text-blue-700">
+                {attachedDocuments[0].documentNumber}
+              </span>
+            </div>
+          )}
+
           {/* STEP 1: Select Product */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
             <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">

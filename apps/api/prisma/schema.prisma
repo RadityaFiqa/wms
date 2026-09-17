@@ -308,6 +308,7 @@ model GateOperation {
   documentReference   DocumentReference?     @relation(fields: [documentReferenceId], references: [id])
   warehouse           Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   products            GateOperationProduct[]
+  documentReferences  GateOperationDocumentReference[]
 
   @@index([uuid])
   @@index([opNumber])
@@ -316,30 +317,46 @@ model GateOperation {
 }
 
 model GateOperationProduct {
-  id              Int                     @id @default(autoincrement())
-  uuid            String                  @unique @default(uuid())
-  gateOperationId Int
-  inventoryId     Int
-  quantity        Float
-  notes           String?
-  quantId         Int?
-  locationId      Int?
-  gateOperation   GateOperation           @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
-  inventory       Inventory               @relation(fields: [inventoryId], references: [id])
-  location        Location?               @relation(fields: [locationId], references: [id])
-  quant           Quant?                  @relation(fields: [quantId], references: [id])
+  id                  Int                @id @default(autoincrement())
+  uuid                String             @unique @default(uuid())
+  gateOperationId     Int
+  inventoryId         Int
+  quantity            Float
+  notes               String?
+  quantId             Int?
+  locationId          Int?
+  documentReferenceId Int?
+  gateOperation       GateOperation      @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
+  inventory           Inventory          @relation(fields: [inventoryId], references: [id])
+  location            Location?          @relation(fields: [locationId], references: [id])
+  quant               Quant?             @relation(fields: [quantId], references: [id])
+  documentReference   DocumentReference? @relation(fields: [documentReferenceId], references: [id], onDelete: SetNull)
 
   @@index([gateOperationId])
   @@index([inventoryId])
   @@index([quantId])
   @@index([locationId])
+  @@index([documentReferenceId])
 }
 
+model GateOperationDocumentReference {
+  id                  Int               @id @default(autoincrement())
+  uuid                String            @unique @default(uuid())
+  gateOperationId     Int
+  documentReferenceId Int
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(3)
+  gateOperation       GateOperation     @relation(fields: [gateOperationId], references: [id], onDelete: Cascade)
+  documentReference   DocumentReference @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
 
+  @@unique([gateOperationId, documentReferenceId])
+  @@index([gateOperationId])
+  @@index([documentReferenceId])
+}
 
 model DocumentReference {
-  id                      Int                     @id
-  uuid                    String                  @unique @default(uuid())
+  id                      Int                              @id
+  uuid                    String                           @unique @default(uuid())
   warehouseId             Int
   documentNumber          String
   state                   String
@@ -347,22 +364,24 @@ model DocumentReference {
   partnerName             String?
   purchaseName            String?
   origin                  String?
-  refFax                  String?                 @db.VarChar(255)
+  refFax                  String?                          @db.VarChar(255)
   sourceLocationName      String?
   destinationLocationName String?
-  scheduledDate           DateTime? @db.Timestamptz(3)
-  dateDone                DateTime? @db.Timestamptz(3)
+  scheduledDate           DateTime?                        @db.Timestamptz(3)
+  dateDone                DateTime?                        @db.Timestamptz(3)
   driver                  String?
   plateNumber             String?
   totalItems              Int
   totalQuantity           Float
   rawPayload              Json
-  lastSyncedAt            DateTime                @default(now()) @db.Timestamptz(3)
-  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
-  warehouse               Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  lastSyncedAt            DateTime                         @default(now()) @db.Timestamptz(3)
+  createdAt               DateTime                         @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                         @updatedAt @db.Timestamptz(3)
+  warehouse               Warehouse                        @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   items                   DocumentReferenceItem[]
   gateOperations          GateOperation[]
+  gateOperationLinks      GateOperationDocumentReference[]
+  operationProducts       GateOperationProduct[]
 
   @@index([warehouseId])
   @@index([uuid])

@@ -1556,10 +1556,26 @@ export class ErpDocumentReferenceService {
 
     const otherOps = await this.prisma.gateOperation.findMany({
       where: {
-        documentReferenceId: doc.id,
+        OR: [
+          {
+            documentReferences: {
+              some: { documentReferenceId: doc.id },
+            },
+          },
+          { documentReferenceId: doc.id },
+        ],
       },
       include: {
         products: {
+          where: {
+            OR: [
+              { documentReferenceId: doc.id },
+              {
+                documentReferenceId: null,
+                gateOperation: { documentReferenceId: doc.id },
+              },
+            ],
+          },
           include: { inventory: true },
         },
       },
@@ -1571,8 +1587,16 @@ export class ErpDocumentReferenceService {
         const aggregate = await this.prisma.gateOperationProduct.aggregate({
           where: {
             inventoryId: docItem.inventoryId,
+            OR: [
+              { documentReferenceId: doc.id },
+              {
+                documentReferenceId: null,
+                gateOperation: {
+                  documentReferenceId: doc.id,
+                },
+              },
+            ],
             gateOperation: {
-              documentReferenceId: doc.id,
               status: { notIn: ['CANCELED', 'REJECTED'] },
             },
           },

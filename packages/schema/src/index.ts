@@ -111,6 +111,7 @@ export const GateOperationProductSchema = z.object({
   quantity: z.number().positive("Quantity harus lebih besar dari 0"),
   quantId: z.number().int().optional().nullable(),
   locationId: z.number().int().optional().nullable(),
+  documentReferenceId: z.number().int().optional().nullable(),
 });
 
 export const CreateGateOperationSchema = z.object({
@@ -121,6 +122,7 @@ export const CreateGateOperationSchema = z.object({
   attachmentPaths: z.array(z.string()).optional().default([]),
   products: z.array(GateOperationProductSchema).optional().default([]),
   documentReferenceId: z.number().int().optional().nullable(),
+  documentReferenceIds: z.array(z.number().int()).optional().default([]),
   clientPartner: z.string().optional().nullable(),
   driverPhone: z.string().optional().nullable(),
 });
@@ -139,14 +141,23 @@ export const CreateGateVerificationSchema = z.object({
         quantity: z.number().nonnegative("Quantity tidak boleh negatif"),
         quantId: z.number().int().optional().nullable(),
         locationId: z.number().int().optional().nullable(),
+        documentReferenceId: z.number().int().optional().nullable(),
       }),
     )
     .optional()
     .default([]),
   documentReferenceId: z.number().int().optional().nullable(),
+  documentReferenceIds: z.array(z.number().int()).optional().default([]),
 });
 export type CreateGateVerificationInput = z.infer<
   typeof CreateGateVerificationSchema
+>;
+
+export const AttachDocumentReferenceSchema = z.object({
+  documentReferenceId: z.number().int("ID Dokumen Referensi harus berupa angka"),
+});
+export type AttachDocumentReferenceInput = z.infer<
+  typeof AttachDocumentReferenceSchema
 >;
 
 

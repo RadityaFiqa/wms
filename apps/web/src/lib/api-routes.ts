@@ -37,6 +37,13 @@ export const API_ROUTES = {
     create: "/gate-operations",
     detail: (uuid: string) => `/gate-operations/${uuid}`,
     clientHistory: "/gate-operations/client-history",
+    attachDocumentReference: (uuid: string) =>
+      `/gate-operations/${uuid}/document-references`,
+    removeDocumentReference: (uuid: string, docRefId: number) =>
+      `/gate-operations/${uuid}/document-references/${docRefId}`,
+    cargo: (uuid: string) => `/gate-operations/${uuid}/cargo`,
+    updateCargo: (cargoUuid: string) => `/gate-operations/cargo/${cargoUuid}`,
+    deleteCargo: (cargoUuid: string) => `/gate-operations/cargo/${cargoUuid}`,
   },
   gateVerifications: {
     verify: (operationUuid: string) => `/gate-operations/${operationUuid}/verify`,

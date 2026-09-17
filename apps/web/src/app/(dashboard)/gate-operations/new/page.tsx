@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ import {
   Loader2,
   Boxes,
   Edit,
+  FileText,
 } from "lucide-react";
 import CreatableSelect from "react-select/creatable";
 import { globalSelectStyles } from "@/lib/react-select";
@@ -36,7 +37,22 @@ export default function CreateGateOperationPage() {
   const [selectedDocRefUuid, setSelectedDocRefUuid] = useState<string | null>(null);
   const [selectedDocRefNumber, setSelectedDocRefNumber] = useState<string>("");
   const [isDocHistoryOpen, setIsDocHistoryOpen] = useState(false);
-  const [realizationSummary, setRealizationSummary] = useState<any[] | null>(null);
+  const [attachedDocs, setAttachedDocs] = useState<
+    Array<{
+      id: number;
+      uuid: string;
+      documentNumber: string;
+      origin?: string;
+      partnerName?: string;
+      driver?: string;
+      plateNumber?: string;
+      items?: any[];
+      summary?: any[];
+      referenceQty: number;
+      realizedQty: number;
+      remainingQty: number;
+    }>
+  >([]);
 
   const { createGateOperation } = useGate();
   const { partners: erpPartners, isLoading: isLoadingPartners } =
@@ -80,6 +96,7 @@ export default function CreateGateOperationPage() {
     defaultValues: {
       cardType: "IN",
       documentReferenceId: null as number | null,
+      documentReferenceIds: [] as number[],
       driverName: "",
       licensePlate: "",
       clientPartner: null as string | null,
@@ -91,6 +108,7 @@ export default function CreateGateOperationPage() {
         quantity: number;
         quantId?: number | null;
         locationId?: number | null;
+        documentReferenceId?: number | null;
       }[],
     },
   });
@@ -113,89 +131,141 @@ export default function CreateGateOperationPage() {
         uuid?: string;
         quantLabel?: string | null;
         locLabel?: string | null;
+        docNumber?: string | null;
       }
     >
   >({});
 
-  const handleDocRefChange = async (docRef: any) => {
-    if (!docRef) {
-      setValue("documentReferenceId", null);
-      setValue("products", []);
-      setProductDetailsMap({});
-      setSelectedDocRefUuid(null);
-      setSelectedDocRefNumber("");
-      setRealizationSummary(null);
+  const totalReferenceQty = useMemo(
+    () => attachedDocs.reduce((sum, d) => sum + (d.referenceQty || 0), 0),
+    [attachedDocs],
+  );
+  const totalRealizedQty = useMemo(
+    () => attachedDocs.reduce((sum, d) => sum + (d.realizedQty || 0), 0),
+    [attachedDocs],
+  );
+  const totalRemainingQty = useMemo(
+    () => attachedDocs.reduce((sum, d) => sum + (d.remainingQty || 0), 0),
+    [attachedDocs],
+  );
+
+  const handleAddDocument = async (docRef: any) => {
+    if (!docRef) return;
+    if (attachedDocs.some((d) => d.id === docRef.id)) {
+      toast.error("Dokumen referensi ini sudah ditambahkan.");
       return;
     }
 
-    setValue("documentReferenceId", docRef.id);
-    setSelectedDocRefUuid(docRef.uuid);
-    setSelectedDocRefNumber(docRef.documentNumber);
-
-    if (docRef.driver) {
-      setValue("driverName", docRef.driver);
-    }
-    if (docRef.plateNumber) {
-      setValue("licensePlate", docRef.plateNumber);
-    }
-    if (docRef.partnerName) {
-      setValue("clientPartner", docRef.partnerName);
-      handlePartnerChange(docRef.partnerName);
-    }
-
-    const toastId = toast.loading(
-      "Memuat item barang dari dokumen referensi ERP...",
-    );
+    const toastId = toast.loading("Memuat dokumen referensi ERP...");
     try {
       const { api } = await import("@/lib/axios");
       const [res, historyRes] = await Promise.all([
         api.get(`/erp-document-references/${docRef.uuid}`),
-        api.get(`/erp-document-references/${docRef.uuid}/realization-history`)
+        api.get(`/erp-document-references/${docRef.uuid}/realization-history`),
       ]);
       const fullDoc = res.data;
       const historyData = historyRes.data;
-      setRealizationSummary(historyData?.summary || null);
+      const summary = historyData?.summary || [];
+      const refQty =
+        summary.reduce((s: number, i: any) => s + (i.erpQty || 0), 0) ||
+        (fullDoc.items?.reduce((s: number, i: any) => s + (i.quantity || 0), 0) || 0);
+      const realQty = summary.reduce(
+        (s: number, i: any) => s + (i.realizedQty || 0),
+        0,
+      );
+      const remQty =
+        summary.reduce((s: number, i: any) => s + (i.remainingQty || 0), 0) ||
+        (refQty - realQty);
 
-      if (fullDoc && fullDoc.items && fullDoc.items.length > 0) {
+      const newDocEntry = {
+        id: fullDoc.id,
+        uuid: fullDoc.uuid,
+        documentNumber: fullDoc.documentNumber,
+        origin: fullDoc.origin,
+        partnerName: fullDoc.partnerName,
+        driver: fullDoc.driver,
+        plateNumber: fullDoc.plateNumber,
+        items: fullDoc.items || [],
+        summary,
+        referenceQty: refQty,
+        realizedQty: realQty,
+        remainingQty: remQty,
+      };
+
+      const updatedDocs = [...attachedDocs, newDocEntry];
+      setAttachedDocs(updatedDocs);
+      setValue("documentReferenceIds", updatedDocs.map((d) => d.id));
+      setValue("documentReferenceId", updatedDocs[0]?.id || null);
+
+      if (!watch("driverName") && fullDoc.driver) {
+        setValue("driverName", fullDoc.driver);
+      }
+      if (!watch("licensePlate") && fullDoc.plateNumber) {
+        setValue("licensePlate", fullDoc.plateNumber);
+      }
+      if (!watch("clientPartner") && fullDoc.partnerName) {
+        setValue("clientPartner", fullDoc.partnerName);
+        handlePartnerChange(fullDoc.partnerName);
+      }
+
+      if (fullDoc.items && fullDoc.items.length > 0) {
         const newProducts = fullDoc.items.map((item: any) => {
-          const histItem = historyData?.summary?.find((s: any) => s.productId === item.inventoryId);
+          const histItem = summary.find(
+            (s: any) => s.productId === item.inventoryId,
+          );
           const remainingQty = histItem ? histItem.remainingQty : item.quantity;
           return {
             productId: item.inventoryId,
             quantity: remainingQty,
             quantId: null,
             locationId: null,
+            documentReferenceId: fullDoc.id,
           };
         });
 
-        setValue("products", newProducts);
+        newProducts.forEach((np: any) => append(np));
 
-        const newMap: Record<string, any> = {};
-        fullDoc.items.forEach((item: any) => {
-          const itemKey = `${item.inventoryId}-null-null`;
-          newMap[itemKey] = {
-            name: item.inventoryName || item.productName || "-",
-            sku: item.inventorySku || "-",
-            uom: item.inventoryUom || item.uom || "-",
-            uuid: item.inventoryUuid,
-            quantLabel: null,
-            locLabel: null,
-          };
+        setProductDetailsMap((prev) => {
+          const updated = { ...prev };
+          fullDoc.items.forEach((item: any) => {
+            const itemKey = `${item.inventoryId}-null-null`;
+            updated[itemKey] = {
+              name: item.inventoryName || item.productName || "-",
+              sku: item.inventorySku || "-",
+              uom: item.inventoryUom || item.uom || "-",
+              uuid: item.inventoryUuid,
+              quantLabel: null,
+              locLabel: null,
+              docNumber: fullDoc.documentNumber,
+            };
+          });
+          return updated;
         });
-
-        setProductDetailsMap(newMap);
-        toast.success(
-          `Berhasil memuat ${fullDoc.items.length} item barang dari dokumen ERP.`,
-          { id: toastId },
-        );
-      } else {
-        toast.error("Dokumen ERP tidak memiliki item barang.", { id: toastId });
       }
+
+      toast.success(
+        `Dokumen ${fullDoc.documentNumber} berhasil ditambahkan (${fullDoc.items?.length || 0} item).`,
+        { id: toastId },
+      );
     } catch (err: any) {
-      toast.error("Gagal mengambil item barang dari dokumen ERP.", {
-        id: toastId,
-      });
+      toast.error("Gagal memuat dokumen referensi ERP.", { id: toastId });
     }
+  };
+
+  const handleRemoveDocument = (docId: number) => {
+    const docToRemove = attachedDocs.find((d) => d.id === docId);
+    if (!docToRemove) return;
+    const nextDocs = attachedDocs.filter((d) => d.id !== docId);
+    setAttachedDocs(nextDocs);
+    setValue("documentReferenceIds", nextDocs.map((d) => d.id));
+    setValue("documentReferenceId", nextDocs[0]?.id || null);
+
+    const currentProds = watch("products") || [];
+    const remainingProds = currentProds.filter(
+      (p: any) => p.documentReferenceId !== docId,
+    );
+    setValue("products", remainingProds);
+    toast.success(`Dokumen ${docToRemove.documentNumber} dilepas.`);
   };
 
   const handleAddCargo = (data: {
@@ -203,15 +273,21 @@ export default function CreateGateOperationPage() {
     quantity: number;
     quantId?: number | null;
     locationId?: number | null;
+    documentReferenceId?: number | null;
     productData: any;
   }) => {
+    const docNumber =
+      attachedDocs.find((d) => d.id === data.documentReferenceId)?.documentNumber ||
+      null;
+
     if (editIndex !== null) {
       update(editIndex, {
         productId: data.productId,
         quantity: data.quantity,
         quantId: data.quantId || null,
         locationId: data.locationId || null,
-      });
+        documentReferenceId: data.documentReferenceId || null,
+      } as any);
 
       const itemKey = `${data.productId}-${data.quantId || "null"}-${data.locationId || "null"}`;
       setProductDetailsMap((prev) => ({
@@ -223,6 +299,7 @@ export default function CreateGateOperationPage() {
           uuid: data.productData.uuid,
           quantLabel: data.productData.quantLabel,
           locLabel: data.productData.locLabel,
+          docNumber,
         },
       }));
 
@@ -235,11 +312,12 @@ export default function CreateGateOperationPage() {
       (f) =>
         f.productId === data.productId &&
         (f as any).quantId === (data.quantId || null) &&
-        (f as any).locationId === (data.locationId || null),
+        (f as any).locationId === (data.locationId || null) &&
+        (f as any).documentReferenceId === (data.documentReferenceId || null),
     );
     if (isAlreadyAdded) {
       toast.error(
-        "Barang dengan tumpukan dan lokasi yang sama sudah ada dalam daftar.",
+        "Barang dengan dokumen, tumpukan, dan lokasi yang sama sudah ada dalam daftar.",
       );
       return;
     }
@@ -251,7 +329,8 @@ export default function CreateGateOperationPage() {
       quantity: data.quantity,
       quantId: data.quantId || null,
       locationId: data.locationId || null,
-    });
+      documentReferenceId: data.documentReferenceId || null,
+    } as any);
 
     setProductDetailsMap((prev) => ({
       ...prev,
@@ -262,6 +341,7 @@ export default function CreateGateOperationPage() {
         uuid: data.productData.uuid,
         quantLabel: data.productData.quantLabel,
         locLabel: data.productData.locLabel,
+        docNumber,
       },
     }));
 
@@ -274,7 +354,11 @@ export default function CreateGateOperationPage() {
     try {
       const payload = {
         ...data,
-        products: data.products.filter((p: any) => p.productId > 0 && p.quantity > 0),
+        documentReferenceIds: attachedDocs.map((d) => d.id),
+        documentReferenceId: attachedDocs[0]?.id || null,
+        products: data.products.filter(
+          (p: any) => p.productId > 0 && p.quantity > 0,
+        ),
       };
       const result = await createGateOperation(payload);
       toast.success("Data kendaraan masuk/keluar berhasil dicatat.", {
@@ -297,6 +381,7 @@ export default function CreateGateOperationPage() {
           quantity: fields[editIndex].quantity,
           locationId: (fields[editIndex] as any).locationId,
           quantId: (fields[editIndex] as any).quantId,
+          documentReferenceId: (fields[editIndex] as any).documentReferenceId,
           ...(() => {
             const itemKey = `${fields[editIndex].productId}-${(fields[editIndex] as any).quantId || "null"}-${(fields[editIndex] as any).locationId || "null"}`;
             const details = productDetailsMap[itemKey];
@@ -393,34 +478,129 @@ export default function CreateGateOperationPage() {
               </div>
             </div>
 
-            {/* Dokumen Referensi Autocomplete Selector */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
+            {/* Dokumen Referensi ERP (Multiple) */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
                 <label className="block text-sm font-semibold text-slate-700">
-                  Dokumen Referensi ERP (Opsional)
+                  Dokumen Referensi ERP (Dapat lebih dari 1)
                 </label>
-                {selectedDocRefUuid && (
+                {attachedDocs.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setIsDocHistoryOpen(true)}
-                    className="text-xs text-blue-605 hover:text-blue-500 font-bold hover:underline transition flex items-center cursor-pointer"
+                    onClick={() => {
+                      setSelectedDocRefUuid(attachedDocs[0]?.uuid || null);
+                      setSelectedDocRefNumber(attachedDocs[0]?.documentNumber || "");
+                      setIsDocHistoryOpen(true);
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-500 font-bold hover:underline transition flex items-center gap-1 cursor-pointer"
                   >
-                    🔍 Lihat Riwayat Dokumen
+                    <FileText className="h-3.5 w-3.5" />
+                    Lihat Riwayat Dokumen
                   </button>
                 )}
               </div>
-              <Controller
-                control={control}
-                name="documentReferenceId"
-                render={({ field }) => (
-                  <DocumentReferenceSelector
-                    value={field.value ?? null}
-                    cardType={watchCardType as "IN" | "OUT"}
-                    onChange={handleDocRefChange}
-                    error={errors.documentReferenceId?.message}
-                  />
-                )}
+
+              {/* Selector to add an additional document */}
+              <DocumentReferenceSelector
+                value={null}
+                cardType={watchCardType as "IN" | "OUT"}
+                onChange={(doc: any) => {
+                  if (doc) handleAddDocument(doc);
+                }}
+                error={errors.documentReferenceId?.message}
               />
+
+              {/* Summary Metrics Banner if documents attached */}
+              {attachedDocs.length > 0 && (
+                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-900 uppercase tracking-wider">
+                      Ringkasan Kuota ({attachedDocs.length} Dokumen Terhubung)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white border border-blue-100 rounded-lg p-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">
+                        Total Referensi
+                      </div>
+                      <div className="text-sm font-black text-slate-800">
+                        {totalReferenceQty.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                    <div className="bg-white border border-blue-100 rounded-lg p-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">
+                        Total Realisasi
+                      </div>
+                      <div className="text-sm font-black text-blue-700">
+                        {totalRealizedQty.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                    <div className="bg-white border border-blue-100 rounded-lg p-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">
+                        Total Sisa Kuota
+                      </div>
+                      <div className="text-sm font-black text-emerald-700">
+                        {totalRemainingQty.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* List of attached documents */}
+              {attachedDocs.length > 0 && (
+                <div className="space-y-2">
+                  {attachedDocs.map((doc, idx) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-slate-800 flex items-center gap-1.5 font-mono">
+                          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
+                            #{idx + 1}
+                          </span>
+                          {doc.documentNumber}
+                          {doc.origin && (
+                            <span className="text-slate-400 font-sans text-[11px]">
+                              ({doc.origin})
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Partner: {doc.partnerName || "-"} • Sisa Kuota:{" "}
+                          <span className="font-bold text-emerald-700">
+                            {doc.remainingQty.toLocaleString("id-ID")}
+                          </span>{" "}
+                          / {doc.referenceQty.toLocaleString("id-ID")} Unit
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDocRefUuid(doc.uuid);
+                            setSelectedDocRefNumber(doc.documentNumber);
+                            setIsDocHistoryOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-100 transition cursor-pointer"
+                          title="Lihat Riwayat Dokumen"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDocument(doc.id)}
+                          className="p-1.5 rounded-lg text-red-600 hover:bg-red-100 transition cursor-pointer"
+                          title="Hapus Dokumen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Client Partner Searchable/Creatable Select */}
@@ -607,6 +787,7 @@ export default function CreateGateOperationPage() {
                 <thead>
                   <tr className="bg-slate-55 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-3">Nama Produk</th>
+                    <th className="px-4 py-3">Dokumen Ref</th>
                     <th className="px-4 py-3 text-right">Kuantitas</th>
                     <th className="px-4 py-3 text-center">Aksi</th>
                   </tr>
@@ -615,7 +796,7 @@ export default function CreateGateOperationPage() {
                   {fields.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={3}
+                        colSpan={4}
                         className="px-4 py-8 text-center text-slate-400 italic"
                       >
                         Belum ada barang yang ditambahkan. Silakan klik "Tambah
@@ -680,6 +861,26 @@ export default function CreateGateOperationPage() {
                                 </>
                               )}
                             </div>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {(() => {
+                              const docId = (field as any).documentReferenceId;
+                              const matchedDoc = attachedDocs.find(
+                                (d) => d.id === docId,
+                              );
+                              const docNum =
+                                matchedDoc?.documentNumber ||
+                                productInfo.docNumber;
+                              return docNum ? (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                                  {docNum}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[10px]">
+                                  -
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
                             {field.quantity} {productInfo.uom || "Unit"}
@@ -758,7 +959,8 @@ export default function CreateGateOperationPage() {
         cardType={watchCardType as "IN" | "OUT"}
         onAdd={handleAddCargo}
         editData={editData}
-        documentReferenceItems={realizationSummary || undefined}
+        attachedDocuments={attachedDocs}
+        documentReferenceItems={attachedDocs.flatMap((d) => d.items || [])}
       />
 
       <DocumentReferenceHistoryDrawer
@@ -766,6 +968,7 @@ export default function CreateGateOperationPage() {
         onClose={() => setIsDocHistoryOpen(false)}
         docRefUuid={selectedDocRefUuid}
         documentNumber={selectedDocRefNumber}
+        documents={attachedDocs}
       />
     </div>
   );

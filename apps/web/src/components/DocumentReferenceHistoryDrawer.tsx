@@ -12,6 +12,13 @@ interface DocumentReferenceHistoryDrawerProps {
     otherOperations?: any[];
     summary?: any[];
   } | null;
+  documents?: Array<{
+    uuid: string;
+    documentNumber: string;
+    origin?: string;
+    preloadedHistory?: any;
+  }>;
+  selectedDocUuid?: string | null;
 }
 
 export function DocumentReferenceHistoryDrawer({
@@ -20,13 +27,50 @@ export function DocumentReferenceHistoryDrawer({
   docRefUuid,
   documentNumber,
   preloadedHistory,
+  documents,
+  selectedDocUuid,
 }: DocumentReferenceHistoryDrawerProps) {
+  // If multiple documents are provided, allow selecting which one to view
+  const docList = React.useMemo(() => {
+    if (documents && documents.length > 0) return documents;
+    if (docRefUuid) {
+      return [{ uuid: docRefUuid, documentNumber: documentNumber || "", origin: "", preloadedHistory }];
+    }
+    return [];
+  }, [documents, docRefUuid, documentNumber, preloadedHistory]);
+
+  const [activeDocIndex, setActiveDocIndex] = React.useState(0);
+
+  // Sync active index if docList changes or selectedDocUuid is provided
+  React.useEffect(() => {
+    if (selectedDocUuid && docList.length > 0) {
+      const idx = docList.findIndex((d) => d.uuid === selectedDocUuid);
+      if (idx !== -1) {
+        setActiveDocIndex(idx);
+        return;
+      }
+    }
+    if (docRefUuid && docList.length > 0) {
+      const idx = docList.findIndex((d) => d.uuid === docRefUuid);
+      if (idx !== -1) {
+        setActiveDocIndex(idx);
+        return;
+      }
+    }
+    setActiveDocIndex(0);
+  }, [isOpen, selectedDocUuid, docRefUuid, docList]);
+
+  const currentDoc = docList[activeDocIndex] || null;
+  const currentDocUuid = currentDoc?.uuid || docRefUuid || null;
+  const currentDocNumber = currentDoc?.documentNumber || documentNumber || "";
+  const currentPreloadedHistory = currentDoc?.preloadedHistory || preloadedHistory || null;
+
   // Use SWR if docRefUuid is provided, otherwise fall back to preloadedHistory
   const { data: fetchedHistory, isLoading } = useErpDocumentRealizationHistory(
-    docRefUuid || null
+    currentDocUuid
   );
 
-  const history = preloadedHistory || fetchedHistory;
+  const history = currentPreloadedHistory || fetchedHistory;
 
   if (!isOpen) return null;
 
@@ -110,9 +154,9 @@ export function DocumentReferenceHistoryDrawer({
               <FileText className="h-5 w-5 mr-2 text-indigo-500 shrink-0" />
               Riwayat Realisasi Dokumen ERP
             </h3>
-            {documentNumber && (
+            {currentDocNumber && (
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Dokumen ERP: {documentNumber}
+                Dokumen ERP: {currentDocNumber}
               </p>
             )}
           </div>
@@ -124,6 +168,25 @@ export function DocumentReferenceHistoryDrawer({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {docList.length > 1 && (
+          <div className="flex border-b border-slate-200 px-5 pt-2 bg-slate-50 gap-2 overflow-x-auto">
+            {docList.map((d, idx) => (
+              <button
+                key={d.uuid || idx}
+                type="button"
+                onClick={() => setActiveDocIndex(idx)}
+                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition whitespace-nowrap cursor-pointer ${
+                  activeDocIndex === idx
+                    ? "border-indigo-600 text-indigo-700 bg-white rounded-t-lg shadow-xs"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {d.documentNumber} {d.origin ? `(${d.origin})` : ""}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {isLoading ? (

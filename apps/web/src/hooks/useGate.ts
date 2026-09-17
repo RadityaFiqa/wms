@@ -120,10 +120,11 @@ export function useGate() {
         notes?: string;
         quantId?: number | null;
         locationId?: number | null;
+        documentReferenceId?: number | null;
       },
     ) => {
       const res = await api.post(
-        `/gate-operations/${operationUuid}/cargo`,
+        API_ROUTES.gateOperations.cargo(operationUuid),
         payload,
       );
       refreshList();
@@ -135,7 +136,9 @@ export function useGate() {
 
   const deleteCargoItem = useCallback(
     async (cargoItemUuid: string, operationUuid: string) => {
-      const res = await api.delete(`/gate-operations/cargo/${cargoItemUuid}`);
+      const res = await api.delete(
+        API_ROUTES.gateOperations.deleteCargo(cargoItemUuid),
+      );
       refreshList();
       mutate(API_ROUTES.gateOperations.detail(operationUuid));
       return res.data;
@@ -151,10 +154,11 @@ export function useGate() {
         quantId?: number | null;
         locationId?: number | null;
         quantity?: number;
+        documentReferenceId?: number | null;
       },
     ) => {
       const res = await api.put(
-        `/gate-operations/cargo/${cargoItemUuid}`,
+        API_ROUTES.gateOperations.updateCargo(cargoItemUuid),
         payload,
       );
       refreshList();
@@ -164,6 +168,33 @@ export function useGate() {
     [refreshList],
   );
 
+  const attachDocumentReference = useCallback(
+    async (operationUuid: string, documentReferenceId: number) => {
+      const res = await api.post(
+        API_ROUTES.gateOperations.attachDocumentReference(operationUuid),
+        { documentReferenceId },
+      );
+      refreshList();
+      mutate(API_ROUTES.gateOperations.detail(operationUuid));
+      return res.data;
+    },
+    [refreshList],
+  );
+
+  const removeDocumentReference = useCallback(
+    async (operationUuid: string, documentReferenceId: number) => {
+      const res = await api.delete(
+        API_ROUTES.gateOperations.removeDocumentReference(
+          operationUuid,
+          documentReferenceId,
+        ),
+      );
+      refreshList();
+      mutate(API_ROUTES.gateOperations.detail(operationUuid));
+      return res.data;
+    },
+    [refreshList],
+  );
 
   return {
     uploadFile,
@@ -177,6 +208,8 @@ export function useGate() {
     addCargoItem,
     deleteCargoItem,
     updateCargoItem,
+    attachDocumentReference,
+    removeDocumentReference,
     refreshList,
   };
 }
