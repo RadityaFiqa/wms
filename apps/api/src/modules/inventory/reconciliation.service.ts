@@ -157,18 +157,50 @@ export class ReconciliationService {
             inventoryId: { in: inventoryDbIds },
           },
         },
-        gateOperations: {
-          some: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
+        OR: [
+          {
+            operationProducts: {
+              some: {
+                inventoryId: { in: inventoryDbIds },
+                gateOperation: {
+                  status: {
+                    notIn: ['CANCELED', 'REJECTED'],
+                  },
+                },
+              },
             },
           },
-        },
+          {
+            gateOperations: {
+              some: {
+                status: {
+                  notIn: ['CANCELED', 'REJECTED'],
+                },
+                products: {
+                  some: {
+                    inventoryId: { in: inventoryDbIds },
+                    documentReferenceId: null,
+                  },
+                },
+              },
+            },
+          },
+        ],
       },
       include: {
         items: {
           where: {
             inventoryId: { in: inventoryDbIds },
+          },
+        },
+        operationProducts: {
+          where: {
+            inventoryId: { in: inventoryDbIds },
+            gateOperation: {
+              status: {
+                notIn: ['CANCELED', 'REJECTED'],
+              },
+            },
           },
         },
         gateOperations: {
@@ -181,6 +213,7 @@ export class ReconciliationService {
             products: {
               where: {
                 inventoryId: { in: inventoryDbIds },
+                documentReferenceId: null,
               },
             },
           },
@@ -195,14 +228,17 @@ export class ReconciliationService {
         continue;
       }
 
+      const docGateProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+
       const docGateProductsMap = new Map<number, number>();
-      for (const op of doc.gateOperations) {
-        for (const gp of op.products) {
-          docGateProductsMap.set(
-            gp.inventoryId,
-            (docGateProductsMap.get(gp.inventoryId) || 0) + gp.quantity,
-          );
-        }
+      for (const gp of docGateProducts) {
+        docGateProductsMap.set(
+          gp.inventoryId,
+          (docGateProductsMap.get(gp.inventoryId) || 0) + gp.quantity,
+        );
       }
 
       for (const item of doc.items) {
@@ -374,18 +410,50 @@ export class ReconciliationService {
             inventoryId: inventory.id,
           },
         },
-        gateOperations: {
-          some: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
+        OR: [
+          {
+            operationProducts: {
+              some: {
+                inventoryId: inventory.id,
+                gateOperation: {
+                  status: {
+                    notIn: ['CANCELED', 'REJECTED'],
+                  },
+                },
+              },
             },
           },
-        },
+          {
+            gateOperations: {
+              some: {
+                status: {
+                  notIn: ['CANCELED', 'REJECTED'],
+                },
+                products: {
+                  some: {
+                    inventoryId: inventory.id,
+                    documentReferenceId: null,
+                  },
+                },
+              },
+            },
+          },
+        ],
       },
       include: {
         items: {
           where: {
             inventoryId: inventory.id,
+          },
+        },
+        operationProducts: {
+          where: {
+            inventoryId: inventory.id,
+            gateOperation: {
+              status: {
+                notIn: ['CANCELED', 'REJECTED'],
+              },
+            },
           },
         },
         gateOperations: {
@@ -398,6 +466,7 @@ export class ReconciliationService {
             products: {
               where: {
                 inventoryId: inventory.id,
+                documentReferenceId: null,
               },
             },
           },
@@ -422,15 +491,18 @@ export class ReconciliationService {
       const locQties = new Map<number, number>();
       let sumGateQty = 0;
 
-      for (const op of doc.gateOperations) {
-        for (const gp of op.products) {
-          sumGateQty += gp.quantity;
-          if (gp.locationId) {
-            locQties.set(
-              gp.locationId,
-              (locQties.get(gp.locationId) || 0) + gp.quantity,
-            );
-          }
+      const docGateProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+
+      for (const gp of docGateProducts) {
+        sumGateQty += gp.quantity;
+        if (gp.locationId) {
+          locQties.set(
+            gp.locationId,
+            (locQties.get(gp.locationId) || 0) + gp.quantity,
+          );
         }
       }
 
@@ -485,11 +557,13 @@ export class ReconciliationService {
       }
     }
     for (const doc of completedDocs) {
-      for (const op of doc.gateOperations) {
-        for (const gp of op.products) {
-          if (gp.locationId) {
-            uniqueLocationIds.add(gp.locationId);
-          }
+      const docGateProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+      for (const gp of docGateProducts) {
+        if (gp.locationId) {
+          uniqueLocationIds.add(gp.locationId);
         }
       }
     }

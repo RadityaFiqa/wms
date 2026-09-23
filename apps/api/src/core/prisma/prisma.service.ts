@@ -14,8 +14,12 @@ export class PrismaService
   constructor(
     private readonly warehouseContextService: WarehouseContextService,
   ) {
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgresql://${process.env.POSTGRES_USER || 'postgres'}:${process.env.POSTGRES_PASSWORD || 'postgres'}@${process.env.POSTGRES_HOST || 'localhost'}:${process.env.POSTGRES_PORT || '5432'}/${process.env.POSTGRES_DB || 'wms_dev'}?schema=public`;
+
     const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

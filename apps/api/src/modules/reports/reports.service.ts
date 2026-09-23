@@ -139,17 +139,19 @@ export class ReportsService {
     const allPendingOps = await this.prisma.gateOperation.findMany({
       where: {
         status: { in: ['PENDING', 'VERIFIED'] },
-        OR: [
-          { documentReferenceId: null },
-          {
-            documentReference: {
-              state: { not: 'done' },
-            },
-          },
-        ],
       },
       include: {
-        products: true,
+        products: {
+          include: {
+            documentReference: true,
+          },
+        },
+        documentReference: true,
+        documentReferences: {
+          include: {
+            documentReference: true,
+          },
+        },
       },
     });
 
@@ -195,16 +197,47 @@ export class ReportsService {
           { dateDone: { lte: end } },
           { dateDone: null, updatedAt: { lte: end } },
         ],
-        gateOperations: {
-          some: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
-            },
+        AND: [
+          {
+            OR: [
+              {
+                operationProducts: {
+                  some: {
+                    gateOperation: {
+                      status: { notIn: ['CANCELED', 'REJECTED'] },
+                    },
+                  },
+                },
+              },
+              {
+                gateOperations: {
+                  some: {
+                    status: { notIn: ['CANCELED', 'REJECTED'] },
+                  },
+                },
+              },
+              {
+                gateOperationLinks: {
+                  some: {
+                    gateOperation: {
+                      status: { notIn: ['CANCELED', 'REJECTED'] },
+                    },
+                  },
+                },
+              },
+            ],
           },
-        },
+        ],
       },
       include: {
         items: true,
+        operationProducts: {
+          where: {
+            gateOperation: {
+              status: { notIn: ['CANCELED', 'REJECTED'] },
+            },
+          },
+        },
         gateOperations: {
           where: {
             status: {
@@ -212,7 +245,11 @@ export class ReportsService {
             },
           },
           include: {
-            products: true,
+            products: {
+              where: {
+                documentReferenceId: null,
+              },
+            },
           },
         },
       },
@@ -226,26 +263,28 @@ export class ReportsService {
         continue;
       }
 
-      // Group gate operations products by inventoryId
+      // Group gate operations products by inventoryId strictly for this doc
       const docGateProductsMap = new Map<
         number,
         { total: number; locations: Map<number, number> }
       >();
-      for (const op of doc.gateOperations) {
-        for (const gp of op.products) {
-          const current = docGateProductsMap.get(gp.inventoryId) || {
-            total: 0,
-            locations: new Map<number, number>(),
-          };
-          current.total += gp.quantity;
-          if (gp.locationId) {
-            current.locations.set(
-              gp.locationId,
-              (current.locations.get(gp.locationId) || 0) + gp.quantity,
-            );
-          }
-          docGateProductsMap.set(gp.inventoryId, current);
+      const docProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+      for (const gp of docProducts) {
+        const current = docGateProductsMap.get(gp.inventoryId) || {
+          total: 0,
+          locations: new Map<number, number>(),
+        };
+        current.total += gp.quantity;
+        if (gp.locationId) {
+          current.locations.set(
+            gp.locationId,
+            (current.locations.get(gp.locationId) || 0) + gp.quantity,
+          );
         }
+        docGateProductsMap.set(gp.inventoryId, current);
       }
 
       for (const item of doc.items) {
@@ -419,6 +458,13 @@ export class ReportsService {
           (p) => p.locationId === locationId && p.inventoryId === inventoryId,
         );
         for (const matchingProduct of matchingProducts) {
+          const { docRef } = this.resolveProductDocRefAndPartner(
+            matchingProduct,
+            op,
+          );
+          if (docRef && docRef.state === 'done') {
+            continue;
+          }
           if (op.cardType === 'IN') {
             pendingInQty += matchingProduct.quantity;
           } else {
@@ -627,9 +673,15 @@ export class ReportsService {
         products: {
           include: {
             quant: true,
+            documentReference: true,
           },
         },
         documentReference: true,
+        documentReferences: {
+          include: {
+            documentReference: true,
+          },
+        },
       },
     });
 
@@ -638,17 +690,19 @@ export class ReportsService {
       where: {
         warehouseId,
         status: { in: ['PENDING', 'VERIFIED'] },
-        OR: [
-          { documentReferenceId: null },
-          {
-            documentReference: {
-              state: { not: 'done' },
-            },
-          },
-        ],
       },
       include: {
-        products: true,
+        products: {
+          include: {
+            documentReference: true,
+          },
+        },
+        documentReference: true,
+        documentReferences: {
+          include: {
+            documentReference: true,
+          },
+        },
       },
     });
 
@@ -662,16 +716,43 @@ export class ReportsService {
       where: {
         warehouseId,
         state: 'done',
-        gateOperations: {
-          some: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
+        OR: [
+          {
+            operationProducts: {
+              some: {
+                gateOperation: {
+                  status: { notIn: ['CANCELED', 'REJECTED'] },
+                },
+              },
             },
           },
-        },
+          {
+            gateOperations: {
+              some: {
+                status: { notIn: ['CANCELED', 'REJECTED'] },
+              },
+            },
+          },
+          {
+            gateOperationLinks: {
+              some: {
+                gateOperation: {
+                  status: { notIn: ['CANCELED', 'REJECTED'] },
+                },
+              },
+            },
+          },
+        ],
       },
       include: {
         items: true,
+        operationProducts: {
+          where: {
+            gateOperation: {
+              status: { notIn: ['CANCELED', 'REJECTED'] },
+            },
+          },
+        },
         gateOperations: {
           where: {
             status: {
@@ -679,7 +760,11 @@ export class ReportsService {
             },
           },
           include: {
-            products: true,
+            products: {
+              where: {
+                documentReferenceId: null,
+              },
+            },
           },
         },
       },
@@ -740,26 +825,28 @@ export class ReportsService {
         continue;
       }
 
-      // Group gate operations products by inventoryId
+      // Group gate operations products by inventoryId strictly for this doc
       const docGateProductsMap = new Map<
         number,
         { total: number; locations: Map<number, number> }
       >();
-      for (const op of doc.gateOperations) {
-        for (const gp of op.products) {
-          const current = docGateProductsMap.get(gp.inventoryId) || {
-            total: 0,
-            locations: new Map<number, number>(),
-          };
-          current.total += gp.quantity;
-          if (gp.locationId) {
-            current.locations.set(
-              gp.locationId,
-              (current.locations.get(gp.locationId) || 0) + gp.quantity,
-            );
-          }
-          docGateProductsMap.set(gp.inventoryId, current);
+      const docProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+      for (const gp of docProducts) {
+        const current = docGateProductsMap.get(gp.inventoryId) || {
+          total: 0,
+          locations: new Map<number, number>(),
+        };
+        current.total += gp.quantity;
+        if (gp.locationId) {
+          current.locations.set(
+            gp.locationId,
+            (current.locations.get(gp.locationId) || 0) + gp.quantity,
+          );
         }
+        docGateProductsMap.set(gp.inventoryId, current);
       }
 
       const docDate = doc.dateDone || doc.updatedAt || doc.createdAt;
@@ -973,6 +1060,10 @@ export class ReportsService {
             (p) => p.inventoryId === prod.id && p.locationId === locId,
           );
           for (const opProd of matchingProducts) {
+            const { docRef } = this.resolveProductDocRefAndPartner(opProd, op);
+            if (docRef && docRef.state === 'done') {
+              continue;
+            }
             if (op.cardType === 'IN') {
               pendingInQty += opProd.quantity;
             } else {
@@ -1015,15 +1106,20 @@ export class ReportsService {
         for (const opProd of matchingProducts) {
           if (!opProd.locationId) continue;
 
+          const {
+            partnerName: resolvedPartner,
+            documentNumber: resolvedDocNumber,
+          } = this.resolveProductDocRefAndPartner(opProd, op);
+
           rawTransactionsList.push({
-            txUuid: op.uuid,
+            txUuid: `${op.uuid}_${opProd.uuid || opProd.id}`,
             opNumber: op.opNumber,
             driverName: op.driverName,
             licensePlate: op.licensePlate,
-            clientPartner: op.clientPartner || '-',
+            clientPartner: resolvedPartner,
             cardType: op.cardType,
             quantity: opProd.quantity,
-            referenceDocument: op.documentReference?.documentNumber || '-',
+            referenceDocument: resolvedDocNumber,
             status: op.status,
             effectiveDate:
               op.cardType === 'OUT'
@@ -1226,6 +1322,8 @@ export class ReportsService {
             const txDetail = {
               uuid: tx.txUuid.includes('_adj_')
                 ? tx.txUuid.split('_adj_')[0]
+                : tx.txUuid.includes('_')
+                ? tx.txUuid.split('_')[0]
                 : tx.txUuid,
               opNumber: tx.opNumber,
               driverName: tx.driverName,
@@ -1464,16 +1562,6 @@ export class ReportsService {
         AND: [
           {
             OR: [
-              { documentReferenceId: null },
-              {
-                documentReference: {
-                  state: { not: 'done' },
-                },
-              },
-            ],
-          },
-          {
-            OR: [
               {
                 cardType: 'OUT',
                 createdAt: {
@@ -1513,21 +1601,41 @@ export class ReportsService {
           where: {
             inventoryId: inventory.id,
           },
+          include: {
+            documentReference: true,
+          },
+        },
+        documentReference: true,
+        documentReferences: {
+          include: {
+            documentReference: true,
+          },
         },
       },
     });
 
     const unreconciledGateOps = gateOps.flatMap((op) => {
-      return op.products.map((opProd) => ({
-        documentNumber: op.opNumber,
-        partnerName:
-          op.clientPartner || op.driverName + ' (' + op.licensePlate + ')',
-        pickingTypeCode: op.cardType === 'IN' ? 'incoming' : 'outgoing',
-        quantity: opProd.quantity,
-        scheduledDate:
-          op.cardType === 'OUT' ? op.createdAt : op.verifiedAt || op.createdAt,
-        type: 'GATE_OPERATION',
-      }));
+      return op.products
+        .filter((opProd) => {
+          const { docRef } = this.resolveProductDocRefAndPartner(opProd, op);
+          return !docRef || docRef.state !== 'done';
+        })
+        .map((opProd) => {
+          const { partnerName, documentNumber } =
+            this.resolveProductDocRefAndPartner(opProd, op);
+          return {
+            documentNumber:
+              documentNumber !== '-' ? documentNumber : op.opNumber,
+            partnerName,
+            pickingTypeCode: op.cardType === 'IN' ? 'incoming' : 'outgoing',
+            quantity: opProd.quantity,
+            scheduledDate:
+              op.cardType === 'OUT'
+                ? op.createdAt
+                : op.verifiedAt || op.createdAt,
+            type: 'GATE_OPERATION',
+          };
+        });
     });
 
     // Fetch all completed Document References for this product (up to TODAY)
@@ -1540,13 +1648,34 @@ export class ReportsService {
             inventoryId: inventory.id,
           },
         },
-        gateOperations: {
-          some: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
+        OR: [
+          {
+            operationProducts: {
+              some: {
+                inventoryId: inventory.id,
+                gateOperation: {
+                  status: { notIn: ['CANCELED', 'REJECTED'] },
+                },
+              },
             },
           },
-        },
+          {
+            gateOperations: {
+              some: {
+                status: { notIn: ['CANCELED', 'REJECTED'] },
+              },
+            },
+          },
+          {
+            gateOperationLinks: {
+              some: {
+                gateOperation: {
+                  status: { notIn: ['CANCELED', 'REJECTED'] },
+                },
+              },
+            },
+          },
+        ],
       },
       include: {
         items: {
@@ -1554,16 +1683,23 @@ export class ReportsService {
             inventoryId: inventory.id,
           },
         },
+        operationProducts: {
+          where: {
+            inventoryId: inventory.id,
+            gateOperation: {
+              status: { notIn: ['CANCELED', 'REJECTED'] },
+            },
+          },
+        },
         gateOperations: {
           where: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
-            },
+            status: { notIn: ['CANCELED', 'REJECTED'] },
           },
           include: {
             products: {
               where: {
                 inventoryId: inventory.id,
+                documentReferenceId: null,
               },
             },
           },
@@ -1588,15 +1724,18 @@ export class ReportsService {
       const locQties = new Map<number, number>();
       let sumGateQty = 0;
 
-      for (const op of doc.gateOperations) {
-        for (const gp of op.products) {
-          sumGateQty += gp.quantity;
-          if (gp.locationId) {
-            locQties.set(
-              gp.locationId,
-              (locQties.get(gp.locationId) || 0) + gp.quantity,
-            );
-          }
+      const docProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+
+      for (const gp of docProducts) {
+        sumGateQty += gp.quantity;
+        if (gp.locationId) {
+          locQties.set(
+            gp.locationId,
+            (locQties.get(gp.locationId) || 0) + gp.quantity,
+          );
         }
       }
 
@@ -1723,9 +1862,15 @@ export class ReportsService {
           },
           include: {
             quant: true,
+            documentReference: true,
           },
         },
         documentReference: true,
+        documentReferences: {
+          include: {
+            documentReference: true,
+          },
+        },
       },
     });
 
@@ -1734,14 +1879,6 @@ export class ReportsService {
       where: {
         warehouseId,
         status: { in: ['PENDING', 'VERIFIED'] },
-        OR: [
-          { documentReferenceId: null },
-          {
-            documentReference: {
-              state: { not: 'done' },
-            },
-          },
-        ],
         products: {
           some: {
             inventoryId: inventory.id,
@@ -1752,6 +1889,15 @@ export class ReportsService {
         products: {
           where: {
             inventoryId: inventory.id,
+          },
+          include: {
+            documentReference: true,
+          },
+        },
+        documentReference: true,
+        documentReferences: {
+          include: {
+            documentReference: true,
           },
         },
       },
@@ -1882,15 +2028,20 @@ export class ReportsService {
       for (const opProd of matchingProducts) {
         if (!opProd.locationId) continue;
 
+        const {
+          partnerName: resolvedPartner,
+          documentNumber: resolvedDocNumber,
+        } = this.resolveProductDocRefAndPartner(opProd, op);
+
         rawTransactionsList.push({
-          txUuid: op.uuid,
+          txUuid: `${op.uuid}_${opProd.uuid || opProd.id}`,
           opNumber: op.opNumber,
           driverName: op.driverName,
           licensePlate: op.licensePlate,
-          clientPartner: op.clientPartner || '-',
+          clientPartner: resolvedPartner,
           cardType: op.cardType,
           quantity: opProd.quantity,
-          referenceDocument: op.documentReference?.documentNumber || '-',
+          referenceDocument: resolvedDocNumber,
           status: op.status,
           effectiveDate:
             op.cardType === 'OUT'
@@ -1998,6 +2149,10 @@ export class ReportsService {
           (p) => p.inventoryId === inventory.id && p.locationId === locId,
         );
         for (const opProd of matchingProducts) {
+          const { docRef } = this.resolveProductDocRefAndPartner(opProd, op);
+          if (docRef && docRef.state === 'done') {
+            continue;
+          }
           if (op.cardType === 'IN') {
             pendingInQty += opProd.quantity;
           } else {
@@ -2199,6 +2354,57 @@ export class ReportsService {
     }
 
     return bestLocId || dbLocations[0]?.id;
+  }
+
+  /**
+   * Helper to resolve DocumentReference and Partner for a GateOperationProduct.
+   * Prioritizes product.documentReference, with fallback to legacy single doc or junction doc.
+   */
+  private resolveProductDocRefAndPartner(
+    prod: any,
+    gateOp?: any,
+  ): {
+    docRef: any | null;
+    partnerName: string;
+    documentNumber: string;
+  } {
+    let docRef: any = prod?.documentReference || null;
+
+    if (!docRef && gateOp) {
+      if (gateOp.documentReference) {
+        docRef = gateOp.documentReference;
+      } else if (
+        Array.isArray(gateOp.documentReferences) &&
+        gateOp.documentReferences.length > 0
+      ) {
+        if (gateOp.documentReferences.length === 1) {
+          docRef = gateOp.documentReferences[0].documentReference || null;
+        } else {
+          // Find the junction document reference that contains this inventoryId
+          const matched = gateOp.documentReferences.find(
+            (junction: any) =>
+              junction.documentReference?.items?.some(
+                (item: any) => item.inventoryId === prod.inventoryId,
+              ),
+          );
+          if (matched) {
+            docRef = matched.documentReference;
+          }
+        }
+      }
+    }
+
+    const partnerName =
+      docRef?.partnerName ||
+      docRef?.purchaseName ||
+      (docRef ? '-' : gateOp?.clientPartner || '-');
+    const documentNumber = docRef?.documentNumber || '-';
+
+    return {
+      docRef,
+      partnerName,
+      documentNumber,
+    };
   }
 
   /**

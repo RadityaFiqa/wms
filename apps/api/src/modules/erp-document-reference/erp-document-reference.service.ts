@@ -719,12 +719,26 @@ export class ErpDocumentReferenceService {
       where,
       include: {
         items: true,
-        gateOperations: {
+        operationProducts: {
           where: {
-            status: { not: 'CANCELED' },
+            gateOperation: {
+              status: { notIn: ['CANCELED', 'REJECTED'] },
+            },
           },
           include: {
-            products: true,
+            gateOperation: true,
+          },
+        },
+        gateOperations: {
+          where: {
+            status: { notIn: ['CANCELED', 'REJECTED'] },
+          },
+          include: {
+            products: {
+              where: {
+                documentReferenceId: null,
+              },
+            },
           },
         },
       },
@@ -748,15 +762,35 @@ export class ErpDocumentReferenceService {
     const productMap = new Map<number, any>();
 
     for (const doc of dbDocs) {
+      // Gather all products associated with this doc:
+      // 1. Products directly assigned to this doc via documentReferenceId
+      // 2. Legacy products where documentReferenceId is null on a gateOperation linked to this doc
+      const docProds: {
+        inventoryId: number;
+        quantity: number;
+        gateOp: any;
+      }[] = [
+        ...doc.operationProducts.map((p) => ({
+          inventoryId: p.inventoryId,
+          quantity: p.quantity,
+          gateOp: p.gateOperation,
+        })),
+        ...doc.gateOperations.flatMap((op) =>
+          op.products.map((p) => ({
+            inventoryId: p.inventoryId,
+            quantity: p.quantity,
+            gateOp: op,
+          })),
+        ),
+      ];
+
       // Picked quantities map for this document
       const pickedMap = new Map<number, number>();
-      for (const op of doc.gateOperations) {
-        for (const prod of op.products) {
-          pickedMap.set(
-            prod.inventoryId,
-            (pickedMap.get(prod.inventoryId) || 0) + prod.quantity,
-          );
-        }
+      for (const p of docProds) {
+        pickedMap.set(
+          p.inventoryId,
+          (pickedMap.get(p.inventoryId) || 0) + p.quantity,
+        );
       }
 
       for (const item of doc.items) {
@@ -820,27 +854,37 @@ export class ErpDocumentReferenceService {
         prodGroup.remainingQuantityPrimary += remainingPrimaryQty;
 
         // Collect relevant gate operations for this document item
-        const relevantGateOps = doc.gateOperations
-          .filter((op) =>
-            op.products.some((p) => p.inventoryId === item.inventoryId),
-          )
-          .map((op) => {
-            const prodOp = op.products.find(
-              (p) => p.inventoryId === item.inventoryId,
-            );
-            return {
-              id: op.id,
-              uuid: op.uuid,
-              opNumber: op.opNumber,
-              createdAt: op.createdAt,
-              status: op.status,
-              quantity: prodOp?.quantity || 0,
-              secondaryQuantity:
-                erpSecondaryQty !== null && prodOp
-                  ? prodOp.quantity * ratio
-                  : null,
-            };
-          });
+        const matchingProds = docProds.filter(
+          (p) => p.inventoryId === item.inventoryId && p.gateOp,
+        );
+
+        const gateOpMap = new Map<string, { op: any; quantity: number }>();
+        for (const mp of matchingProds) {
+          const existing = gateOpMap.get(mp.gateOp.uuid);
+          if (existing) {
+            existing.quantity += mp.quantity;
+          } else {
+            gateOpMap.set(mp.gateOp.uuid, {
+              op: mp.gateOp,
+              quantity: mp.quantity,
+            });
+          }
+        }
+
+        const relevantGateOps = Array.from(gateOpMap.values()).map(
+          ({ op, quantity }) => ({
+            id: op.id,
+            uuid: op.uuid,
+            opNumber: op.opNumber,
+            createdAt: op.createdAt,
+            status: op.status,
+            quantity,
+            secondaryQuantity:
+              erpSecondaryQty !== null && quantity > 0
+                ? quantity * ratio
+                : null,
+          }),
+        );
 
         // Add document detail to this product group
         prodGroup.documents.push({
@@ -862,7 +906,7 @@ export class ErpDocumentReferenceService {
           remainingQuantitySecondary:
             erpSecondaryQty !== null ? remainingPrimaryQty * ratio : null,
           progress:
-            erpPrimaryQty > 0 ? (pickedPrimaryQty / erpPrimaryQty) * 105 : 0, // Wait: let's cap at 100% just in case
+            erpPrimaryQty > 0 ? (pickedPrimaryQty / erpPrimaryQty) * 100 : 0,
           gateOperations: relevantGateOps,
         });
 
