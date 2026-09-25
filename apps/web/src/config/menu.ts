@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   FileCheck,
   ClipboardList,
+  Receipt,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -198,6 +199,23 @@ export const menuGroups: MenuGroup[] = [
         permissionSubject: "DocumentGenerated",
         permissionAction: "read",
         priority: false,
+      },
+    ],
+  },
+  {
+    title: "Finance Management",
+    description: "Kelola dokumen penagihan dan Purchase Order Non Commodity.",
+    items: [
+      {
+        name: "Non Commodity Document",
+        description: "Daftar dan detail Purchase Order Non Commodity dari Odoo ERP.",
+        href: "/finance/non-commodity-documents",
+        icon: Receipt,
+        color: "text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/30",
+        btnText: "Buka Dokumen",
+        permissionSubject: "DocumentPurchaseOrder",
+        permissionAction: "read",
+        priority: true,
       },
     ],
   },

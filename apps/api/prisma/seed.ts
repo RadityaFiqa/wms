@@ -3,6 +3,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
 
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const connectionString =
   process.env.DATABASE_URL ||
   `postgresql://${process.env.POSTGRES_USER || 'postgres'}:${process.env.POSTGRES_PASSWORD || 'postgres'}@${process.env.POSTGRES_HOST || 'localhost'}:${process.env.POSTGRES_PORT || '5432'}/${process.env.POSTGRES_DB || 'wms_dev'}?schema=public`;
@@ -149,6 +155,11 @@ async function main() {
     { action: 'create', subject: 'DocumentGenerated' },
     { action: 'read', subject: 'DocumentGenerated' },
     { action: 'delete', subject: 'DocumentGenerated' },
+    // Document Purchase Order (Non Commodity)
+    { action: 'create', subject: 'DocumentPurchaseOrder' },
+    { action: 'read', subject: 'DocumentPurchaseOrder' },
+    { action: 'update', subject: 'DocumentPurchaseOrder' },
+    { action: 'delete', subject: 'DocumentPurchaseOrder' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -221,6 +232,8 @@ async function main() {
         'create:DocumentGenerated',
         'read:DocumentGenerated',
         'delete:DocumentGenerated',
+        'read:DocumentPurchaseOrder',
+        'update:DocumentPurchaseOrder',
       ],
     },
     {

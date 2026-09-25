@@ -79,6 +79,15 @@ export const API_ROUTES = {
     testConnectionRaw: "/odoo-accounts/test-connection-raw",
     refresh: (uuid: string) => `/odoo-accounts/${uuid}/refresh`,
     sync: "/odoo-accounts/sync",
+    syncNonCommodity: "/odoo-accounts/sync/non-commodity",
+  },
+  finance: {
+    purchaseOrders: {
+      list: "/finance/purchase-orders",
+      detail: (uuid: string) => `/finance/purchase-orders/${uuid}`,
+      forceSync: "/finance/purchase-orders/force-sync",
+      syncStatus: "/finance/purchase-orders/sync/status",
+    },
   },
   auditLog: {
     list: "/audit-logs",

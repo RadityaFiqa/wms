@@ -90,8 +90,11 @@ export class ErpDocumentReferenceService {
     }
 
     // Validate that OdooAccount exists and is active BEFORE starting the background job
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
 
     if (!account) {
@@ -173,8 +176,11 @@ export class ErpDocumentReferenceService {
     this.logger.log(
       `[SYNC-JOB] Fetching OdooAccount for warehouse ${warehouseId}...`,
     );
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
       include: { warehouse: true },
     });
 
@@ -631,7 +637,12 @@ export class ErpDocumentReferenceService {
         this.prisma.documentReference.count({
           where: { warehouseId, pickingTypeCode: 'outgoing' },
         }),
-        this.prisma.odooAccount.findUnique({ where: { warehouseId } }),
+        this.prisma.odooAccount.findFirst({
+          where: {
+            warehouseId,
+            isNonCommodity: false,
+          },
+        }),
       ]);
 
     const summary = {
@@ -1095,8 +1106,11 @@ export class ErpDocumentReferenceService {
     );
 
     // 2. Get active OdooAccount configuration
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
 
     if (!account) {
@@ -1473,8 +1487,11 @@ export class ErpDocumentReferenceService {
     args: any[] = [],
     kwargs: any = {},
   ): Promise<any> {
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
 
     if (!account) {

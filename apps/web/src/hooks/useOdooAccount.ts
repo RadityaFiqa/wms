@@ -83,8 +83,20 @@ export function useOdooAccount() {
     return res.data;
   }, [refresh]);
 
+  const syncNonCommodity = useCallback(async () => {
+    const res = await api.post(API_ROUTES.odoo.syncNonCommodity);
+    refresh();
+    return res.data;
+  }, [refresh]);
+
+  const commodityConfig = data?.commodity ?? (data?.isNonCommodity === false ? data : null);
+  const nonCommodityConfig = data?.nonCommodity ?? (data?.isNonCommodity === true ? data : null);
+
   return {
     config: data,
+    commodityConfig,
+    nonCommodityConfig,
+    accounts: data?.accounts || [],
     error,
     isLoading,
     refresh,
@@ -96,5 +108,6 @@ export function useOdooAccount() {
     testConnectionRaw,
     refreshSession,
     syncAll,
+    syncNonCommodity,
   };
 }

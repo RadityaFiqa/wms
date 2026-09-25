@@ -213,8 +213,11 @@ export class InventoryController {
   }
 
   private async prismaFindAccountByWarehouseId(warehouseId: number) {
-    return this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    return this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
   }
 }

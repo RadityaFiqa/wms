@@ -81,8 +81,11 @@ export class OdooSyncService {
     }
 
     // Validate OdooAccount exists and is active before launching bg job
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
 
     if (!account) {
@@ -147,8 +150,11 @@ export class OdooSyncService {
     });
 
     // 1. Fetch Odoo Account details
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
       include: { warehouse: true },
     });
 
@@ -657,8 +663,11 @@ export class OdooSyncService {
         },
       });
 
-      const account = await this.prisma.odooAccount.findUnique({
-        where: { warehouseId },
+      const account = await this.prisma.odooAccount.findFirst({
+        where: {
+          warehouseId,
+          isNonCommodity: false,
+        },
       });
 
       if (account) {
@@ -697,8 +706,11 @@ export class OdooSyncService {
     args: any[] = [],
     kwargs: any = {},
   ): Promise<any> {
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
 
     if (!account) {

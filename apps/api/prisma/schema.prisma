@@ -154,7 +154,7 @@ model Warehouse {
   gateOperations      GateOperation[]
   inventories         Inventory[]
   locations           Location[]
-  odooAccount         OdooAccount?
+  odooAccounts        OdooAccount[]
   odooSyncLogs        OdooSyncLog[]
   stockOpnames        StockOpname[]
   users               User[]
@@ -162,6 +162,7 @@ model Warehouse {
   manualDocuments     ManualDocument[]
   signedDocuments     SignedDocument[]
   auditLogs           AuditLog[]
+  documentPurchaseOrders DocumentPurchaseOrder[]
 
   @@index([uuid])
   @@index([code])
@@ -170,7 +171,8 @@ model Warehouse {
 model OdooAccount {
   id                      Int                  @id @default(autoincrement())
   uuid                    String               @unique @default(uuid())
-  warehouseId             Int                  @unique
+  warehouseId             Int
+  isNonCommodity          Boolean              @default(false)
   baseUrl                 String
   username                String
   encryptedPassword       String
@@ -195,6 +197,7 @@ model OdooAccount {
   lastDocumentsOffset     Int                  @default(0)
   warehouse               Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
+  @@unique([warehouseId, isNonCommodity])
   @@index([warehouseId])
   @@index([uuid])
 }
@@ -765,6 +768,58 @@ model StackCardUploadLog {
   @@index([snapshotDate])
   @@index([uuid])
   @@map("StackCardUploadLog")
+}
+
+model DocumentPurchaseOrder {
+  id             Int                             @id
+  uuid           String                          @unique @default(uuid())
+  warehouseId    Int?
+  documentNumber String
+  partner        String?
+  partnerRef     String?
+  amountTotal    Float                           @default(0)
+  amountUntaxed  Float?                          @default(0)
+  currencyName   String?
+  state          String
+  dateOrder      DateTime?                       @db.Timestamptz(3)
+  dateApprove    DateTime?                       @db.Timestamptz(3)
+  datePlanned    DateTime?                       @db.Timestamptz(3)
+  invoiceStatus  String?
+  companyName    String?
+  rawJson        Json
+  lastSyncedAt   DateTime                        @default(now()) @db.Timestamptz(3)
+  createdAt      DateTime                        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                        @updatedAt @db.Timestamptz(3)
+
+  warehouse      Warehouse?                      @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  products       DocumentProductPurchaseOrder[]
+
+  @@index([uuid])
+  @@index([documentNumber])
+  @@index([warehouseId])
+  @@index([state])
+  @@index([dateOrder])
+  @@map("DocumentPurchaseOrder")
+}
+
+model DocumentProductPurchaseOrder {
+  id                      Int                   @id
+  uuid                    String                @unique @default(uuid())
+  documentPurchaseOrderId Int
+  productName             String
+  productUom              String?
+  productQty              Float                 @default(0)
+  priceUnit               Float                 @default(0)
+  priceTotal              Float                 @default(0)
+  budgetActivityName      String?
+  createdAt               DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime              @updatedAt @db.Timestamptz(3)
+
+  purchaseOrder           DocumentPurchaseOrder @relation(fields: [documentPurchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([uuid])
+  @@index([documentPurchaseOrderId])
+  @@map("DocumentProductPurchaseOrder")
 }
 
 enum CardType {

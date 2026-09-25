@@ -113,43 +113,114 @@ export declare const CreateRoleSchema: z.ZodObject<{
     permissionIds?: number[] | undefined;
 }>;
 export type CreateRoleInput = z.infer<typeof CreateRoleSchema>;
-export declare const CreateOdooAccountSchema: z.ZodObject<{
+export declare const CreateOdooAccountSchema: z.ZodEffects<z.ZodObject<{
     warehouseId: z.ZodNumber;
     baseUrl: z.ZodString;
     username: z.ZodString;
     password: z.ZodString;
+    isNonCommodity: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    is_non_comodity: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
     password: string;
     warehouseId: number;
     baseUrl: string;
     username: string;
+    isNonCommodity: boolean;
+    is_non_comodity?: boolean | undefined;
 }, {
     password: string;
     warehouseId: number;
     baseUrl: string;
     username: string;
+    isNonCommodity?: boolean | undefined;
+    is_non_comodity?: boolean | undefined;
+}>, {
+    isNonCommodity: boolean;
+    password: string;
+    warehouseId: number;
+    baseUrl: string;
+    username: string;
+    is_non_comodity?: boolean | undefined;
+}, {
+    password: string;
+    warehouseId: number;
+    baseUrl: string;
+    username: string;
+    isNonCommodity?: boolean | undefined;
+    is_non_comodity?: boolean | undefined;
 }>;
 export type CreateOdooAccountInput = z.infer<typeof CreateOdooAccountSchema>;
-export declare const UpdateOdooAccountSchema: z.ZodObject<{
+export declare const UpdateOdooAccountSchema: z.ZodEffects<z.ZodObject<{
     warehouseId: z.ZodNumber;
     baseUrl: z.ZodString;
     username: z.ZodString;
     password: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
     isActive: z.ZodBoolean;
+    isNonCommodity: z.ZodOptional<z.ZodBoolean>;
+    is_non_comodity: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
     warehouseId: number;
     isActive: boolean;
     baseUrl: string;
     username: string;
     password?: string | null | undefined;
+    isNonCommodity?: boolean | undefined;
+    is_non_comodity?: boolean | undefined;
 }, {
     warehouseId: number;
     isActive: boolean;
     baseUrl: string;
     username: string;
     password?: string | null | undefined;
+    isNonCommodity?: boolean | undefined;
+    is_non_comodity?: boolean | undefined;
+}>, {
+    isNonCommodity: boolean | undefined;
+    warehouseId: number;
+    isActive: boolean;
+    baseUrl: string;
+    username: string;
+    password?: string | null | undefined;
+    is_non_comodity?: boolean | undefined;
+}, {
+    warehouseId: number;
+    isActive: boolean;
+    baseUrl: string;
+    username: string;
+    password?: string | null | undefined;
+    isNonCommodity?: boolean | undefined;
+    is_non_comodity?: boolean | undefined;
 }>;
 export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
+export declare const PurchaseOrderQuerySchema: z.ZodObject<{
+    search: z.ZodOptional<z.ZodString>;
+    page: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    limit: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    state: z.ZodOptional<z.ZodString>;
+    startDate: z.ZodOptional<z.ZodString>;
+    endDate: z.ZodOptional<z.ZodString>;
+    sortBy: z.ZodOptional<z.ZodString>;
+    sortOrder: z.ZodOptional<z.ZodEnum<["asc", "desc"]>>;
+}, "strip", z.ZodTypeAny, {
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    state?: string | undefined;
+    startDate?: string | undefined;
+    endDate?: string | undefined;
+    sortBy?: string | undefined;
+    sortOrder?: "asc" | "desc" | undefined;
+}, {
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    state?: string | undefined;
+    startDate?: string | undefined;
+    endDate?: string | undefined;
+    sortBy?: string | undefined;
+    sortOrder?: "asc" | "desc" | undefined;
+}>;
+export type PurchaseOrderQueryInput = z.infer<typeof PurchaseOrderQuerySchema>;
 export declare const CardTypeEnum: z.ZodEnum<["IN", "OUT"]>;
 export declare const VerificationStatusEnum: z.ZodEnum<["PENDING", "CANCELED", "VERIFIED", "REJECTED"]>;
 export declare const GateOperationProductSchema: z.ZodObject<{

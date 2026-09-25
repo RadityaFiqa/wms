@@ -22,15 +22,21 @@ export class OdooRepository {
     });
   }
 
-  async findActiveAccounts() {
+  async findActiveAccounts(isNonCommodity?: boolean) {
+    const where: Prisma.OdooAccountWhereInput = {
+      isActive: true,
+    };
+    if (isNonCommodity !== undefined) {
+      where.isNonCommodity = isNonCommodity;
+    }
     return this.prisma.odooAccount.findMany({
-      where: {
-        isActive: true,
-      },
+      where,
       include: {
         warehouse: {
           select: {
             name: true,
+            uuid: true,
+            odooReference: true,
           },
         },
       },
@@ -45,15 +51,46 @@ export class OdooRepository {
           select: {
             name: true,
             uuid: true,
+            odooReference: true,
           },
         },
       },
     });
   }
 
-  async findByWarehouseId(warehouseId: number) {
-    return this.prisma.odooAccount.findUnique({
+  async findByWarehouseId(warehouseId: number, isNonCommodity = false) {
+    return this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity,
+      },
+      include: {
+        warehouse: {
+          select: {
+            name: true,
+            uuid: true,
+            odooReference: true,
+          },
+        },
+      },
+    });
+  }
+
+  async findAccountsByWarehouseId(warehouseId: number) {
+    return this.prisma.odooAccount.findMany({
       where: { warehouseId },
+      include: {
+        warehouse: {
+          select: {
+            name: true,
+            uuid: true,
+            odooReference: true,
+          },
+        },
+      },
+      orderBy: {
+        isNonCommodity: 'asc',
+      },
     });
   }
 

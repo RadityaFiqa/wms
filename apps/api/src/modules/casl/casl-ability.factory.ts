@@ -28,6 +28,8 @@ type ExtendedSubjects =
       UserSignature: any;
       DocumentTemplate: any;
       DocumentGenerated: any;
+      DocumentPurchaseOrder: any;
+      DocumentProductPurchaseOrder: any;
     }>
   | 'all';
 

@@ -33,6 +33,7 @@ import { encrypt } from '../../core/utils/encryption.util';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 
 import { OdooSyncService } from './odoo-sync.service';
+import { OdooNonCommoditySyncService } from './odoo-non-commodity-sync.service';
 
 @Controller('odoo-accounts')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
@@ -44,6 +45,7 @@ export class OdooController {
     private readonly sessionManager: OdooSessionManager,
     private readonly warehouseContext: WarehouseContextService,
     private readonly odooSyncService: OdooSyncService,
+    private readonly nonCommoditySyncService: OdooNonCommoditySyncService,
   ) {}
 
   @Post()
@@ -53,11 +55,15 @@ export class OdooController {
     @Body(new ZodValidationPipe(CreateOdooAccountSchema))
     body: CreateOdooAccountInput,
   ) {
-    // Check if configuration already exists for this warehouse
-    const existing = await this.repository.findByWarehouseId(body.warehouseId);
+    const isNonCommodity = Boolean(body.isNonCommodity);
+    // Check if configuration of this type already exists for this warehouse
+    const existing = await this.repository.findByWarehouseId(
+      body.warehouseId,
+      isNonCommodity,
+    );
     if (existing) {
       throw new BadRequestException(
-        'Konfigurasi Odoo untuk gudang ini sudah ada.',
+        `Konfigurasi Odoo ${isNonCommodity ? 'Non Commodity' : 'Commodity'} untuk gudang ini sudah ada.`,
       );
     }
 
@@ -68,6 +74,7 @@ export class OdooController {
       username: body.username,
       encryptedPassword,
       isActive: true,
+      isNonCommodity,
     });
 
     return this.sanitize(account);
@@ -82,8 +89,17 @@ export class OdooController {
         'Warehouse context (header x-warehouse-id) diperlukan.',
       );
     }
-    const account = await this.repository.findByWarehouseId(warehouseId);
-    return this.sanitize(account);
+    const accounts =
+      await this.repository.findAccountsByWarehouseId(warehouseId);
+    const commodity = accounts.find((a) => !a.isNonCommodity) || null;
+    const nonCommodity = accounts.find((a) => a.isNonCommodity) || null;
+
+    return {
+      commodity: this.sanitize(commodity),
+      nonCommodity: this.sanitize(nonCommodity),
+      accounts: accounts.map((a) => this.sanitize(a)),
+      ...(commodity ? this.sanitize(commodity) : {}),
+    };
   }
 
   @Get(':uuid')
@@ -109,14 +125,23 @@ export class OdooController {
       throw new BadRequestException('Konfigurasi Odoo tidak ditemukan.');
     }
 
-    // Check if warehouse is changing and already assigned to another odoo account config
-    if (existing.warehouseId !== body.warehouseId) {
+    const isNonCommodity =
+      body.isNonCommodity !== undefined
+        ? body.isNonCommodity
+        : existing.isNonCommodity;
+
+    // Check if warehouse is changing and already assigned to another odoo account config of same type
+    if (
+      existing.warehouseId !== body.warehouseId ||
+      existing.isNonCommodity !== isNonCommodity
+    ) {
       const warehouseAssignee = await this.repository.findByWarehouseId(
         body.warehouseId,
+        isNonCommodity,
       );
-      if (warehouseAssignee) {
+      if (warehouseAssignee && warehouseAssignee.uuid !== uuid) {
         throw new BadRequestException(
-          'Gudang tujuan sudah dikonfigurasi dengan akun Odoo lain.',
+          `Gudang tujuan sudah dikonfigurasi dengan akun Odoo ${isNonCommodity ? 'Non Commodity' : 'Commodity'}.`,
         );
       }
     }
@@ -126,6 +151,7 @@ export class OdooController {
       baseUrl: body.baseUrl,
       username: body.username,
       isActive: body.isActive,
+      isNonCommodity,
     };
 
     if (body.password) {
@@ -246,6 +272,20 @@ export class OdooController {
     }
     const triggeredBy = req.user?.email || 'System';
     return this.odooSyncService.triggerSyncAll(warehouseId, triggeredBy);
+  }
+
+  @Post('sync/non-commodity')
+  @CheckPolicies((ability) => ability.can('update', 'DocumentPurchaseOrder'))
+  @AuditLogAction('ODOO_NON_COMMODITY_SYNC')
+  async syncNonCommodity(@Req() req: any) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    const triggeredBy = req.user?.email || 'System';
+    return this.nonCommoditySyncService.triggerSync(warehouseId, triggeredBy);
   }
 
   private sanitize(account: any) {

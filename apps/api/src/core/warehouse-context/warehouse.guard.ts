@@ -9,7 +9,7 @@ import { WarehouseResolver } from './warehouse.resolver';
 
 @Injectable()
 export class WarehouseGuard implements CanActivate {
-  constructor(private readonly warehouseResolver: WarehouseResolver) {}
+  constructor(private readonly warehouseResolver: WarehouseResolver) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();

@@ -75,27 +75,60 @@ export const CreateRoleSchema = z.object({
 export type CreateRoleInput = z.infer<typeof CreateRoleSchema>;
 
 // Odoo Configuration Schemas
-export const CreateOdooAccountSchema = z.object({
-  warehouseId: z.number().int("ID Gudang harus berupa angka"),
-  baseUrl: z.string().url("URL Odoo tidak valid"),
-  username: z.string().min(1, "Username Odoo harus diisi"),
-  password: z.string().min(4, "Password Odoo minimal 4 karakter"),
-});
+export const CreateOdooAccountSchema = z
+  .object({
+    warehouseId: z.number().int("ID Gudang harus berupa angka"),
+    baseUrl: z.string().url("URL Odoo tidak valid"),
+    username: z.string().min(1, "Username Odoo harus diisi"),
+    password: z.string().min(4, "Password Odoo minimal 4 karakter"),
+    isNonCommodity: z.boolean().optional().default(false),
+    is_non_comodity: z.boolean().optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    isNonCommodity:
+      data.isNonCommodity ?? data.is_non_comodity ?? false,
+  }));
 export type CreateOdooAccountInput = z.infer<typeof CreateOdooAccountSchema>;
 
-export const UpdateOdooAccountSchema = z.object({
-  warehouseId: z.number().int("ID Gudang harus berupa angka"),
-  baseUrl: z.string().url("URL Odoo tidak valid"),
-  username: z.string().min(1, "Username Odoo harus diisi"),
-  password: z
-    .string()
-    .min(4, "Password Odoo minimal 4 karakter")
-    .optional()
-    .nullable()
-    .or(z.literal("")),
-  isActive: z.boolean(),
-});
+export const UpdateOdooAccountSchema = z
+  .object({
+    warehouseId: z.number().int("ID Gudang harus berupa angka"),
+    baseUrl: z.string().url("URL Odoo tidak valid"),
+    username: z.string().min(1, "Username Odoo harus diisi"),
+    password: z
+      .string()
+      .min(4, "Password Odoo minimal 4 karakter")
+      .optional()
+      .nullable()
+      .or(z.literal("")),
+    isActive: z.boolean(),
+    isNonCommodity: z.boolean().optional(),
+    is_non_comodity: z.boolean().optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    isNonCommodity:
+      data.isNonCommodity !== undefined
+        ? data.isNonCommodity
+        : data.is_non_comodity !== undefined
+          ? data.is_non_comodity
+          : undefined,
+  }));
 export type UpdateOdooAccountInput = z.infer<typeof UpdateOdooAccountSchema>;
+
+// Finance & Non Commodity Purchase Order Schemas
+export const PurchaseOrderQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.string().or(z.number()).optional(),
+  limit: z.string().or(z.number()).optional(),
+  state: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
+});
+export type PurchaseOrderQueryInput = z.infer<typeof PurchaseOrderQuerySchema>;
 
 // Gate Operation Schemas
 export const CardTypeEnum = z.enum(["IN", "OUT"]);

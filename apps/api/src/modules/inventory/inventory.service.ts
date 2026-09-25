@@ -28,8 +28,11 @@ export class InventoryService {
     triggeredBy: string,
   ): Promise<{ success: boolean; syncedCount: number }> {
     // 1. Get active OdooAccount configuration for this warehouse
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
       include: { warehouse: true },
     });
 
@@ -1253,8 +1256,11 @@ export class InventoryService {
     args: any[] = [],
     kwargs: any = {},
   ): Promise<any> {
-    const account = await this.prisma.odooAccount.findUnique({
-      where: { warehouseId },
+    const account = await this.prisma.odooAccount.findFirst({
+      where: {
+        warehouseId,
+        isNonCommodity: false,
+      },
     });
 
     if (!account) {

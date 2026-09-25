@@ -1,6 +1,17 @@
 "use strict";
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -63,13 +74,21 @@ exports.CreateRoleSchema = zod_1.z.object({
     permissionIds: zod_1.z.array(zod_1.z.number().int()).optional().default([]),
 });
 // Odoo Configuration Schemas
-exports.CreateOdooAccountSchema = zod_1.z.object({
+exports.CreateOdooAccountSchema = zod_1.z
+    .object({
     warehouseId: zod_1.z.number().int("ID Gudang harus berupa angka"),
     baseUrl: zod_1.z.string().url("URL Odoo tidak valid"),
     username: zod_1.z.string().min(1, "Username Odoo harus diisi"),
     password: zod_1.z.string().min(4, "Password Odoo minimal 4 karakter"),
+    isNonCommodity: zod_1.z.boolean().optional().default(false),
+    is_non_comodity: zod_1.z.boolean().optional(),
+})
+    .transform(function (data) {
+    var _a, _b;
+    return (__assign(__assign({}, data), { isNonCommodity: (_b = (_a = data.isNonCommodity) !== null && _a !== void 0 ? _a : data.is_non_comodity) !== null && _b !== void 0 ? _b : false }));
 });
-exports.UpdateOdooAccountSchema = zod_1.z.object({
+exports.UpdateOdooAccountSchema = zod_1.z
+    .object({
     warehouseId: zod_1.z.number().int("ID Gudang harus berupa angka"),
     baseUrl: zod_1.z.string().url("URL Odoo tidak valid"),
     username: zod_1.z.string().min(1, "Username Odoo harus diisi"),
@@ -80,6 +99,24 @@ exports.UpdateOdooAccountSchema = zod_1.z.object({
         .nullable()
         .or(zod_1.z.literal("")),
     isActive: zod_1.z.boolean(),
+    isNonCommodity: zod_1.z.boolean().optional(),
+    is_non_comodity: zod_1.z.boolean().optional(),
+})
+    .transform(function (data) { return (__assign(__assign({}, data), { isNonCommodity: data.isNonCommodity !== undefined
+        ? data.isNonCommodity
+        : data.is_non_comodity !== undefined
+            ? data.is_non_comodity
+            : undefined })); });
+// Finance & Non Commodity Purchase Order Schemas
+exports.PurchaseOrderQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    page: zod_1.z.string().or(zod_1.z.number()).optional(),
+    limit: zod_1.z.string().or(zod_1.z.number()).optional(),
+    state: zod_1.z.string().optional(),
+    startDate: zod_1.z.string().optional(),
+    endDate: zod_1.z.string().optional(),
+    sortBy: zod_1.z.string().optional(),
+    sortOrder: zod_1.z.enum(["asc", "desc"]).optional(),
 });
 // Gate Operation Schemas
 exports.CardTypeEnum = zod_1.z.enum(["IN", "OUT"]);

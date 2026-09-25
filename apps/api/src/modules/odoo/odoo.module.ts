@@ -8,6 +8,7 @@ import { OdooSessionManager } from './odoo-session.manager';
 import { OdooQueueProcessor } from './odoo-queue.processor';
 import { OdooCronService } from './odoo-cron.service';
 import { OdooSyncService } from './odoo-sync.service';
+import { OdooNonCommoditySyncService } from './odoo-non-commodity-sync.service';
 import { ErpDocumentReferenceModule } from '../erp-document-reference/erp-document-reference.module';
 import { InventoryModule } from '../inventory/inventory.module';
 
@@ -28,7 +29,15 @@ import { InventoryModule } from '../inventory/inventory.module';
     OdooQueueProcessor,
     OdooCronService,
     OdooSyncService,
+    OdooNonCommoditySyncService,
   ],
-  exports: [OdooAuthService, OdooSessionManager, OdooClient, OdooSyncService],
+  exports: [
+    OdooAuthService,
+    OdooSessionManager,
+    OdooClient,
+    OdooSyncService,
+    OdooNonCommoditySyncService,
+    OdooRepository,
+  ],
 })
 export class OdooModule {}

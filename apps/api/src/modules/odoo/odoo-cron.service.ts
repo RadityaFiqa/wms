@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OdooRepository } from './odoo.repository';
 import { OdooSyncService } from './odoo-sync.service';
+import { OdooNonCommoditySyncService } from './odoo-non-commodity-sync.service';
 
 @Injectable()
 export class OdooCronService {
@@ -13,39 +14,76 @@ export class OdooCronService {
     private readonly repository: OdooRepository,
     @InjectQueue('odoo_queue') private readonly odooQueue: Queue,
     private readonly odooSyncService: OdooSyncService,
+    private readonly odooNonCommoditySyncService: OdooNonCommoditySyncService,
   ) {}
 
   /**
-   * Run every 30 minutes to synchronize ERP Documents and Inventory for all active Odoo configurations.
+   * Run every 30 minutes to synchronize ERP Documents and Inventory for all active Commodity Odoo configurations.
    */
   @Cron('*/30 5-19 * * *', { timeZone: 'Asia/Makassar' })
   async runSyncEvery30Minutes() {
     this.logger.log(
-      'Memulai sinkronisasi otomatis Odoo (ERP Documents & Inventory) setiap 30 menit...',
+      'Memulai sinkronisasi otomatis Odoo Commodity (ERP Documents & Inventory) setiap 30 menit...',
     );
     try {
-      const activeAccounts = await this.repository.findActiveAccounts();
+      const activeAccounts = await this.repository.findActiveAccounts(false);
 
       for (const account of activeAccounts) {
         this.logger.log(
-          `Menjalankan sinkronisasi otomatis untuk gudang ${account.warehouse.name} (${account.warehouseId})...`,
+          `Menjalankan sinkronisasi otomatis Commodity untuk gudang ${account.warehouse.name} (${account.warehouseId})...`,
         );
         this.odooSyncService
           .triggerSyncAll(account.warehouseId, 'System Cron')
           .then((res) => {
             this.logger.log(
-              `Sinkronisasi otomatis berhasil dijadwalkan untuk gudang ${account.warehouse.name}`,
+              `Sinkronisasi otomatis Commodity berhasil dijadwalkan untuk gudang ${account.warehouse.name}`,
             );
           })
           .catch((err) => {
             this.logger.error(
-              `Gagal menjadwalkan sinkronisasi otomatis untuk gudang ${account.warehouse.name}: ${err.message}`,
+              `Gagal menjadwalkan sinkronisasi otomatis Commodity untuk gudang ${account.warehouse.name}: ${err.message}`,
             );
           });
       }
     } catch (err: any) {
       this.logger.error(
-        `Gagal menjalankan sinkronisasi otomatis Odoo: ${err.message}`,
+        `Gagal menjalankan sinkronisasi otomatis Odoo Commodity: ${err.message}`,
+      );
+    }
+  }
+
+  /**
+   * Run every 30 minutes to synchronize Non Commodity Purchase Orders for all active Non Commodity Odoo configurations.
+   */
+  @Cron('*/30 5-19 * * *', { timeZone: 'Asia/Makassar' })
+  async runNonCommoditySyncEvery30Minutes() {
+    this.logger.log(
+      'Memulai sinkronisasi otomatis Odoo Non Commodity (Purchase Orders) setiap 30 menit...',
+    );
+    try {
+      const activeNonCommodity =
+        await this.repository.findActiveAccounts(true);
+
+      for (const account of activeNonCommodity) {
+        this.logger.log(
+          `Menjalankan sinkronisasi otomatis Non Commodity PO untuk gudang ${account.warehouse.name} (${account.warehouseId})...`,
+        );
+        this.odooNonCommoditySyncService
+          .triggerSync(account.warehouseId, 'System Cron')
+          .then((res) => {
+            this.logger.log(
+              `Sinkronisasi otomatis Non Commodity PO berhasil dijadwalkan untuk gudang ${account.warehouse.name}`,
+            );
+          })
+          .catch((err) => {
+            this.logger.error(
+              `Gagal menjadwalkan sinkronisasi otomatis Non Commodity PO untuk gudang ${account.warehouse.name}: ${err.message}`,
+            );
+          });
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Gagal menjalankan sinkronisasi otomatis Odoo Non Commodity: ${err.message}`,
       );
     }
   }

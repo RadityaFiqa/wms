@@ -24,6 +24,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { DigitalSignatureModule } from './modules/digital-signature/digital-signature.module';
 import { StackCardModule } from './modules/stack-card/stack-card.module';
 import { DocumentModule } from './modules/document/document.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interceptor';
 
@@ -62,6 +63,7 @@ import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interce
     DigitalSignatureModule,
     StackCardModule,
     DocumentModule,
+    FinanceModule,
   ],
   controllers: [AppController],
   providers: [
