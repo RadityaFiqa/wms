@@ -14,12 +14,14 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "rootDir": "src",
     "paths": {
       "@/*": ["src/*"],
       "@/modules/*": ["src/modules/*"],
       "@/lib/*": ["src/core/*"]
     },
     "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
@@ -27,5 +29,5 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
-  "exclude": ["node_modules", "dist", "test", "prisma.config.ts", "prisma"]
+  "exclude": ["node_modules", "dist", "test", "prisma.config.ts", "prisma", "scratch"]
 }
