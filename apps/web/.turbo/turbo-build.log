@@ -1,5 +1,5 @@
 
-> @bulog-wms/web@0.1.0 build C:\Users\raditya\Documents\Coding\WMS\apps\web
+> @bulog-wms/web@0.1.0 build C:\Users\Win 11\Documents\wms\apps\web
 > node copy-worker.js && next build
 
 Successfully copied pdf.worker.min.mjs to public/
@@ -7,15 +7,15 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 16.0s
+✓ Compiled successfully in 8.8s
   Running TypeScript ...
-  Finished TypeScript in 19.1s ...
-  Collecting page data using 7 workers ...
-  Generating static pages using 7 workers (0/28) ...
-  Generating static pages using 7 workers (7/28) 
-  Generating static pages using 7 workers (14/28) 
-  Generating static pages using 7 workers (21/28) 
-✓ Generating static pages using 7 workers (28/28) in 2.3s
+  Finished TypeScript in 9.6s ...
+  Collecting page data using 5 workers ...
+  Generating static pages using 5 workers (0/29) ...
+  Generating static pages using 5 workers (7/29) 
+  Generating static pages using 5 workers (14/29) 
+  Generating static pages using 5 workers (21/29) 
+✓ Generating static pages using 5 workers (29/29) in 561ms
   Finalizing page optimization ...
 
 Route (app)
@@ -30,6 +30,8 @@ Route (app)
 ├ ƒ /document-verification/[token]
 ├ ○ /erp-documents
 ├ ƒ /erp-documents/[uuid]
+├ ○ /finance/non-commodity-documents
+├ ƒ /finance/non-commodity-documents/[uuid]
 ├ ○ /forgot-password
 ├ ○ /gate-operations
 ├ ƒ /gate-operations/[uuid]

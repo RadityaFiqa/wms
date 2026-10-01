@@ -288,6 +288,19 @@ export class OdooController {
     return this.nonCommoditySyncService.triggerSync(warehouseId, triggeredBy);
   }
 
+  @Post('sync/non-commodity/reset')
+  @CheckPolicies((ability) => ability.can('update', 'DocumentPurchaseOrder'))
+  @AuditLogAction('ODOO_NON_COMMODITY_RESET_OFFSET')
+  async resetNonCommodityOffset() {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    return this.nonCommoditySyncService.resetOffset(warehouseId);
+  }
+
   private sanitize(account: any) {
     if (!account) return null;
     const { encryptedPassword, ...sanitized } = account;

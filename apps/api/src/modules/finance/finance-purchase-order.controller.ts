@@ -68,18 +68,4 @@ export class FinancePurchaseOrderController {
     }
     return this.service.findOne(warehouseId, uuid);
   }
-
-  @Post('force-sync')
-  @CheckPolicies((ability) => ability.can('update', 'DocumentPurchaseOrder'))
-  @AuditLogAction('NON_COMMODITY_PO_FORCE_SYNC')
-  async forceSync(@Req() req: any) {
-    const warehouseId = this.warehouseContext.getWarehouseId();
-    if (!warehouseId) {
-      throw new BadRequestException(
-        'Warehouse context (header x-warehouse-id) diperlukan.',
-      );
-    }
-    const triggeredBy = req.user?.email || 'System';
-    return this.service.forceSync(warehouseId, triggeredBy);
-  }
 }

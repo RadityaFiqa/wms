@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
-import { OdooNonCommoditySyncService } from '@/modules/odoo/odoo-non-commodity-sync.service';
 import { OdooRepository } from '@/modules/odoo/odoo.repository';
 import { getLocalStartOfDay, getLocalEndOfDay } from '@/core/utils/date';
 import { WarehouseContextService } from '@/core/warehouse-context/warehouse-context.service';
@@ -12,7 +11,6 @@ export class FinancePurchaseOrderService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly nonCommoditySyncService: OdooNonCommoditySyncService,
     private readonly odooRepository: OdooRepository,
     private readonly warehouseContext: WarehouseContextService,
   ) { }
@@ -157,13 +155,6 @@ export class FinancePurchaseOrderService {
     }
 
     return this.sanitize(doc, true);
-  }
-
-  /**
-   * Trigger force sync for Non Commodity Purchase Orders.
-   */
-  async forceSync(warehouseId: number, triggeredBy: string) {
-    return this.nonCommoditySyncService.triggerSync(warehouseId, triggeredBy);
   }
 
   /**

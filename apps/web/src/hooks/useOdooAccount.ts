@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
@@ -21,6 +21,17 @@ export function useOdooAccount() {
       (key) => typeof key === "string" && key.startsWith(API_ROUTES.odoo.list),
     );
   }, []);
+
+  // Auto-poll when Non-Commodity sync is actively running
+  useEffect(() => {
+    const nonCommodityStatus = data?.nonCommodity?.lastSyncDocumentsStatus;
+    if (nonCommodityStatus === "SYNCING" || nonCommodityStatus === "RUNNING") {
+      const interval = setInterval(() => {
+        refresh();
+      }, 2500);
+      return () => clearInterval(interval);
+    }
+  }, [data?.nonCommodity?.lastSyncDocumentsStatus, refresh]);
 
   const createConfig = useCallback(
     async (payload: any) => {
@@ -89,6 +100,12 @@ export function useOdooAccount() {
     return res.data;
   }, [refresh]);
 
+  const resetNonCommodityOffset = useCallback(async () => {
+    const res = await api.post(API_ROUTES.odoo.resetNonCommodityOffset);
+    refresh();
+    return res.data;
+  }, [refresh]);
+
   const commodityConfig = data?.commodity ?? (data?.isNonCommodity === false ? data : null);
   const nonCommodityConfig = data?.nonCommodity ?? (data?.isNonCommodity === true ? data : null);
 
@@ -109,5 +126,6 @@ export function useOdooAccount() {
     refreshSession,
     syncAll,
     syncNonCommodity,
+    resetNonCommodityOffset,
   };
 }

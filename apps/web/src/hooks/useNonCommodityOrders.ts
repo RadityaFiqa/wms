@@ -36,18 +36,11 @@ export function useNonCommodityOrders(query?: PurchaseOrderQueryInput) {
     );
   }, []);
 
-  const forceSync = useCallback(async () => {
-    const res = await api.post(API_ROUTES.finance.purchaseOrders.forceSync);
-    refresh();
-    return res.data;
-  }, [refresh]);
-
   return {
     ordersData: data,
     isLoading,
     error,
     refresh,
-    forceSync,
   };
 }
 

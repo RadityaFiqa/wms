@@ -5,10 +5,8 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useNonCommodityOrders } from "@/hooks/useNonCommodityOrders";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuthStore } from "@/store/auth";
-import { toast } from "sonner";
 import {
   Search,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -33,7 +31,7 @@ export default function NonCommodityDocumentsPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  const { activeWarehouse, user, hasPermission } = useAuthStore();
+  const { activeWarehouse } = useAuthStore();
 
   // Read URL query parameters
   const page = Number(searchParams.get("page")) || 1;
@@ -68,7 +66,7 @@ export default function NonCommodityDocumentsPage() {
   }, [search]);
 
   // SWR Hook
-  const { ordersData, isLoading, refresh, forceSync } = useNonCommodityOrders({
+  const { ordersData, isLoading } = useNonCommodityOrders({
     page,
     limit,
     search: search || undefined,
@@ -78,8 +76,6 @@ export default function NonCommodityDocumentsPage() {
     sortBy: sortBy || undefined,
     sortOrder: sortOrder || undefined,
   });
-
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const updateQueryParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -96,27 +92,6 @@ export default function NonCommodityDocumentsPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("page", String(newPage));
     router.push(`${pathname}?${params.toString()}`);
-  };
-
-  const handleForceSync = async () => {
-    setIsSyncing(true);
-    const toastId = toast.loading("Memulai sinkronisasi PO Non Commodity dari Odoo...");
-    try {
-      const res = await forceSync();
-      if (res?.message?.includes("already in progress")) {
-        toast.info("Sinkronisasi PO Non Commodity sedang berjalan.", { id: toastId });
-      } else {
-        toast.success("Proses sinkronisasi PO Non Commodity telah dipicu!", { id: toastId });
-      }
-      refresh();
-    } catch (err: any) {
-      toast.error(
-        err.response?.data?.message || "Gagal sinkronisasi PO Non Commodity.",
-        { id: toastId },
-      );
-    } finally {
-      setIsSyncing(false);
-    }
   };
 
   const getStatusColor = (st: string) => {
@@ -178,51 +153,17 @@ export default function NonCommodityDocumentsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center">
-            <FileSpreadsheet className="h-8 w-8 text-purple-600 mr-3" />
-            Dokumen Non Commodity (Purchase Order)
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-            Manajemen penagihan & dokumen PO Non Commodity Odoo untuk gudang:{" "}
-            <span className="font-semibold text-purple-600 dark:text-purple-400">
-              {activeWarehouse?.name || "Semua Gudang"}
-            </span>
-          </p>
-        </div>
-
-        {/* Header Action Buttons */}
-        <div className="flex items-center space-x-3">
-          <button
-            type="button"
-            onClick={() => refresh()}
-            disabled={isLoading}
-            className="flex items-center px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-50 dark:hover:bg-slate-750 transition text-xs cursor-pointer shadow-sm min-h-[38px]"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </button>
-
-          {(user?.role === "SUPER_ADMIN" ||
-            user?.role === "WAREHOUSE_ADMIN" ||
-            (hasPermission &&
-              hasPermission("update", "DocumentPurchaseOrder"))) && (
-            <button
-              type="button"
-              onClick={handleForceSync}
-              disabled={isSyncing}
-              className="flex items-center justify-center bg-purple-600 hover:bg-purple-500 disabled:bg-purple-400 text-white font-bold px-4 py-2 rounded-xl shadow-md hover:shadow-purple-500/10 active:scale-[0.98] transition cursor-pointer text-xs min-h-[38px]"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`}
-              />
-              Force Sync
-            </button>
-          )}
-        </div>
+      <div>
+        <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center">
+          <FileSpreadsheet className="h-8 w-8 text-purple-600 mr-3" />
+          Dokumen Non Commodity (Purchase Order)
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+          Manajemen penagihan & dokumen PO Non Commodity Odoo untuk gudang:{" "}
+          <span className="font-semibold text-purple-600 dark:text-purple-400">
+            {activeWarehouse?.name || "Semua Gudang"}
+          </span>
+        </p>
       </div>
 
       {/* Summary Statistics Cards */}
@@ -441,7 +382,7 @@ export default function NonCommodityDocumentsPage() {
                       <FolderOpen className="h-12 w-12 text-slate-300 dark:text-slate-700" />
                       <span>
                         Tidak ada data dokumen PO Non Commodity ditemukan.
-                        Gunakan tombol Force Sync di atas atau cek konfigurasi kredensial Odoo Non Commodity.
+                        Sinkronisasi dokumen dapat dikelola melalui menu Integrasi Odoo.
                       </span>
                     </div>
                   </td>

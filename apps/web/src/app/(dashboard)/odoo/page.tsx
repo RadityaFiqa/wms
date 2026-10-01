@@ -29,6 +29,7 @@ import {
   FileSpreadsheet,
   Boxes,
   FileCheck,
+  RotateCcw,
 } from "lucide-react";
 
 interface CredentialCardProps {
@@ -44,7 +45,8 @@ interface CredentialCardProps {
   onTestConnection: (uuid: string) => Promise<any>;
   onRefreshSession: (uuid: string) => Promise<any>;
   onToggleStatus: (uuid: string, action: "activate" | "deactivate") => Promise<any>;
-  onForceSync: () => Promise<any>;
+  onSyncData: () => Promise<any>;
+  onResetOffset?: () => Promise<any>;
   isSyncingExternal?: boolean;
 }
 
@@ -61,7 +63,8 @@ function OdooCredentialCard({
   onTestConnection,
   onRefreshSession,
   onToggleStatus,
-  onForceSync,
+  onSyncData,
+  onResetOffset,
   isSyncingExternal = false,
 }: CredentialCardProps) {
   const [showPassword, setShowPassword] = useState(false);
@@ -69,6 +72,8 @@ function OdooCredentialCard({
   const [isTesting, setIsTesting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const {
     register,
@@ -214,11 +219,11 @@ function OdooCredentialCard({
     if (!config) return;
     setIsSyncing(true);
     const toastId = toast.loading(
-      `Memulai sinkronisasi paksa ${badgeText}...`,
+      `Memulai sinkronisasi data ${badgeText}...`,
     );
     try {
-      const res = await onForceSync();
-      if (res?.message?.includes("already in progress")) {
+      const res = await onSyncData();
+      if (res?.message?.includes("already in progress") || res?.alreadyInProgress) {
         toast.info(`Sinkronisasi ${badgeText} sedang berlangsung.`, {
           id: toastId,
         });
@@ -235,6 +240,27 @@ function OdooCredentialCard({
       );
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleConfirmResetOffset = async () => {
+    if (!onResetOffset) return;
+    setIsResetting(true);
+    const toastId = toast.loading("Mereset offset sinkronisasi...");
+    try {
+      await onResetOffset();
+      toast.success(
+        "Offset sinkronisasi berhasil direset ke 0. Sinkronisasi berikutnya akan membaca data mulai dari awal.",
+        { id: toastId },
+      );
+      setShowResetConfirmModal(false);
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Gagal mereset state sinkronisasi.",
+        { id: toastId },
+      );
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -284,7 +310,11 @@ function OdooCredentialCard({
     );
   };
 
-  const isSyncActive = isSyncing || isSyncingExternal;
+  const isSyncActive =
+    isSyncing ||
+    isSyncingExternal ||
+    config?.lastSyncDocumentsStatus === "SYNCING" ||
+    config?.lastSyncDocumentsStatus === "RUNNING";
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col justify-between overflow-hidden">
@@ -588,29 +618,48 @@ function OdooCredentialCard({
               </div>
             ) : (
               /* Non-Commodity Sync Stats */
-              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/70 dark:border-slate-700/60 text-xs space-y-2">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/70 dark:border-slate-700/60 text-xs space-y-2.5">
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center">
                     <FileCheck className="h-4 w-4 mr-1.5 text-purple-600" />
                     Purchase Order Non Commodity
                   </span>
-                  {config.lastSyncDocumentsStatus === "SUCCESS" ? (
-                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900/40">
-                      Sukses
+                  {config.lastSyncDocumentsStatus === "SYNCING" || config.lastSyncDocumentsStatus === "RUNNING" ? (
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900/40 flex items-center animate-pulse">
+                      <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                      Syncing
+                    </span>
+                  ) : config.lastSyncDocumentsStatus === "SUCCESS" ? (
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900/40 flex items-center">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Success
                     </span>
                   ) : config.lastSyncDocumentsStatus === "FAILED" ? (
                     <span
-                      className="text-[10px] font-bold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/20 px-2 py-0.5 rounded-md border border-red-100 dark:border-red-900/40"
+                      className="text-[10px] font-bold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/20 px-2 py-0.5 rounded-md border border-red-100 dark:border-red-900/40 flex items-center"
                       title={config.lastSyncDocumentsError || ""}
                     >
-                      Gagal
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Failed
                     </span>
                   ) : (
-                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                      Belum Sync
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                      Idle
                     </span>
                   )}
                 </div>
+
+                {config.lastSyncDocumentsStatus === "FAILED" && config.lastSyncDocumentsError && (
+                  <div className="p-2.5 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-900/40 text-[11px] text-red-700 dark:text-red-400 flex items-start space-x-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-500" />
+                    <div className="flex-1 overflow-hidden">
+                      <span className="font-semibold block">Penyebab Kegagalan:</span>
+                      <span className="font-mono text-[10px] break-all block mt-0.5">
+                        {config.lastSyncDocumentsError}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
@@ -624,45 +673,152 @@ function OdooCredentialCard({
                           )
                         : "-"}
                     </span>
+                    {config.lastSyncDocumentsBy && (
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate">
+                        Oleh: {config.lastSyncDocumentsBy}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      Total Dokumen Tersimpan
+                      Progress & Total Tersimpan
                     </span>
                     <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-                      {config.lastSyncDocumentsCount ?? 0} PO (Offset: {config.lastDocumentsOffset ?? 0})
+                      {config.lastSyncDocumentsCount ?? 0} PO
+                    </span>
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono block">
+                      Offset Saat Ini: {config.lastDocumentsOffset ?? 0}
                     </span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Dedicated Force Sync Button */}
-            <button
-              type="button"
-              onClick={handleSync}
-              disabled={isSyncActive}
-              className={`w-full flex items-center justify-center font-bold px-4 py-2.5 rounded-xl shadow-sm active:scale-[0.98] transition cursor-pointer text-xs min-h-[42px] text-white ${
-                isNonCommodity
-                  ? "bg-purple-600 hover:bg-purple-500 disabled:bg-purple-400 shadow-purple-600/10"
-                  : "bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 shadow-blue-600/10"
-              }`}
-            >
-              {isSyncActive ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Sedang Sinkronisasi {badgeText}...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Force Sync {badgeText}
-                </>
-              )}
-            </button>
+            {/* Action Buttons */}
+            {isNonCommodity ? (
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSync}
+                  disabled={isSyncActive || isResetting}
+                  className="flex-1 flex items-center justify-center font-bold px-4 py-2.5 rounded-xl shadow-sm active:scale-[0.98] transition cursor-pointer text-xs min-h-[42px] text-white bg-purple-600 hover:bg-purple-500 disabled:bg-purple-400 disabled:cursor-not-allowed shadow-purple-600/10"
+                >
+                  {isSyncActive ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Sedang Sinkronisasi Data...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Sync Data
+                    </>
+                  )}
+                </button>
+
+                {onResetOffset && (
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirmModal(true)}
+                    disabled={isSyncActive || isResetting}
+                    className="flex items-center justify-center font-bold px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer text-xs min-h-[42px] shadow-sm"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-1.5 text-slate-500" />
+                    Reset State
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* Dedicated Sync Button for Commodity */
+              <button
+                type="button"
+                onClick={handleSync}
+                disabled={isSyncActive}
+                className="w-full flex items-center justify-center font-bold px-4 py-2.5 rounded-xl shadow-sm active:scale-[0.98] transition cursor-pointer text-xs min-h-[42px] text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 disabled:cursor-not-allowed shadow-blue-600/10"
+              >
+                {isSyncActive ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Sedang Sinkronisasi {badgeText}...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Sync Data {badgeText}
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Confirmation Dialog for Reset State */}
+      {showResetConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+            <div className="p-6 space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl border border-amber-100 dark:border-amber-900/40 shrink-0">
+                  <RotateCcw className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+                    Konfirmasi Reset State
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Integrasi Odoo Non-Commodity
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-600 dark:text-slate-300 space-y-2 leading-relaxed bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                <p>
+                  Tindakan ini akan mereset <strong>lastOffset</strong> sinkronisasi ke <strong>0</strong> sehingga proses sinkronisasi berikutnya membaca data Non-Commodity mulai dari awal.
+                </p>
+                <div className="space-y-1 text-slate-500 dark:text-slate-400 text-[11px] pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <p className="flex items-center text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                    Dokumen PO yang sudah tersimpan TIDAK akan dihapus.
+                  </p>
+                  <p className="flex items-center text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                    Kredensial & konfigurasi Odoo TIDAK akan diubah.
+                  </p>
+                  <p className="flex items-center text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                    Data yang sudah ada akan diperbarui secara aman (idempotent).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirmModal(false)}
+                  disabled={isResetting}
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmResetOffset}
+                  disabled={isResetting}
+                  className="flex items-center justify-center px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-sm transition cursor-pointer min-w-[100px]"
+                >
+                  {isResetting ? (
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                  )}
+                  Ya, Reset State
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -686,6 +842,7 @@ export default function OdooConfigPage() {
     refreshSession,
     syncAll,
     syncNonCommodity,
+    resetNonCommodityOffset,
     refresh,
   } = useOdooAccount();
 
@@ -757,6 +914,10 @@ export default function OdooConfigPage() {
   const isCommoditySyncRunning =
     syncStatus?.status === "RUNNING" || syncStatus?.status === "PENDING";
 
+  const isNonCommoditySyncRunning =
+    nonCommodityConfig?.lastSyncDocumentsStatus === "SYNCING" ||
+    nonCommodityConfig?.lastSyncDocumentsStatus === "RUNNING";
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -799,7 +960,7 @@ export default function OdooConfigPage() {
           onTestConnection={testConnection}
           onRefreshSession={refreshSession}
           onToggleStatus={toggleStatus}
-          onForceSync={syncAll}
+          onSyncData={syncAll}
           isSyncingExternal={isCommoditySyncRunning}
         />
 
@@ -817,7 +978,9 @@ export default function OdooConfigPage() {
           onTestConnection={testConnection}
           onRefreshSession={refreshSession}
           onToggleStatus={toggleStatus}
-          onForceSync={syncNonCommodity}
+          onSyncData={syncNonCommodity}
+          onResetOffset={resetNonCommodityOffset}
+          isSyncingExternal={isNonCommoditySyncRunning}
         />
       </div>
     </div>
