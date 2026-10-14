@@ -7,15 +7,15 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 8.8s
+✓ Compiled successfully in 9.8s
   Running TypeScript ...
-  Finished TypeScript in 9.6s ...
+  Finished TypeScript in 8.7s ...
   Collecting page data using 5 workers ...
-  Generating static pages using 5 workers (0/29) ...
-  Generating static pages using 5 workers (7/29) 
-  Generating static pages using 5 workers (14/29) 
-  Generating static pages using 5 workers (21/29) 
-✓ Generating static pages using 5 workers (29/29) in 561ms
+  Generating static pages using 5 workers (0/31) ...
+  Generating static pages using 5 workers (7/31) 
+  Generating static pages using 5 workers (15/31) 
+  Generating static pages using 5 workers (23/31) 
+✓ Generating static pages using 5 workers (31/31) in 577ms
   Finalizing page optimization ...
 
 Route (app)
@@ -32,6 +32,9 @@ Route (app)
 ├ ƒ /erp-documents/[uuid]
 ├ ○ /finance/non-commodity-documents
 ├ ƒ /finance/non-commodity-documents/[uuid]
+├ ○ /finance/tagihan
+├ ƒ /finance/tagihan/[uuid]
+├ ○ /finance/tagihan/create
 ├ ○ /forgot-password
 ├ ○ /gate-operations
 ├ ƒ /gate-operations/[uuid]

@@ -88,6 +88,21 @@ export const API_ROUTES = {
       detail: (uuid: string) => `/finance/purchase-orders/${uuid}`,
       syncStatus: "/finance/purchase-orders/sync/status",
     },
+    tagihan: {
+      list: "/tagihan",
+      create: "/tagihan",
+      detail: (uuid: string) => `/tagihan/${uuid}`,
+      update: (uuid: string) => `/tagihan/${uuid}`,
+      delete: (uuid: string) => `/tagihan/${uuid}`,
+      statuses: "/tagihan/statuses",
+      createStatus: "/tagihan/statuses",
+      erpCandidates: "/tagihan/erp-candidates",
+      uploadFile: (uuid: string) => `/tagihan/${uuid}/files`,
+      deleteFile: (uuid: string, fileUuid: string) =>
+        `/tagihan/${uuid}/files/${fileUuid}`,
+      downloadFile: (uuid: string, fileUuid: string) =>
+        `/tagihan/${uuid}/files/${fileUuid}/download`,
+    },
   },
   auditLog: {
     list: "/audit-logs",

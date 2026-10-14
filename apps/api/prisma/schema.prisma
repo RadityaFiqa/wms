@@ -36,6 +36,8 @@ model User {
   stackCardUploadLogs      StackCardUploadLog[]
   documentTemplates         DocumentTemplate[]
   generatedDocuments        DocumentGenerated[]
+  tagihansCreated           Tagihan[]
+  tagihanFilesUploaded      TagihanFile[]
 
   @@index([email])
   @@index([uuid])
@@ -163,6 +165,7 @@ model Warehouse {
   signedDocuments     SignedDocument[]
   auditLogs           AuditLog[]
   documentPurchaseOrders DocumentPurchaseOrder[]
+  tagihans               Tagihan[]
 
   @@index([uuid])
   @@index([code])
@@ -385,6 +388,7 @@ model DocumentReference {
   gateOperations          GateOperation[]
   gateOperationLinks      GateOperationDocumentReference[]
   operationProducts       GateOperationProduct[]
+  tagihanLinks            TagihanDocumentReference[]
 
   @@index([warehouseId])
   @@index([uuid])
@@ -793,6 +797,7 @@ model DocumentPurchaseOrder {
 
   warehouse      Warehouse?                      @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   products       DocumentProductPurchaseOrder[]
+  tagihanLinks   TagihanNonCommodityDocument[]
 
   @@index([uuid])
   @@index([documentNumber])
@@ -849,4 +854,145 @@ enum StockOpnameStatus {
 enum KartuTumpukanSource {
   REAL_STOCK
   CSV
+}
+
+enum TagihanType {
+  LOADING
+  UNLOADING
+  REBAGGING
+  REPROSES
+  OVERSTAPEL
+}
+
+model MasterTagihanStatus {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  name        String    @unique
+  description String?
+  color       String?   @default("blue")
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  tagihans    Tagihan[]
+
+  @@map("MasterTagihanStatus")
+}
+
+model Tagihan {
+  id                     Int                           @id @default(autoincrement())
+  uuid                   String                        @unique @default(uuid())
+  warehouseId            Int
+  documentNumber         String                        @unique
+  type                   TagihanType
+  statusId               Int?
+  totalAmount            Float                         @default(0)
+  notes                  String?
+  tagihanDate            DateTime                      @default(now()) @db.Timestamptz(3)
+  createdById            Int?
+  createdAt              DateTime                      @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                      @updatedAt @db.Timestamptz(3)
+
+  warehouse              Warehouse                     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  status                 MasterTagihanStatus?          @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  createdBy              User?                         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  documentReferences     TagihanDocumentReference[]
+  nonCommodityDocuments  TagihanNonCommodityDocument[]
+  manualDocuments        TagihanManualDocument[]
+  summaries              TagihanSummary[]
+  files                  TagihanFile[]
+
+  @@index([warehouseId])
+  @@index([uuid])
+  @@index([documentNumber])
+  @@index([type])
+  @@index([statusId])
+  @@index([tagihanDate])
+  @@map("Tagihan")
+}
+
+model TagihanDocumentReference {
+  id                  Int               @id @default(autoincrement())
+  uuid                String            @unique @default(uuid())
+  tagihanId           Int
+  documentReferenceId Int
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(3)
+
+  tagihan             Tagihan           @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+  documentReference   DocumentReference @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
+
+  @@unique([tagihanId, documentReferenceId])
+  @@index([tagihanId])
+  @@index([documentReferenceId])
+  @@map("TagihanDocumentReference")
+}
+
+model TagihanNonCommodityDocument {
+  id                      Int                   @id @default(autoincrement())
+  uuid                    String                @unique @default(uuid())
+  tagihanId               Int
+  documentPurchaseOrderId Int
+  createdAt               DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime              @updatedAt @db.Timestamptz(3)
+
+  tagihan                 Tagihan               @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+  documentPurchaseOrder   DocumentPurchaseOrder @relation(fields: [documentPurchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([tagihanId, documentPurchaseOrderId])
+  @@index([tagihanId])
+  @@index([documentPurchaseOrderId])
+  @@map("TagihanNonCommodityDocument")
+}
+
+model TagihanManualDocument {
+  id             Int      @id @default(autoincrement())
+  uuid           String   @unique @default(uuid())
+  tagihanId      Int
+  documentNumber String
+  description    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  tagihan        Tagihan  @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+
+  @@index([tagihanId])
+  @@index([documentNumber])
+  @@map("TagihanManualDocument")
+}
+
+model TagihanSummary {
+  id           Int      @id @default(autoincrement())
+  uuid         String   @unique @default(uuid())
+  tagihanId    Int
+  documentType String
+  uom          String
+  quantity     Float    @default(0)
+  costPerUnit  Float    @default(0)
+  subtotal     Float    @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  tagihan      Tagihan  @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+
+  @@index([tagihanId])
+  @@map("TagihanSummary")
+}
+
+model TagihanFile {
+  id           Int      @id @default(autoincrement())
+  uuid         String   @unique @default(uuid())
+  tagihanId    Int
+  filePath     String
+  fileName     String
+  fileSize     Int
+  mimeType     String
+  uploadedById Int?
+  uploadedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  tagihan      Tagihan  @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([tagihanId])
+  @@index([uuid])
+  @@map("TagihanFile")
 }

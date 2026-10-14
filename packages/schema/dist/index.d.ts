@@ -1103,4 +1103,313 @@ export declare const BulkRejectSchema: z.ZodObject<{
     reason: string;
 }>;
 export type BulkRejectInput = z.infer<typeof BulkRejectSchema>;
+export declare const TagihanTypeEnum: z.ZodEnum<["LOADING", "UNLOADING", "REBAGGING", "REPROSES", "OVERSTAPEL"]>;
+export type TagihanType = z.infer<typeof TagihanTypeEnum>;
+export declare const MasterTagihanStatusSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    color: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isDefault: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+    color?: string | null | undefined;
+}, {
+    name: string;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+    color?: string | null | undefined;
+}>;
+export type MasterTagihanStatusInput = z.infer<typeof MasterTagihanStatusSchema>;
+export declare const CreateMasterTagihanStatusSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    color: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    isDefault: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+    color?: string | null | undefined;
+}, {
+    name: string;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+    color?: string | null | undefined;
+}>;
+export type CreateMasterTagihanStatusInput = z.infer<typeof CreateMasterTagihanStatusSchema>;
+export declare const UpdateMasterTagihanStatusSchema: z.ZodObject<{
+    name: z.ZodOptional<z.ZodString>;
+    description: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodString>>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodString>>>;
+    isDefault: z.ZodOptional<z.ZodOptional<z.ZodBoolean>>;
+}, "strip", z.ZodTypeAny, {
+    name?: string | undefined;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+    color?: string | null | undefined;
+}, {
+    name?: string | undefined;
+    description?: string | null | undefined;
+    isDefault?: boolean | undefined;
+    color?: string | null | undefined;
+}>;
+export type UpdateMasterTagihanStatusInput = z.infer<typeof UpdateMasterTagihanStatusSchema>;
+export declare const TagihanManualDocumentInputSchema: z.ZodObject<{
+    uuid: z.ZodOptional<z.ZodString>;
+    documentNumber: z.ZodString;
+    description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+}, "strip", z.ZodTypeAny, {
+    documentNumber: string;
+    description?: string | null | undefined;
+    uuid?: string | undefined;
+}, {
+    documentNumber: string;
+    description?: string | null | undefined;
+    uuid?: string | undefined;
+}>;
+export type TagihanManualDocumentInput = z.infer<typeof TagihanManualDocumentInputSchema>;
+export declare const TagihanSummaryItemInputSchema: z.ZodObject<{
+    documentType: z.ZodString;
+    uom: z.ZodString;
+    quantity: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    costPerUnit: z.ZodDefault<z.ZodNumber>;
+    subtotal: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    quantity: number;
+    uom: string;
+    documentType: string;
+    costPerUnit: number;
+    subtotal: number;
+}, {
+    uom: string;
+    documentType: string;
+    quantity?: number | undefined;
+    costPerUnit?: number | undefined;
+    subtotal?: number | undefined;
+}>;
+export type TagihanSummaryItemInput = z.infer<typeof TagihanSummaryItemInputSchema>;
+export declare const CreateTagihanSchema: z.ZodObject<{
+    documentNumber: z.ZodString;
+    type: z.ZodEnum<["LOADING", "UNLOADING", "REBAGGING", "REPROSES", "OVERSTAPEL"]>;
+    statusUuid: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    tagihanDate: z.ZodOptional<z.ZodString>;
+    notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    erpDocumentUuids: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    nonCommodityDocumentUuids: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    manualDocuments: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        uuid: z.ZodOptional<z.ZodString>;
+        documentNumber: z.ZodString;
+        description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }, {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }>, "many">>>;
+    summaries: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        documentType: z.ZodString;
+        uom: z.ZodString;
+        quantity: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        costPerUnit: z.ZodDefault<z.ZodNumber>;
+        subtotal: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        quantity: number;
+        uom: string;
+        documentType: string;
+        costPerUnit: number;
+        subtotal: number;
+    }, {
+        uom: string;
+        documentType: string;
+        quantity?: number | undefined;
+        costPerUnit?: number | undefined;
+        subtotal?: number | undefined;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    type: "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL";
+    documentNumber: string;
+    erpDocumentUuids: string[];
+    nonCommodityDocumentUuids: string[];
+    manualDocuments: {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }[];
+    summaries: {
+        quantity: number;
+        uom: string;
+        documentType: string;
+        costPerUnit: number;
+        subtotal: number;
+    }[];
+    notes?: string | null | undefined;
+    statusUuid?: string | null | undefined;
+    tagihanDate?: string | undefined;
+}, {
+    type: "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL";
+    documentNumber: string;
+    notes?: string | null | undefined;
+    statusUuid?: string | null | undefined;
+    tagihanDate?: string | undefined;
+    erpDocumentUuids?: string[] | undefined;
+    nonCommodityDocumentUuids?: string[] | undefined;
+    manualDocuments?: {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }[] | undefined;
+    summaries?: {
+        uom: string;
+        documentType: string;
+        quantity?: number | undefined;
+        costPerUnit?: number | undefined;
+        subtotal?: number | undefined;
+    }[] | undefined;
+}>;
+export type CreateTagihanInput = z.infer<typeof CreateTagihanSchema>;
+export declare const UpdateTagihanSchema: z.ZodObject<{
+    documentNumber: z.ZodOptional<z.ZodString>;
+    type: z.ZodOptional<z.ZodEnum<["LOADING", "UNLOADING", "REBAGGING", "REPROSES", "OVERSTAPEL"]>>;
+    statusUuid: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    tagihanDate: z.ZodOptional<z.ZodString>;
+    notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    erpDocumentUuids: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    nonCommodityDocumentUuids: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    manualDocuments: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        uuid: z.ZodOptional<z.ZodString>;
+        documentNumber: z.ZodString;
+        description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }, {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }>, "many">>;
+    summaries: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        documentType: z.ZodString;
+        uom: z.ZodString;
+        quantity: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        costPerUnit: z.ZodDefault<z.ZodNumber>;
+        subtotal: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        quantity: number;
+        uom: string;
+        documentType: string;
+        costPerUnit: number;
+        subtotal: number;
+    }, {
+        uom: string;
+        documentType: string;
+        quantity?: number | undefined;
+        costPerUnit?: number | undefined;
+        subtotal?: number | undefined;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    type?: "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL" | undefined;
+    notes?: string | null | undefined;
+    documentNumber?: string | undefined;
+    statusUuid?: string | null | undefined;
+    tagihanDate?: string | undefined;
+    erpDocumentUuids?: string[] | undefined;
+    nonCommodityDocumentUuids?: string[] | undefined;
+    manualDocuments?: {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }[] | undefined;
+    summaries?: {
+        quantity: number;
+        uom: string;
+        documentType: string;
+        costPerUnit: number;
+        subtotal: number;
+    }[] | undefined;
+}, {
+    type?: "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL" | undefined;
+    notes?: string | null | undefined;
+    documentNumber?: string | undefined;
+    statusUuid?: string | null | undefined;
+    tagihanDate?: string | undefined;
+    erpDocumentUuids?: string[] | undefined;
+    nonCommodityDocumentUuids?: string[] | undefined;
+    manualDocuments?: {
+        documentNumber: string;
+        description?: string | null | undefined;
+        uuid?: string | undefined;
+    }[] | undefined;
+    summaries?: {
+        uom: string;
+        documentType: string;
+        quantity?: number | undefined;
+        costPerUnit?: number | undefined;
+        subtotal?: number | undefined;
+    }[] | undefined;
+}>;
+export type UpdateTagihanInput = z.infer<typeof UpdateTagihanSchema>;
+export declare const TagihanQuerySchema: z.ZodObject<{
+    search: z.ZodOptional<z.ZodString>;
+    page: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    limit: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    type: z.ZodOptional<z.ZodString>;
+    statusUuid: z.ZodOptional<z.ZodString>;
+    startDate: z.ZodOptional<z.ZodString>;
+    endDate: z.ZodOptional<z.ZodString>;
+    documentNumber: z.ZodOptional<z.ZodString>;
+    relatedDocumentNumber: z.ZodOptional<z.ZodString>;
+    productName: z.ZodOptional<z.ZodString>;
+    sortBy: z.ZodOptional<z.ZodString>;
+    sortOrder: z.ZodOptional<z.ZodEnum<["asc", "desc"]>>;
+}, "strip", z.ZodTypeAny, {
+    type?: string | undefined;
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    startDate?: string | undefined;
+    endDate?: string | undefined;
+    sortBy?: string | undefined;
+    sortOrder?: "asc" | "desc" | undefined;
+    productName?: string | undefined;
+    documentNumber?: string | undefined;
+    statusUuid?: string | undefined;
+    relatedDocumentNumber?: string | undefined;
+}, {
+    type?: string | undefined;
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    startDate?: string | undefined;
+    endDate?: string | undefined;
+    sortBy?: string | undefined;
+    sortOrder?: "asc" | "desc" | undefined;
+    productName?: string | undefined;
+    documentNumber?: string | undefined;
+    statusUuid?: string | undefined;
+    relatedDocumentNumber?: string | undefined;
+}>;
+export type TagihanQueryInput = z.infer<typeof TagihanQuerySchema>;
+export interface ErpDocumentCandidate {
+    uuid: string;
+    documentNumber: string;
+    pickingTypeCode: string;
+    scheduledDate?: string | Date | null;
+    dateDone?: string | Date | null;
+    refFax?: string | null;
+    items?: Array<{
+        productName: string;
+        uom: string;
+        quantity: number;
+    }>;
+}
+export declare function validateTagihanTypeRules(type: TagihanType, documents: ErpDocumentCandidate[]): {
+    isValid: boolean;
+    error?: string;
+};
 //# sourceMappingURL=index.d.ts.map

@@ -478,5 +478,316 @@ export const BulkRejectSchema = z.object({
 });
 export type BulkRejectInput = z.infer<typeof BulkRejectSchema>;
 
+// Tagihan Finance Schemas
+export const TagihanTypeEnum = z.enum([
+  "LOADING",
+  "UNLOADING",
+  "REBAGGING",
+  "REPROSES",
+  "OVERSTAPEL",
+]);
+export type TagihanType = z.infer<typeof TagihanTypeEnum>;
+
+export const MasterTagihanStatusSchema = z.object({
+  name: z.string().min(2, "Nama status minimal 2 karakter").max(100),
+  description: z.string().optional().nullable(),
+  color: z.string().optional().nullable(),
+  isDefault: z.boolean().optional(),
+});
+export type MasterTagihanStatusInput = z.infer<typeof MasterTagihanStatusSchema>;
+
+export const CreateMasterTagihanStatusSchema = MasterTagihanStatusSchema;
+export type CreateMasterTagihanStatusInput = z.infer<
+  typeof CreateMasterTagihanStatusSchema
+>;
+
+export const UpdateMasterTagihanStatusSchema = MasterTagihanStatusSchema.partial();
+export type UpdateMasterTagihanStatusInput = z.infer<
+  typeof UpdateMasterTagihanStatusSchema
+>;
+
+export const TagihanManualDocumentInputSchema = z.object({
+  uuid: z.string().optional(),
+  documentNumber: z.string().min(1, "Nomor dokumen manual wajib diisi"),
+  description: z.string().optional().nullable(),
+});
+export type TagihanManualDocumentInput = z.infer<
+  typeof TagihanManualDocumentInputSchema
+>;
+
+export const TagihanSummaryItemInputSchema = z.object({
+  documentType: z.string().min(1, "Tipe dokumen wajib diisi"), // IN, OUT, INT
+  uom: z.string().min(1, "Satuan / UOM wajib diisi"),
+  quantity: z.number().nonnegative("Kuantitas tidak boleh negatif").optional().default(0),
+  costPerUnit: z.number().nonnegative("Tarif per unit tidak boleh negatif").default(0),
+  subtotal: z.number().nonnegative("Subtotal tidak boleh negatif").optional().default(0),
+});
+export type TagihanSummaryItemInput = z.infer<
+  typeof TagihanSummaryItemInputSchema
+>;
+
+export const CreateTagihanSchema = z.object({
+  documentNumber: z.string().min(1, "Nomor Dokumen / SDI wajib diisi"),
+  type: TagihanTypeEnum,
+  statusUuid: z.string().optional().nullable(),
+  tagihanDate: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  erpDocumentUuids: z.array(z.string()).optional().default([]),
+  nonCommodityDocumentUuids: z.array(z.string()).optional().default([]),
+  manualDocuments: z
+    .array(TagihanManualDocumentInputSchema)
+    .optional()
+    .default([]),
+  summaries: z.array(TagihanSummaryItemInputSchema).optional().default([]),
+});
+export type CreateTagihanInput = z.infer<typeof CreateTagihanSchema>;
+
+export const UpdateTagihanSchema = z.object({
+  documentNumber: z.string().min(1, "Nomor Dokumen / SDI wajib diisi").optional(),
+  type: TagihanTypeEnum.optional(),
+  statusUuid: z.string().optional().nullable(),
+  tagihanDate: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  erpDocumentUuids: z.array(z.string()).optional(),
+  nonCommodityDocumentUuids: z.array(z.string()).optional(),
+  manualDocuments: z.array(TagihanManualDocumentInputSchema).optional(),
+  summaries: z.array(TagihanSummaryItemInputSchema).optional(),
+});
+export type UpdateTagihanInput = z.infer<typeof UpdateTagihanSchema>;
+
+export const TagihanQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.string().or(z.number()).optional(),
+  limit: z.string().or(z.number()).optional(),
+  type: z.string().optional(),
+  statusUuid: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  documentNumber: z.string().optional(),
+  relatedDocumentNumber: z.string().optional(),
+  productName: z.string().optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
+});
+export type TagihanQueryInput = z.infer<typeof TagihanQuerySchema>;
+
+export interface ErpDocumentCandidate {
+  uuid: string;
+  documentNumber: string;
+  pickingTypeCode: string;
+  scheduledDate?: string | Date | null;
+  dateDone?: string | Date | null;
+  refFax?: string | null;
+  items?: Array<{
+    productName: string;
+    uom: string;
+    quantity: number;
+  }>;
+}
+
+export function validateTagihanTypeRules(
+  type: TagihanType,
+  documents: ErpDocumentCandidate[],
+): { isValid: boolean; error?: string } {
+  if (!documents || documents.length === 0) {
+    return { isValid: true };
+  }
+
+  // 1. Loading: OUT only, same product/commodity, same month
+  if (type === "LOADING") {
+    for (const doc of documents) {
+      if (doc.pickingTypeCode !== "outgoing") {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}, bukan OUT (outgoing). Tipe Loading hanya mengizinkan dokumen OUT.`,
+        };
+      }
+    }
+
+    // Check same product across all documents
+    const firstDocProducts = (documents[0]?.items || []).map((i) =>
+      i.productName.trim().toLowerCase(),
+    );
+    const referenceProduct = firstDocProducts[0] || null;
+
+    if (referenceProduct) {
+      for (const doc of documents) {
+        const docProducts = (doc.items || []).map((i) =>
+          i.productName.trim().toLowerCase(),
+        );
+        const matches = docProducts.some((p) => p === referenceProduct);
+        if (!matches && docProducts.length > 0) {
+          return {
+            isValid: false,
+            error: `Dokumen ${doc.documentNumber} memiliki komoditas berbeda (${docProducts.join(", ")}). Tipe Loading harus komoditas yang sama (${referenceProduct}).`,
+          };
+        }
+      }
+    }
+
+    // Check same month
+    const getMonthYear = (d?: string | Date | null) => {
+      if (!d) return null;
+      const date = d instanceof Date ? d : new Date(String(d));
+      if (isNaN(date.getTime())) return null;
+      const m = date.getMonth() + 1;
+      return `${date.getFullYear()}-${m < 10 ? "0" + m : m}`;
+    };
+
+    const firstMonth = getMonthYear(
+      documents[0]?.scheduledDate || documents[0]?.dateDone,
+    );
+    if (firstMonth) {
+      for (const doc of documents) {
+        const docMonth = getMonthYear(doc.scheduledDate || doc.dateDone);
+        if (docMonth && docMonth !== firstMonth) {
+          return {
+            isValid: false,
+            error: `Dokumen ${doc.documentNumber} berada di bulan ${docMonth}, berbeda dari bulan dokumen pertama (${firstMonth}). Tipe Loading harus dalam bulan yang sama.`,
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Unloading: IN only, same product/commodity, same month
+  if (type === "UNLOADING") {
+    for (const doc of documents) {
+      if (doc.pickingTypeCode !== "incoming") {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}, bukan IN (incoming). Tipe Unloading hanya mengizinkan dokumen IN.`,
+        };
+      }
+    }
+
+    // Check same product across all documents
+    const firstDocProducts = (documents[0]?.items || []).map((i) =>
+      i.productName.trim().toLowerCase(),
+    );
+    const referenceProduct = firstDocProducts[0] || null;
+
+    if (referenceProduct) {
+      for (const doc of documents) {
+        const docProducts = (doc.items || []).map((i) =>
+          i.productName.trim().toLowerCase(),
+        );
+        const matches = docProducts.some((p) => p === referenceProduct);
+        if (!matches && docProducts.length > 0) {
+          return {
+            isValid: false,
+            error: `Dokumen ${doc.documentNumber} memiliki komoditas berbeda (${docProducts.join(", ")}). Tipe Unloading harus komoditas yang sama (${referenceProduct}).`,
+          };
+        }
+      }
+    }
+
+    // Check same month
+    const getMonthYear = (d?: string | Date | null) => {
+      if (!d) return null;
+      const date = d instanceof Date ? d : new Date(String(d));
+      if (isNaN(date.getTime())) return null;
+      const m = date.getMonth() + 1;
+      return `${date.getFullYear()}-${m < 10 ? "0" + m : m}`;
+    };
+
+    const firstMonth = getMonthYear(
+      documents[0]?.scheduledDate || documents[0]?.dateDone,
+    );
+    if (firstMonth) {
+      for (const doc of documents) {
+        const docMonth = getMonthYear(doc.scheduledDate || doc.dateDone);
+        if (docMonth && docMonth !== firstMonth) {
+          return {
+            isValid: false,
+            error: `Dokumen ${doc.documentNumber} berada di bulan ${docMonth}, berbeda dari bulan dokumen pertama (${firstMonth}). Tipe Unloading harus dalam bulan yang sama.`,
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Rebagging: IN & OUT, same refFax
+  if (type === "REBAGGING") {
+    for (const doc of documents) {
+      if (
+        doc.pickingTypeCode !== "incoming" &&
+        doc.pickingTypeCode !== "outgoing"
+      ) {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}. Tipe Rebagging hanya mengizinkan dokumen IN & OUT.`,
+        };
+      }
+    }
+
+    const firstRefFax = documents[0]?.refFax?.trim() || null;
+    if (!firstRefFax) {
+      return {
+        isValid: false,
+        error: `Dokumen ${documents[0]?.documentNumber} tidak memiliki Ref Fax. Tipe Rebagging mewajibkan dokumen dengan refFax yang sama.`,
+      };
+    }
+
+    for (const doc of documents) {
+      const docRefFax = doc.refFax?.trim() || null;
+      if (!docRefFax || docRefFax.toLowerCase() !== firstRefFax.toLowerCase()) {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} memiliki Ref Fax "${docRefFax || "KOSONG"}", berbeda dari "${firstRefFax}". Tipe Rebagging mewajibkan refFax yang sama.`,
+        };
+      }
+    }
+  }
+
+  // 4. Reproses: IN & OUT, same refFax
+  if (type === "REPROSES") {
+    for (const doc of documents) {
+      if (
+        doc.pickingTypeCode !== "incoming" &&
+        doc.pickingTypeCode !== "outgoing"
+      ) {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}. Tipe Reproses hanya mengizinkan dokumen IN & OUT.`,
+        };
+      }
+    }
+
+    const firstRefFax = documents[0]?.refFax?.trim() || null;
+    if (!firstRefFax) {
+      return {
+        isValid: false,
+        error: `Dokumen ${documents[0]?.documentNumber} tidak memiliki Ref Fax. Tipe Reproses mewajibkan dokumen dengan refFax yang sama.`,
+      };
+    }
+
+    for (const doc of documents) {
+      const docRefFax = doc.refFax?.trim() || null;
+      if (!docRefFax || docRefFax.toLowerCase() !== firstRefFax.toLowerCase()) {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} memiliki Ref Fax "${docRefFax || "KOSONG"}", berbeda dari "${firstRefFax}". Tipe Reproses mewajibkan refFax yang sama.`,
+        };
+      }
+    }
+  }
+
+  // 5. Overstapel: INT / internal only
+  if (type === "OVERSTAPEL") {
+    for (const doc of documents) {
+      if (doc.pickingTypeCode !== "internal") {
+        return {
+          isValid: false,
+          error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}, bukan INT (internal). Tipe Overstapel hanya mengizinkan dokumen INT.`,
+        };
+      }
+    }
+  }
+
+  return { isValid: true };
+}
+
+
 
 

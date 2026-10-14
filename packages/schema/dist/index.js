@@ -11,7 +11,8 @@ var __assign = (this && this.__assign) || function () {
     return __assign.apply(this, arguments);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.TagihanQuerySchema = exports.UpdateTagihanSchema = exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.validateTagihanTypeRules = validateTagihanTypeRules;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -386,3 +387,259 @@ exports.BulkRejectSchema = zod_1.z.object({
     ids: zod_1.z.array(zod_1.z.string().uuid("Format UUID tidak valid")),
     reason: zod_1.z.string().min(1, "Alasan penolakan tidak boleh kosong"),
 });
+// Tagihan Finance Schemas
+exports.TagihanTypeEnum = zod_1.z.enum([
+    "LOADING",
+    "UNLOADING",
+    "REBAGGING",
+    "REPROSES",
+    "OVERSTAPEL",
+]);
+exports.MasterTagihanStatusSchema = zod_1.z.object({
+    name: zod_1.z.string().min(2, "Nama status minimal 2 karakter").max(100),
+    description: zod_1.z.string().optional().nullable(),
+    color: zod_1.z.string().optional().nullable(),
+    isDefault: zod_1.z.boolean().optional(),
+});
+exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema;
+exports.UpdateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema.partial();
+exports.TagihanManualDocumentInputSchema = zod_1.z.object({
+    uuid: zod_1.z.string().optional(),
+    documentNumber: zod_1.z.string().min(1, "Nomor dokumen manual wajib diisi"),
+    description: zod_1.z.string().optional().nullable(),
+});
+exports.TagihanSummaryItemInputSchema = zod_1.z.object({
+    documentType: zod_1.z.string().min(1, "Tipe dokumen wajib diisi"), // IN, OUT, INT
+    uom: zod_1.z.string().min(1, "Satuan / UOM wajib diisi"),
+    quantity: zod_1.z.number().nonnegative("Kuantitas tidak boleh negatif").optional().default(0),
+    costPerUnit: zod_1.z.number().nonnegative("Tarif per unit tidak boleh negatif").default(0),
+    subtotal: zod_1.z.number().nonnegative("Subtotal tidak boleh negatif").optional().default(0),
+});
+exports.CreateTagihanSchema = zod_1.z.object({
+    documentNumber: zod_1.z.string().min(1, "Nomor Dokumen / SDI wajib diisi"),
+    type: exports.TagihanTypeEnum,
+    statusUuid: zod_1.z.string().optional().nullable(),
+    tagihanDate: zod_1.z.string().optional(),
+    notes: zod_1.z.string().optional().nullable(),
+    erpDocumentUuids: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    nonCommodityDocumentUuids: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    manualDocuments: zod_1.z
+        .array(exports.TagihanManualDocumentInputSchema)
+        .optional()
+        .default([]),
+    summaries: zod_1.z.array(exports.TagihanSummaryItemInputSchema).optional().default([]),
+});
+exports.UpdateTagihanSchema = zod_1.z.object({
+    documentNumber: zod_1.z.string().min(1, "Nomor Dokumen / SDI wajib diisi").optional(),
+    type: exports.TagihanTypeEnum.optional(),
+    statusUuid: zod_1.z.string().optional().nullable(),
+    tagihanDate: zod_1.z.string().optional(),
+    notes: zod_1.z.string().optional().nullable(),
+    erpDocumentUuids: zod_1.z.array(zod_1.z.string()).optional(),
+    nonCommodityDocumentUuids: zod_1.z.array(zod_1.z.string()).optional(),
+    manualDocuments: zod_1.z.array(exports.TagihanManualDocumentInputSchema).optional(),
+    summaries: zod_1.z.array(exports.TagihanSummaryItemInputSchema).optional(),
+});
+exports.TagihanQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    page: zod_1.z.string().or(zod_1.z.number()).optional(),
+    limit: zod_1.z.string().or(zod_1.z.number()).optional(),
+    type: zod_1.z.string().optional(),
+    statusUuid: zod_1.z.string().optional(),
+    startDate: zod_1.z.string().optional(),
+    endDate: zod_1.z.string().optional(),
+    documentNumber: zod_1.z.string().optional(),
+    relatedDocumentNumber: zod_1.z.string().optional(),
+    productName: zod_1.z.string().optional(),
+    sortBy: zod_1.z.string().optional(),
+    sortOrder: zod_1.z.enum(["asc", "desc"]).optional(),
+});
+function validateTagihanTypeRules(type, documents) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+    if (!documents || documents.length === 0) {
+        return { isValid: true };
+    }
+    // 1. Loading: OUT only, same product/commodity, same month
+    if (type === "LOADING") {
+        for (var _i = 0, documents_1 = documents; _i < documents_1.length; _i++) {
+            var doc = documents_1[_i];
+            if (doc.pickingTypeCode !== "outgoing") {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " bertipe ").concat(doc.pickingTypeCode.toUpperCase(), ", bukan OUT (outgoing). Tipe Loading hanya mengizinkan dokumen OUT."),
+                };
+            }
+        }
+        // Check same product across all documents
+        var firstDocProducts = (((_a = documents[0]) === null || _a === void 0 ? void 0 : _a.items) || []).map(function (i) {
+            return i.productName.trim().toLowerCase();
+        });
+        var referenceProduct_1 = firstDocProducts[0] || null;
+        if (referenceProduct_1) {
+            for (var _q = 0, documents_2 = documents; _q < documents_2.length; _q++) {
+                var doc = documents_2[_q];
+                var docProducts = (doc.items || []).map(function (i) {
+                    return i.productName.trim().toLowerCase();
+                });
+                var matches = docProducts.some(function (p) { return p === referenceProduct_1; });
+                if (!matches && docProducts.length > 0) {
+                    return {
+                        isValid: false,
+                        error: "Dokumen ".concat(doc.documentNumber, " memiliki komoditas berbeda (").concat(docProducts.join(", "), "). Tipe Loading harus komoditas yang sama (").concat(referenceProduct_1, ")."),
+                    };
+                }
+            }
+        }
+        // Check same month
+        var getMonthYear = function (d) {
+            if (!d)
+                return null;
+            var date = d instanceof Date ? d : new Date(String(d));
+            if (isNaN(date.getTime()))
+                return null;
+            var m = date.getMonth() + 1;
+            return "".concat(date.getFullYear(), "-").concat(m < 10 ? "0" + m : m);
+        };
+        var firstMonth = getMonthYear(((_b = documents[0]) === null || _b === void 0 ? void 0 : _b.scheduledDate) || ((_c = documents[0]) === null || _c === void 0 ? void 0 : _c.dateDone));
+        if (firstMonth) {
+            for (var _r = 0, documents_3 = documents; _r < documents_3.length; _r++) {
+                var doc = documents_3[_r];
+                var docMonth = getMonthYear(doc.scheduledDate || doc.dateDone);
+                if (docMonth && docMonth !== firstMonth) {
+                    return {
+                        isValid: false,
+                        error: "Dokumen ".concat(doc.documentNumber, " berada di bulan ").concat(docMonth, ", berbeda dari bulan dokumen pertama (").concat(firstMonth, "). Tipe Loading harus dalam bulan yang sama."),
+                    };
+                }
+            }
+        }
+    }
+    // 2. Unloading: IN only, same product/commodity, same month
+    if (type === "UNLOADING") {
+        for (var _s = 0, documents_4 = documents; _s < documents_4.length; _s++) {
+            var doc = documents_4[_s];
+            if (doc.pickingTypeCode !== "incoming") {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " bertipe ").concat(doc.pickingTypeCode.toUpperCase(), ", bukan IN (incoming). Tipe Unloading hanya mengizinkan dokumen IN."),
+                };
+            }
+        }
+        // Check same product across all documents
+        var firstDocProducts = (((_d = documents[0]) === null || _d === void 0 ? void 0 : _d.items) || []).map(function (i) {
+            return i.productName.trim().toLowerCase();
+        });
+        var referenceProduct_2 = firstDocProducts[0] || null;
+        if (referenceProduct_2) {
+            for (var _t = 0, documents_5 = documents; _t < documents_5.length; _t++) {
+                var doc = documents_5[_t];
+                var docProducts = (doc.items || []).map(function (i) {
+                    return i.productName.trim().toLowerCase();
+                });
+                var matches = docProducts.some(function (p) { return p === referenceProduct_2; });
+                if (!matches && docProducts.length > 0) {
+                    return {
+                        isValid: false,
+                        error: "Dokumen ".concat(doc.documentNumber, " memiliki komoditas berbeda (").concat(docProducts.join(", "), "). Tipe Unloading harus komoditas yang sama (").concat(referenceProduct_2, ")."),
+                    };
+                }
+            }
+        }
+        // Check same month
+        var getMonthYear = function (d) {
+            if (!d)
+                return null;
+            var date = d instanceof Date ? d : new Date(String(d));
+            if (isNaN(date.getTime()))
+                return null;
+            var m = date.getMonth() + 1;
+            return "".concat(date.getFullYear(), "-").concat(m < 10 ? "0" + m : m);
+        };
+        var firstMonth = getMonthYear(((_e = documents[0]) === null || _e === void 0 ? void 0 : _e.scheduledDate) || ((_f = documents[0]) === null || _f === void 0 ? void 0 : _f.dateDone));
+        if (firstMonth) {
+            for (var _u = 0, documents_6 = documents; _u < documents_6.length; _u++) {
+                var doc = documents_6[_u];
+                var docMonth = getMonthYear(doc.scheduledDate || doc.dateDone);
+                if (docMonth && docMonth !== firstMonth) {
+                    return {
+                        isValid: false,
+                        error: "Dokumen ".concat(doc.documentNumber, " berada di bulan ").concat(docMonth, ", berbeda dari bulan dokumen pertama (").concat(firstMonth, "). Tipe Unloading harus dalam bulan yang sama."),
+                    };
+                }
+            }
+        }
+    }
+    // 3. Rebagging: IN & OUT, same refFax
+    if (type === "REBAGGING") {
+        for (var _v = 0, documents_7 = documents; _v < documents_7.length; _v++) {
+            var doc = documents_7[_v];
+            if (doc.pickingTypeCode !== "incoming" &&
+                doc.pickingTypeCode !== "outgoing") {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " bertipe ").concat(doc.pickingTypeCode.toUpperCase(), ". Tipe Rebagging hanya mengizinkan dokumen IN & OUT."),
+                };
+            }
+        }
+        var firstRefFax = ((_h = (_g = documents[0]) === null || _g === void 0 ? void 0 : _g.refFax) === null || _h === void 0 ? void 0 : _h.trim()) || null;
+        if (!firstRefFax) {
+            return {
+                isValid: false,
+                error: "Dokumen ".concat((_j = documents[0]) === null || _j === void 0 ? void 0 : _j.documentNumber, " tidak memiliki Ref Fax. Tipe Rebagging mewajibkan dokumen dengan refFax yang sama."),
+            };
+        }
+        for (var _w = 0, documents_8 = documents; _w < documents_8.length; _w++) {
+            var doc = documents_8[_w];
+            var docRefFax = ((_k = doc.refFax) === null || _k === void 0 ? void 0 : _k.trim()) || null;
+            if (!docRefFax || docRefFax.toLowerCase() !== firstRefFax.toLowerCase()) {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " memiliki Ref Fax \"").concat(docRefFax || "KOSONG", "\", berbeda dari \"").concat(firstRefFax, "\". Tipe Rebagging mewajibkan refFax yang sama."),
+                };
+            }
+        }
+    }
+    // 4. Reproses: IN & OUT, same refFax
+    if (type === "REPROSES") {
+        for (var _x = 0, documents_9 = documents; _x < documents_9.length; _x++) {
+            var doc = documents_9[_x];
+            if (doc.pickingTypeCode !== "incoming" &&
+                doc.pickingTypeCode !== "outgoing") {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " bertipe ").concat(doc.pickingTypeCode.toUpperCase(), ". Tipe Reproses hanya mengizinkan dokumen IN & OUT."),
+                };
+            }
+        }
+        var firstRefFax = ((_m = (_l = documents[0]) === null || _l === void 0 ? void 0 : _l.refFax) === null || _m === void 0 ? void 0 : _m.trim()) || null;
+        if (!firstRefFax) {
+            return {
+                isValid: false,
+                error: "Dokumen ".concat((_o = documents[0]) === null || _o === void 0 ? void 0 : _o.documentNumber, " tidak memiliki Ref Fax. Tipe Reproses mewajibkan dokumen dengan refFax yang sama."),
+            };
+        }
+        for (var _y = 0, documents_10 = documents; _y < documents_10.length; _y++) {
+            var doc = documents_10[_y];
+            var docRefFax = ((_p = doc.refFax) === null || _p === void 0 ? void 0 : _p.trim()) || null;
+            if (!docRefFax || docRefFax.toLowerCase() !== firstRefFax.toLowerCase()) {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " memiliki Ref Fax \"").concat(docRefFax || "KOSONG", "\", berbeda dari \"").concat(firstRefFax, "\". Tipe Reproses mewajibkan refFax yang sama."),
+                };
+            }
+        }
+    }
+    // 5. Overstapel: INT / internal only
+    if (type === "OVERSTAPEL") {
+        for (var _z = 0, documents_11 = documents; _z < documents_11.length; _z++) {
+            var doc = documents_11[_z];
+            if (doc.pickingTypeCode !== "internal") {
+                return {
+                    isValid: false,
+                    error: "Dokumen ".concat(doc.documentNumber, " bertipe ").concat(doc.pickingTypeCode.toUpperCase(), ", bukan INT (internal). Tipe Overstapel hanya mengizinkan dokumen INT."),
+                };
+            }
+        }
+    }
+    return { isValid: true };
+}
