@@ -105,6 +105,8 @@ export function useErpCandidates(query?: {
   productName?: string;
   refFax?: string;
   month?: string;
+  startDate?: string;
+  endDate?: string;
   page?: number;
   limit?: number;
 }) {
@@ -117,6 +119,8 @@ export function useErpCandidates(query?: {
   if (query?.productName) queryParams.set("productName", query.productName);
   if (query?.refFax) queryParams.set("refFax", query.refFax);
   if (query?.month) queryParams.set("month", query.month);
+  if (query?.startDate) queryParams.set("startDate", query.startDate);
+  if (query?.endDate) queryParams.set("endDate", query.endDate);
   if (query?.page) queryParams.set("page", String(query.page));
   if (query?.limit) queryParams.set("limit", String(query.limit));
   if (activeWarehouse?.uuid) queryParams.set("warehouseUuid", activeWarehouse.uuid);

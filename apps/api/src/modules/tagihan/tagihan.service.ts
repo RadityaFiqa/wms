@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
@@ -10,6 +11,8 @@ import { WarehouseContextService } from '@/core/warehouse-context/warehouse-cont
 import { getLocalStartOfDay, getLocalEndOfDay } from '@/core/utils/date';
 import {
   validateTagihanTypeRules,
+  getSecondaryQty,
+  getSecondaryUnit,
   type CreateTagihanInput,
   type UpdateTagihanInput,
   type TagihanQueryInput,
@@ -290,7 +293,19 @@ export class TagihanService {
   /**
    * Create Tagihan with validation of ERP document rules and recalculation of TagihanSummary.
    */
-  async create(warehouseId: number, userId: number, dto: CreateTagihanInput) {
+  async create(
+    warehouseId: number,
+    userId: number,
+    dto: CreateTagihanInput,
+    currentUser?: any,
+  ) {
+    const userRole = currentUser?.role?.name || currentUser?.role;
+    if (userRole === 'FINANCE') {
+      throw new ForbiddenException(
+        'Role Finance tidak memiliki izin untuk membuat tagihan baru.',
+      );
+    }
+
     // 1. Check unique documentNumber
     const existingDoc = await this.prisma.tagihan.findFirst({
       where: { documentNumber: dto.documentNumber },
@@ -340,26 +355,28 @@ export class TagihanService {
       }
     }
 
-    // 4. Calculate TagihanSummary from selected ERP Commodity Documents
-    // Group by: Document Type (IN/OUT/INT) + UOM
+    // 4. Calculate TagihanSummary from selected ERP Commodity Documents using Secondary Quantity
+    // Group by: Document Type (IN/OUT/INT) + Secondary UOM
     const summaryMap = new Map<string, { documentType: string; uom: string; quantity: number }>();
 
     for (const erpDoc of selectedErpDocs) {
       const docType = this.mapPickingTypeToDocType(erpDoc.pickingTypeCode);
       for (const item of erpDoc.items || []) {
-        const uom = (item.uom || 'UNIT').trim().toUpperCase();
-        const key = `${docType}__${uom}`;
+        const primaryQty = Number(item.quantity || item.productQty || 0);
+        const secQty = getSecondaryQty(primaryQty, item.uom);
+        const secUnit = getSecondaryUnit(item.uom).toUpperCase();
+        const key = `${docType}__${secUnit}`;
 
         if (!summaryMap.has(key)) {
           summaryMap.set(key, {
             documentType: docType,
-            uom,
+            uom: secUnit,
             quantity: 0,
           });
         }
 
         const current = summaryMap.get(key)!;
-        current.quantity += Number(item.quantity || item.productQty || 0);
+        current.quantity += secQty;
       }
     }
 
@@ -380,7 +397,7 @@ export class TagihanService {
     }> = [];
 
     summaryMap.forEach((val, key) => {
-      const costPerUnit = userCostMap.get(key) ?? 0;
+      const costPerUnit = userCostMap.get(key) ?? userCostMap.get(val.uom) ?? 0;
       const subtotal = val.quantity * costPerUnit;
       calculatedTotalAmount += subtotal;
 
@@ -480,7 +497,12 @@ export class TagihanService {
   /**
    * Update existing Tagihan, recalculating summaries and updating relationships safely.
    */
-  async update(warehouseId: number, uuid: string, dto: UpdateTagihanInput) {
+  async update(
+    warehouseId: number,
+    uuid: string,
+    dto: UpdateTagihanInput,
+    currentUser?: any,
+  ) {
     const existing = await this.prisma.tagihan.findFirst({
       where: { uuid, warehouseId },
       include: {
@@ -491,6 +513,38 @@ export class TagihanService {
 
     if (!existing) {
       throw new NotFoundException('Data Tagihan tidak ditemukan.');
+    }
+
+    const userRole = currentUser?.role?.name || currentUser?.role;
+    const isFinance = userRole === 'FINANCE';
+
+    // Role Finance Field-Level Authorization checks:
+    if (isFinance) {
+      if (dto.type && dto.type !== existing.type) {
+        throw new ForbiddenException(
+          'Role Finance tidak memiliki izin untuk mengubah tipe/kategori tagihan.',
+        );
+      }
+      if (dto.documentNumber && dto.documentNumber !== existing.documentNumber) {
+        throw new ForbiddenException(
+          'Role Finance tidak memiliki izin untuk mengubah nomor dokumen / SDI.',
+        );
+      }
+      if (
+        dto.tagihanDate &&
+        new Date(dto.tagihanDate).getTime() !== new Date(existing.tagihanDate).getTime()
+      ) {
+        throw new ForbiddenException(
+          'Role Finance tidak memiliki izin untuk mengubah tanggal/waktu tagihan.',
+        );
+      }
+      const existingNotes = existing.notes ?? '';
+      const incomingNotes = dto.notes !== undefined ? (dto.notes ?? '') : existingNotes;
+      if (dto.notes !== undefined && incomingNotes !== existingNotes) {
+        throw new ForbiddenException(
+          'Role Finance tidak memiliki izin untuk mengubah catatan atau informasi utama tagihan.',
+        );
+      }
     }
 
     // 1. If documentNumber changed, check uniqueness
@@ -553,18 +607,20 @@ export class TagihanService {
       }
     }
 
-    // 4. Calculate Summaries
+    // 4. Calculate Summaries using Secondary Quantity
     const summaryMap = new Map<string, { documentType: string; uom: string; quantity: number }>();
     for (const erpDoc of selectedErpDocs) {
       const docType = this.mapPickingTypeToDocType(erpDoc.pickingTypeCode);
       for (const item of erpDoc.items || []) {
-        const uom = (item.uom || 'UNIT').trim().toUpperCase();
-        const key = `${docType}__${uom}`;
+        const primaryQty = Number(item.quantity || item.productQty || 0);
+        const secQty = getSecondaryQty(primaryQty, item.uom);
+        const secUnit = getSecondaryUnit(item.uom).toUpperCase();
+        const key = `${docType}__${secUnit}`;
 
         if (!summaryMap.has(key)) {
-          summaryMap.set(key, { documentType: docType, uom, quantity: 0 });
+          summaryMap.set(key, { documentType: docType, uom: secUnit, quantity: 0 });
         }
-        summaryMap.get(key)!.quantity += Number(item.quantity || item.productQty || 0);
+        summaryMap.get(key)!.quantity += secQty;
       }
     }
 
@@ -592,7 +648,7 @@ export class TagihanService {
     }> = [];
 
     summaryMap.forEach((val, key) => {
-      const costPerUnit = userCostMap.get(key) ?? 0;
+      const costPerUnit = userCostMap.get(key) ?? userCostMap.get(val.uom) ?? 0;
       const subtotal = val.quantity * costPerUnit;
       calculatedTotalAmount += subtotal;
 
@@ -620,17 +676,19 @@ export class TagihanService {
 
     // 6. Execute Transaction
     await this.prisma.$transaction(async (tx) => {
-      // Update Tagihan header
+      // Update Tagihan header (documentNumber and tagihanDate are strictly read-only on edit)
+      const updateData: any = {
+        statusId,
+        totalAmount: Math.round(calculatedTotalAmount * 100) / 100,
+      };
+      if (!isFinance) {
+        if (dto.type) updateData.type = dto.type as any;
+        if (dto.notes !== undefined) updateData.notes = dto.notes;
+      }
+
       await tx.tagihan.update({
         where: { id: existing.id },
-        data: {
-          ...(dto.documentNumber ? { documentNumber: dto.documentNumber } : {}),
-          ...(dto.type ? { type: dto.type as any } : {}),
-          statusId,
-          totalAmount: Math.round(calculatedTotalAmount * 100) / 100,
-          ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-          ...(dto.tagihanDate ? { tagihanDate: new Date(dto.tagihanDate) } : {}),
-        },
+        data: updateData,
       });
 
       // Update ERP Links if provided
@@ -703,7 +761,14 @@ export class TagihanService {
   /**
    * Delete Tagihan safely. Only deletes new Tagihan-related records.
    */
-  async delete(warehouseId: number, uuid: string) {
+  async delete(warehouseId: number, uuid: string, currentUser?: any) {
+    const userRole = currentUser?.role?.name || currentUser?.role;
+    if (userRole === 'FINANCE') {
+      throw new ForbiddenException(
+        'Role Finance tidak memiliki izin untuk menghapus tagihan.',
+      );
+    }
+
     const existing = await this.prisma.tagihan.findFirst({
       where: { uuid, warehouseId },
       include: { files: true },
@@ -855,6 +920,8 @@ export class TagihanService {
       productName?: string;
       refFax?: string;
       month?: string;
+      startDate?: string;
+      endDate?: string;
       page?: number;
       limit?: number;
     },
@@ -866,26 +933,35 @@ export class TagihanService {
     const where: any = { warehouseId };
     const andConditions: any[] = [];
 
-    // Filter by Picking Type Code
-    if (query.pickingTypeCode) {
-      const pCode = query.pickingTypeCode.toLowerCase();
-      if (pCode === 'in') andConditions.push({ pickingTypeCode: 'incoming' });
-      else if (pCode === 'out') andConditions.push({ pickingTypeCode: 'outgoing' });
-      else if (pCode === 'int') andConditions.push({ pickingTypeCode: 'internal' });
-      else andConditions.push({ pickingTypeCode: query.pickingTypeCode });
-    }
-
-    // Apply strict rule pre-filters based on Tagihan Type
+    // 1. Determine allowed picking type codes from Tagihan Type
+    let allowedTypes: string[] | null = null;
     if (query.tagihanType) {
       const type = query.tagihanType.toUpperCase();
       if (type === 'LOADING') {
-        andConditions.push({ pickingTypeCode: 'outgoing' });
+        allowedTypes = ['outgoing'];
       } else if (type === 'UNLOADING') {
-        andConditions.push({ pickingTypeCode: 'incoming' });
+        allowedTypes = ['incoming'];
       } else if (type === 'REBAGGING' || type === 'REPROSES') {
-        andConditions.push({ pickingTypeCode: { in: ['incoming', 'outgoing'] } });
+        allowedTypes = ['incoming', 'outgoing'];
       } else if (type === 'OVERSTAPEL') {
-        andConditions.push({ pickingTypeCode: 'internal' });
+        allowedTypes = ['internal'];
+      }
+    }
+
+    // 2. Handle Picking Type Code filter with exact matching for incoming, outgoing, internal
+    if (query.pickingTypeCode) {
+      const pCode = query.pickingTypeCode.toLowerCase().trim();
+      let normalized = pCode;
+      if (pCode === 'in' || pCode === 'incoming') normalized = 'incoming';
+      else if (pCode === 'out' || pCode === 'outgoing') normalized = 'outgoing';
+      else if (pCode === 'int' || pCode === 'internal') normalized = 'internal';
+
+      andConditions.push({ pickingTypeCode: normalized });
+    } else if (allowedTypes) {
+      if (allowedTypes.length === 1) {
+        andConditions.push({ pickingTypeCode: allowedTypes[0] });
+      } else {
+        andConditions.push({ pickingTypeCode: { in: allowedTypes } });
       }
     }
 
@@ -918,7 +994,20 @@ export class TagihanService {
       });
     }
 
-    // Filter by Month (e.g. "2026-10")
+    // Filter by Date Range on dateDone
+    const timezone = this.warehouseContext.getTimezone();
+    if (query.startDate || query.endDate) {
+      const dateDoneCondition: any = {};
+      if (query.startDate) {
+        dateDoneCondition.gte = getLocalStartOfDay(query.startDate, timezone);
+      }
+      if (query.endDate) {
+        dateDoneCondition.lte = getLocalEndOfDay(query.endDate, timezone);
+      }
+      andConditions.push({ dateDone: dateDoneCondition });
+    }
+
+    // Filter by Month (e.g. "2026-10") if provided
     if (query.month) {
       const [year, monthStr] = query.month.split('-');
       const y = parseInt(year, 10);
@@ -945,7 +1034,7 @@ export class TagihanService {
         where,
         skip,
         take: limit,
-        orderBy: [{ scheduledDate: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        orderBy: [{ dateDone: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
         include: {
           items: true,
         },

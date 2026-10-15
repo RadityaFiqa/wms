@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search,
   X,
@@ -16,6 +16,7 @@ import {
 import { useErpCandidates } from "@/hooks/useTagihan";
 import { useDebounce } from "@/hooks/useDebounce";
 import { validateTagihanTypeRules, type TagihanType } from "@bulog-wms/schema";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
 interface ErpDocumentSelectorModalProps {
   isOpen: boolean;
@@ -37,7 +38,8 @@ export function ErpDocumentSelectorModal({
 
   const [pickingTypeCode, setPickingTypeCode] = useState("");
   const [productName, setProductName] = useState("");
-  const [month, setMonth] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [refFax, setRefFax] = useState("");
   const [page, setPage] = useState(1);
 
@@ -45,8 +47,10 @@ export function ErpDocumentSelectorModal({
   const [selectedDocsMap, setSelectedDocsMap] = useState<Map<string, any>>(new Map());
   const [ruleError, setRuleError] = useState<string | null>(null);
 
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
   // Sync initially selected docs when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       const map = new Map<string, any>();
       alreadySelectedDocs.forEach((d) => {
@@ -63,7 +67,8 @@ export function ErpDocumentSelectorModal({
     search: debouncedSearch || undefined,
     pickingTypeCode: pickingTypeCode || undefined,
     productName: productName || undefined,
-    month: month || undefined,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
     refFax: refFax || undefined,
     page,
     limit: 10,
@@ -71,6 +76,20 @@ export function ErpDocumentSelectorModal({
 
   const candidates = candidatesData?.data || [];
   const meta = candidatesData?.meta || { total: 0, totalPages: 1 };
+
+  // Calculate page selection states for Select All
+  const pageSelectedCount = useMemo(() => {
+    return candidates.filter((c: any) => selectedDocsMap.has(c.uuid)).length;
+  }, [candidates, selectedDocsMap]);
+
+  const isAllSelectedOnPage = candidates.length > 0 && pageSelectedCount === candidates.length;
+  const isIndeterminate = pageSelectedCount > 0 && pageSelectedCount < candidates.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = isIndeterminate;
+    }
+  }, [isIndeterminate]);
 
   const handleToggleDoc = (doc: any) => {
     setRuleError(null);
@@ -93,6 +112,46 @@ export function ErpDocumentSelectorModal({
 
     newMap.set(doc.uuid, doc);
     setSelectedDocsMap(newMap);
+  };
+
+  const handleToggleSelectAll = () => {
+    setRuleError(null);
+    const newMap = new Map(selectedDocsMap);
+
+    if (isAllSelectedOnPage) {
+      // Uncheck all candidates on current page
+      candidates.forEach((c: any) => {
+        newMap.delete(c.uuid);
+      });
+      setSelectedDocsMap(newMap);
+    } else {
+      // Check all eligible candidates on current page
+      let skippedIneligible = 0;
+      for (const doc of candidates) {
+        if (newMap.has(doc.uuid)) continue;
+        const testList = Array.from(newMap.values()).concat(doc);
+        const validation = validateTagihanTypeRules(tagihanType, testList);
+        if (validation.isValid) {
+          newMap.set(doc.uuid, doc);
+        } else {
+          skippedIneligible++;
+        }
+      }
+      if (skippedIneligible > 0) {
+        setRuleError(`Terdapat ${skippedIneligible} dokumen yang tidak dapat dipilih karena aturan tipe ${tagihanType}.`);
+      }
+      setSelectedDocsMap(newMap);
+    }
+  };
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setPickingTypeCode("");
+    setProductName("");
+    setStartDate("");
+    setEndDate("");
+    setRefFax("");
+    setPage(1);
   };
 
   const handleApply = () => {
@@ -125,9 +184,13 @@ export function ErpDocumentSelectorModal({
 
   if (!isOpen) return null;
 
+  const hasActiveFilters = Boolean(
+    searchTerm || pickingTypeCode || startDate || endDate || productName || refFax
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-850/50">
           <div>
@@ -140,12 +203,12 @@ export function ErpDocumentSelectorModal({
               <span className="font-bold text-emerald-600 dark:text-emerald-400">
                 {tagihanType}
               </span>{" "}
-              • Terpilih: <strong>{selectedDocsMap.size} dokumen</strong>
+              • Total Terpilih: <strong className="text-emerald-600 dark:text-emerald-400">{selectedDocsMap.size} dokumen</strong>
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -160,7 +223,23 @@ export function ErpDocumentSelectorModal({
         )}
 
         {/* Filter Bar */}
-        <div className="p-6 pb-2 border-b border-slate-100 dark:border-slate-800 space-y-3">
+        <div className="p-6 pb-3 border-b border-slate-100 dark:border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5 text-emerald-600" />
+              Filter Dokumen ERP
+            </span>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+              >
+                Reset Filter
+              </button>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Search */}
             <div className="sm:col-span-2 relative">
@@ -185,25 +264,26 @@ export function ErpDocumentSelectorModal({
                   setPickingTypeCode(e.target.value);
                   setPage(1);
                 }}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-500 cursor-pointer"
               >
                 <option value="">Semua Tipe Picking</option>
-                <option value="IN">IN (Incoming)</option>
-                <option value="OUT">OUT (Outgoing)</option>
-                <option value="INT">INT (Internal)</option>
+                <option value="incoming">IN (Incoming)</option>
+                <option value="outgoing">OUT (Outgoing)</option>
+                <option value="internal">INT (Internal)</option>
               </select>
             </div>
 
-            {/* Month Filter */}
+            {/* Date Range Picker for dateDone */}
             <div>
-              <input
-                type="month"
-                value={month}
-                onChange={(e) => {
-                  setMonth(e.target.value);
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onChange={(start, end) => {
+                  setStartDate(start);
+                  setEndDate(end);
                   setPage(1);
                 }}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-emerald-500"
+                placeholder="Rentang dateDone..."
               />
             </div>
           </div>
@@ -239,6 +319,25 @@ export function ErpDocumentSelectorModal({
           </div>
         </div>
 
+        {/* Table Header with Select All Checkbox */}
+        <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+          <label className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              ref={selectAllRef}
+              checked={isAllSelectedOnPage}
+              onChange={handleToggleSelectAll}
+              disabled={candidates.length === 0}
+              className="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer disabled:opacity-40"
+            />
+            <span>Pilih Semua di Halaman Ini ({candidates.length} Dokumen)</span>
+          </label>
+
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            Terpilih di halaman ini: <strong className="text-emerald-600 dark:text-emerald-400">{pageSelectedCount}</strong> dari {candidates.length}
+          </span>
+        </div>
+
         {/* Candidate List Table */}
         <div className="flex-1 overflow-y-auto px-6 py-3 min-h-[300px]">
           {isLoading ? (
@@ -264,13 +363,21 @@ export function ErpDocumentSelectorModal({
                   .map((it: any) => `${it.productName} (${it.quantity} ${it.uom || "UNIT"})`)
                   .join(", ");
 
-                const formattedDate = doc.scheduledDate
-                  ? new Date(doc.scheduledDate).toLocaleDateString("id-ID", {
+                const formattedDateDone = doc.dateDone
+                  ? new Date(doc.dateDone).toLocaleDateString("id-ID", {
                       day: "2-digit",
                       month: "short",
                       year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })
-                  : "-";
+                  : doc.scheduledDate
+                    ? new Date(doc.scheduledDate).toLocaleDateString("id-ID", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "-";
 
                 return (
                   <div
@@ -305,9 +412,9 @@ export function ErpDocumentSelectorModal({
                             Fax: {doc.refFax}
                           </span>
                         )}
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-auto flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {formattedDate}
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-auto flex items-center gap-1 font-mono">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          <span>dateDone: {formattedDateDone}</span>
                         </span>
                       </div>
 
@@ -377,3 +484,4 @@ export function ErpDocumentSelectorModal({
     </div>
   );
 }
+

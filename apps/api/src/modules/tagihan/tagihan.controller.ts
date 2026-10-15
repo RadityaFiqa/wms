@@ -79,6 +79,8 @@ export class TagihanController {
     @Query('productName') productName?: string,
     @Query('refFax') refFax?: string,
     @Query('month') month?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -90,6 +92,8 @@ export class TagihanController {
       productName,
       refFax,
       month,
+      startDate,
+      endDate,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
@@ -127,7 +131,7 @@ export class TagihanController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId()!;
     const userId = req.user.id;
-    return this.tagihanService.create(warehouseId, userId, body);
+    return this.tagihanService.create(warehouseId, userId, body, req.user);
   }
 
   /**
@@ -137,11 +141,12 @@ export class TagihanController {
   @CheckPolicies((ability) => ability.can('update', 'Tagihan'))
   @AuditLogAction('TAGIHAN_UPDATE')
   async update(
+    @Req() req: any,
     @Param('uuid') uuid: string,
     @Body(new ZodValidationPipe(UpdateTagihanSchema)) body: UpdateTagihanInput,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId()!;
-    return this.tagihanService.update(warehouseId, uuid, body);
+    return this.tagihanService.update(warehouseId, uuid, body, req.user);
   }
 
   /**
@@ -150,9 +155,9 @@ export class TagihanController {
   @Delete(':uuid')
   @CheckPolicies((ability) => ability.can('delete', 'Tagihan'))
   @AuditLogAction('TAGIHAN_DELETE')
-  async delete(@Param('uuid') uuid: string) {
+  async delete(@Req() req: any, @Param('uuid') uuid: string) {
     const warehouseId = this.warehouseContext.getWarehouseId()!;
-    return this.tagihanService.delete(warehouseId, uuid);
+    return this.tagihanService.delete(warehouseId, uuid, req.user);
   }
 
   /**

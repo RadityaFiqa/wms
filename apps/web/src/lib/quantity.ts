@@ -20,6 +20,15 @@ export function getSecondaryUnit(uom?: string): string {
   if (/\d+(?:\.\d+)?\s*(l|L)(?![a-zA-Z])/.test(uom)) {
     return "L";
   }
+
+  if (uomLower.includes("lembar")) {
+    return "Lembar";
+  }
+
+  if (uomLower.includes("pcs")) {
+    return "Pcs";
+  }
+
   return "Kg";
 }
 

@@ -9,6 +9,10 @@ import {
   Loader2,
   FileCheck,
   Paperclip,
+  Eye,
+  X,
+  FileQuestion,
+  RefreshCw,
 } from "lucide-react";
 import { uploadTagihanFile, deleteTagihanFile } from "@/hooks/useTagihan";
 
@@ -32,6 +36,14 @@ interface TagihanFilesManagerProps {
   readOnly?: boolean;
 }
 
+interface PreviewState {
+  url: string;
+  fileName: string;
+  isImage: boolean;
+  isPdf: boolean;
+  canDownload: boolean;
+}
+
 export function TagihanFilesManager({
   tagihanUuid,
   files,
@@ -41,9 +53,15 @@ export function TagihanFilesManager({
   readOnly = false,
 }: TagihanFilesManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const targetReplaceFileUuidRef = useRef<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [replacingFileUuid, setReplacingFileUuid] = useState<string | null>(null);
   const [deletingFileUuid, setDeletingFileUuid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // File preview modal state
+  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   const formatFileSize = (bytes: number) => {
     if (!bytes || bytes === 0) return "0 B";
@@ -51,6 +69,31 @@ export function TagihanFilesManager({
     const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
+  const isImageFile = (fileName: string, mime?: string) => {
+    if (mime && mime.startsWith("image/")) return true;
+    return /\.(jpe?g|png|webp|gif|svg)$/i.test(fileName);
+  };
+
+  const isPdfFile = (fileName: string, mime?: string) => {
+    if (mime === "application/pdf") return true;
+    return /\.pdf$/i.test(fileName);
+  };
+
+  const handleOpenPreview = (
+    url: string,
+    fileName: string,
+    mimeType?: string,
+    canDownload: boolean = true,
+  ) => {
+    setPreview({
+      url,
+      fileName,
+      isImage: isImageFile(fileName, mimeType),
+      isPdf: isPdfFile(fileName, mimeType),
+      canDownload,
+    });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,6 +155,33 @@ export function TagihanFilesManager({
     }
   };
 
+  const handleTriggerReplace = (fileUuid: string) => {
+    targetReplaceFileUuidRef.current = fileUuid;
+    replaceInputRef.current?.click();
+  };
+
+  const handleReplaceFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const oldFileUuid = targetReplaceFileUuidRef.current;
+    if (!file || !oldFileUuid || !tagihanUuid) return;
+
+    setError(null);
+    setReplacingFileUuid(oldFileUuid);
+    try {
+      const uploaded = await uploadTagihanFile(tagihanUuid, file);
+      await deleteTagihanFile(tagihanUuid, oldFileUuid);
+      if (onFilesChange) {
+        onFilesChange([...files.filter((f) => f.uuid !== oldFileUuid), uploaded]);
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err.message || "Gagal mengganti file.");
+    } finally {
+      setReplacingFileUuid(null);
+      targetReplaceFileUuidRef.current = null;
+      if (replaceInputRef.current) replaceInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 space-y-4">
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -122,7 +192,7 @@ export function TagihanFilesManager({
           </h4>
         </div>
         <span className="text-xs text-slate-400">
-          Format: PDF, Gambar (JPG, PNG), Excel, Docx (Maks. 5MB)
+          Format: PDF, Gambar (JPG, PNG, WebP), Excel, Docx (Maks. 5MB)
         </span>
       </div>
 
@@ -141,7 +211,14 @@ export function TagihanFilesManager({
             onChange={handleFileChange}
             multiple
             className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.docx,.doc"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.docx,.doc"
+          />
+          <input
+            type="file"
+            ref={replaceInputRef}
+            onChange={handleReplaceFileChange}
+            className="hidden"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.docx,.doc"
           />
           <button
             type="button"
@@ -195,6 +272,21 @@ export function TagihanFilesManager({
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
+              {/* Preview Button */}
+              {file.downloadUrl && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleOpenPreview(file.downloadUrl!, file.fileName, file.mimeType, true)
+                  }
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 hover:border-emerald-300 transition cursor-pointer"
+                  title="Preview File"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+              )}
+
+              {/* Download Button */}
               {file.downloadUrl && (
                 <a
                   href={file.downloadUrl}
@@ -207,10 +299,29 @@ export function TagihanFilesManager({
                   <Download className="h-4 w-4" />
                 </a>
               )}
+
+              {/* Replace Button */}
               {!readOnly && tagihanUuid && (
                 <button
                   type="button"
-                  disabled={deletingFileUuid === file.uuid}
+                  disabled={replacingFileUuid === file.uuid || deletingFileUuid === file.uuid}
+                  onClick={() => handleTriggerReplace(file.uuid)}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300 transition cursor-pointer"
+                  title="Ganti File (Unggah file baru menggantikan file ini)"
+                >
+                  {replacingFileUuid === file.uuid ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </button>
+              )}
+
+              {/* Delete Button */}
+              {!readOnly && tagihanUuid && (
+                <button
+                  type="button"
+                  disabled={deletingFileUuid === file.uuid || replacingFileUuid === file.uuid}
                   onClick={() => handleDeleteUploaded(file.uuid)}
                   className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-400 hover:text-red-600 hover:border-red-300 transition cursor-pointer"
                   title="Hapus File"
@@ -227,34 +338,48 @@ export function TagihanFilesManager({
         ))}
 
         {/* Staged files before creation */}
-        {stagedFiles.map((file, idx) => (
-          <div
-            key={idx}
-            className="flex items-center justify-between p-3 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 shrink-0">
-                <FileCheck className="h-4 w-4" />
+        {stagedFiles.map((file, idx) => {
+          const stagedUrl = URL.createObjectURL(file);
+          return (
+            <div
+              key={idx}
+              className="flex items-center justify-between p-3 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 shrink-0">
+                  <FileCheck className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                    {file.name}
+                  </p>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    {formatFileSize(file.size)} • Siap diunggah saat simpan
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                  {file.name}
-                </p>
-                <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                  {formatFileSize(file.size)} • Siap diunggah saat simpan
-                </p>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleOpenPreview(stagedUrl, file.name, file.type, false)}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 hover:border-emerald-300 transition cursor-pointer"
+                  title="Preview File Lokal"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveStaged(idx)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 transition cursor-pointer"
+                  title="Hapus dari daftar staged"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => handleRemoveStaged(idx)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 transition cursor-pointer"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
+          );
+        })}
 
         {files.length === 0 && stagedFiles.length === 0 && (
           <p className="text-xs text-center py-4 text-slate-400 dark:text-slate-500">
@@ -262,6 +387,88 @@ export function TagihanFilesManager({
           </p>
         )}
       </div>
+
+      {/* Preview Modal Dialog */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-850/60">
+              <div className="flex items-center gap-2.5 truncate pr-4">
+                <FileText className="h-4.5 w-4.5 text-blue-600 shrink-0" />
+                <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-slate-100 truncate">
+                  {preview.fileName}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {preview.canDownload && (
+                  <a
+                    href={preview.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download={preview.fileName}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:border-blue-900 dark:text-blue-300 rounded-lg transition"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Unduh
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreview(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content Body */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-100/60 dark:bg-slate-950/60 min-h-[400px]">
+              {preview.isImage ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={preview.url}
+                  alt={preview.fileName}
+                  className="max-h-[75vh] max-w-full object-contain rounded-xl shadow-md border border-slate-200 dark:border-slate-800"
+                />
+              ) : preview.isPdf ? (
+                <iframe
+                  src={preview.url}
+                  className="w-full h-[75vh] rounded-xl border border-slate-200 dark:border-slate-800 shadow-md bg-white"
+                  title={preview.fileName}
+                />
+              ) : (
+                <div className="p-8 text-center space-y-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-md">
+                  <FileQuestion className="h-12 w-12 text-slate-400 mx-auto" />
+                  <div>
+                    <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                      Preview Tidak Tersedia
+                    </h5>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Format file ini tidak mendukung preview langsung di browser. Silakan
+                      unduh file untuk melihat isinya.
+                    </p>
+                  </div>
+                  {preview.canDownload && (
+                    <a
+                      href={preview.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={preview.fileName}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md"
+                    >
+                      <Download className="h-4 w-4" />
+                      Unduh File
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

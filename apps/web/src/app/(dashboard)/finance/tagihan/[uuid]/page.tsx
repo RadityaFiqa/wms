@@ -8,22 +8,10 @@ import {
   Edit3,
   Trash2,
   Save,
-  X,
-  FileCheck2,
-  Receipt,
-  FileText,
-  DollarSign,
+  Lock,
   Calendar,
-  Layers,
-  Paperclip,
-  CheckCircle2,
-  Clock,
-  Plus,
   Loader2,
   AlertCircle,
-  FolderOpen,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
 import {
   useTagihanDetail,
@@ -36,12 +24,23 @@ import { NonCommoditySelectorModal } from "@/components/finance/tagihan/NonCommo
 import { CreateStatusModal } from "@/components/finance/tagihan/CreateStatusModal";
 import { TagihanSummaryTable } from "@/components/finance/tagihan/TagihanSummaryTable";
 import { TagihanFilesManager } from "@/components/finance/tagihan/TagihanFilesManager";
+import {
+  RelatedDocumentsManager,
+  type ManualDocItem,
+} from "@/components/finance/tagihan/RelatedDocumentsManager";
+import { getSecondaryQty, getSecondaryUnit } from "@/lib/quantity";
 import { validateTagihanTypeRules, type TagihanType } from "@bulog-wms/schema";
+import { useAuthStore } from "@/store/auth";
 
 export default function TagihanDetailPage() {
   const params = useParams();
   const router = useRouter();
   const uuid = params.uuid as string;
+
+  const { user, hasPermission } = useAuthStore();
+  const isFinance = user?.role === "FINANCE";
+  const canDeleteTagihan = hasPermission("delete", "Tagihan") && !isFinance;
+  const canEditMainInfo = !isFinance;
 
   const { tagihan, isLoading, error, refresh } = useTagihanDetail(uuid);
   const { statuses, refresh: refreshStatuses } = useMasterTagihanStatuses();
@@ -58,7 +57,7 @@ export default function TagihanDetailPage() {
 
   const [selectedErpDocs, setSelectedErpDocs] = useState<any[]>([]);
   const [selectedPoDocs, setSelectedPoDocs] = useState<any[]>([]);
-  const [manualDocs, setManualDocs] = useState<any[]>([]);
+  const [manualDocs, setManualDocs] = useState<ManualDocItem[]>([]);
   const [costs, setCosts] = useState<Record<string, number>>({});
 
   // Modals
@@ -78,24 +77,32 @@ export default function TagihanDetailPage() {
       setDocumentNumber(tagihan.documentNumber || "");
       setStatusUuid(tagihan.status?.uuid || "");
       setTagihanDate(
-        tagihan.tagihanDate ? new Date(tagihan.tagihanDate).toISOString().slice(0, 16) : "",
+        tagihan.tagihanDate
+          ? new Date(tagihan.tagihanDate).toISOString().slice(0, 16)
+          : "",
       );
       setNotes(tagihan.notes || "");
 
       // Map ERP documents
-      const erpList = (tagihan.documentReferences || []).map((r: any) => r.documentReference).filter(Boolean);
+      const erpList = (tagihan.documentReferences || [])
+        .map((r: any) => r.documentReference)
+        .filter(Boolean);
       setSelectedErpDocs(erpList);
 
       // Map Non-Commodity PO documents
-      const poList = (tagihan.nonCommodityDocuments || []).map((r: any) => r.documentPurchaseOrder).filter(Boolean);
+      const poList = (tagihan.nonCommodityDocuments || [])
+        .map((r: any) => r.documentPurchaseOrder)
+        .filter(Boolean);
       setSelectedPoDocs(poList);
 
       // Map Manual documents
-      const mList = (tagihan.manualDocuments || []).map((m: any) => ({
-        id: m.uuid,
-        documentNumber: m.documentNumber,
-        description: m.description || "",
-      }));
+      const mList: ManualDocItem[] = (tagihan.manualDocuments || []).map(
+        (m: any) => ({
+          id: m.uuid || String(m.id),
+          documentNumber: m.documentNumber,
+          description: m.description || "",
+        }),
+      );
       setManualDocs(mList);
 
       // Map existing costs
@@ -167,13 +174,20 @@ export default function TagihanDetailPage() {
     }
     const color = st.color || "blue";
     const colorClasses: Record<string, string> = {
-      slate: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300",
-      blue: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900",
-      emerald: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900",
-      green: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900",
-      amber: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900",
-      purple: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-900",
-      red: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900",
+      slate:
+        "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300",
+      blue:
+        "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900",
+      emerald:
+        "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900",
+      green:
+        "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900",
+      amber:
+        "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900",
+      purple:
+        "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-900",
+      red:
+        "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900",
     };
 
     return (
@@ -190,11 +204,6 @@ export default function TagihanDetailPage() {
   const handleSaveEdit = async () => {
     setActionError(null);
 
-    if (!documentNumber.trim()) {
-      setActionError("Nomor Dokumen / SDI wajib diisi.");
-      return;
-    }
-
     if (selectedErpDocs.length > 0) {
       const val = validateTagihanTypeRules(type, selectedErpDocs);
       if (!val.isValid) {
@@ -210,8 +219,11 @@ export default function TagihanDetailPage() {
       }
     }
 
-    // Prepare summaries
-    const summaryMap = new Map<string, { documentType: string; uom: string; quantity: number }>();
+    // Prepare summaries with secondary quantity & secondary unit
+    const summaryMap = new Map<
+      string,
+      { documentType: string; uom: string; quantity: number }
+    >();
     for (const doc of selectedErpDocs) {
       const code = (doc.pickingTypeCode || "").toLowerCase();
       let docType = "INT";
@@ -219,18 +231,20 @@ export default function TagihanDetailPage() {
       else if (code === "outgoing") docType = "OUT";
 
       for (const it of doc.items || []) {
-        const uom = (it.uom || "UNIT").trim().toUpperCase();
-        const key = `${docType}__${uom}`;
+        const primQty = Number(it.quantity || it.productQty || 0);
+        const secQty = getSecondaryQty(primQty, it.uom);
+        const secUnit = getSecondaryUnit(it.uom).toUpperCase();
+        const key = `${docType}__${secUnit}`;
         if (!summaryMap.has(key)) {
-          summaryMap.set(key, { documentType: docType, uom, quantity: 0 });
+          summaryMap.set(key, { documentType: docType, uom: secUnit, quantity: 0 });
         }
-        summaryMap.get(key)!.quantity += Number(it.quantity || it.productQty || 0);
+        summaryMap.get(key)!.quantity += secQty;
       }
     }
 
     const summariesPayload: any[] = [];
     summaryMap.forEach((val, key) => {
-      const costPerUnit = costs[key] ?? 0;
+      const costPerUnit = costs[key] ?? costs[val.uom] ?? 0;
       const subtotal = val.quantity * costPerUnit;
       summariesPayload.push({
         documentType: val.documentType,
@@ -243,12 +257,14 @@ export default function TagihanDetailPage() {
 
     setIsSaving(true);
     try {
+      // Note: documentNumber and tagihanDate are read-only on edit and kept identical
+      // For Role Finance, type and notes are also kept identical
       await updateTagihan(uuid, {
-        documentNumber: documentNumber.trim(),
-        type,
+        documentNumber: tagihan.documentNumber,
+        type: isFinance ? tagihan.type : type,
         statusUuid: statusUuid || null,
-        tagihanDate: tagihanDate ? new Date(tagihanDate).toISOString() : undefined,
-        notes: notes.trim() || null,
+        tagihanDate: tagihan.tagihanDate,
+        notes: isFinance ? (tagihan.notes || null) : (notes.trim() || null),
         erpDocumentUuids: selectedErpDocs.map((d) => d.uuid),
         nonCommodityDocumentUuids: selectedPoDocs.map((d) => d.uuid),
         manualDocuments: manualDocs.map((m) => ({
@@ -287,7 +303,9 @@ export default function TagihanDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-3">
         <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
-        <p className="text-xs text-slate-500 font-semibold">Memuat detail tagihan...</p>
+        <p className="text-xs text-slate-500 font-semibold">
+          Memuat detail tagihan...
+        </p>
       </div>
     );
   }
@@ -342,14 +360,16 @@ export default function TagihanDetailPage() {
                 <Edit3 className="h-3.5 w-3.5 text-emerald-600" />
                 Edit Tagihan
               </button>
-              <button
-                type="button"
-                onClick={() => setIsDeleteModalOpen(true)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-red-600 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-red-50 hover:border-red-300 dark:hover:bg-red-950/20 transition inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Hapus
-              </button>
+              {canDeleteTagihan && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-red-600 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-red-50 hover:border-red-300 dark:hover:bg-red-950/20 transition inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Hapus
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -394,16 +414,27 @@ export default function TagihanDetailPage() {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="space-y-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block flex items-center gap-1.5">
               No. Dokumen / SDI
+              {isEditing && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50">
+                  <Lock className="h-3 w-3" /> Read-only
+                </span>
+              )}
             </span>
             {isEditing ? (
-              <input
-                type="text"
-                value={documentNumber}
-                onChange={(e) => setDocumentNumber(e.target.value)}
-                className="text-xl font-black font-mono text-emerald-700 dark:text-emerald-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 focus:outline-none focus:border-emerald-500"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={documentNumber}
+                  disabled
+                  readOnly
+                  className="text-xl font-black font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 cursor-not-allowed select-all"
+                />
+                <span className="block text-[10px] text-slate-400 font-medium mt-1">
+                  Nomor dokumen tagihan tidak dapat diubah setelah dibuat.
+                </span>
+              </div>
             ) : (
               <h2 className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-400 tracking-tight select-all">
                 {tagihan.documentNumber}
@@ -414,17 +445,26 @@ export default function TagihanDetailPage() {
           <div className="flex flex-wrap items-center gap-3">
             {isEditing ? (
               <div className="flex items-center gap-2">
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as TagihanType)}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold"
-                >
-                  <option value="LOADING">LOADING</option>
-                  <option value="UNLOADING">UNLOADING</option>
-                  <option value="REBAGGING">REBAGGING</option>
-                  <option value="REPROSES">REPROSES</option>
-                  <option value="OVERSTAPEL">OVERSTAPEL</option>
-                </select>
+                {canEditMainInfo ? (
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value as TagihanType)}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold"
+                  >
+                    <option value="LOADING">LOADING</option>
+                    <option value="UNLOADING">UNLOADING</option>
+                    <option value="REBAGGING">REBAGGING</option>
+                    <option value="REPROSES">REPROSES</option>
+                    <option value="OVERSTAPEL">OVERSTAPEL</option>
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    {getTypeBadge(tagihan.type)}
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50">
+                      <Lock className="h-2.5 w-2.5" /> Read-only
+                    </span>
+                  </div>
+                )}
 
                 <select
                   value={statusUuid}
@@ -450,16 +490,25 @@ export default function TagihanDetailPage() {
         {/* Metadata info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
           <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5">
+            <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5 flex items-center gap-1">
               Tanggal / Waktu Tagihan
+              {isEditing && (
+                <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400 inline" />
+              )}
             </span>
             {isEditing ? (
-              <input
-                type="datetime-local"
-                value={tagihanDate}
-                onChange={(e) => setTagihanDate(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs"
-              />
+              <div>
+                <input
+                  type="datetime-local"
+                  value={tagihanDate}
+                  disabled
+                  readOnly
+                  className="w-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                />
+                <span className="block text-[10px] text-slate-400 font-medium mt-1">
+                  Tanggal tagihan tidak dapat diubah setelah dibuat.
+                </span>
+              </div>
             ) : (
               <strong className="text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-slate-400" />
@@ -498,10 +547,15 @@ export default function TagihanDetailPage() {
 
         {/* Notes */}
         <div>
-          <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-1">
+          <span className="block text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-1 flex items-center gap-1.5">
             Catatan / Keterangan
+            {isEditing && !canEditMainInfo && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50">
+                <Lock className="h-2.5 w-2.5" /> Read-only
+              </span>
+            )}
           </span>
-          {isEditing ? (
+          {isEditing && canEditMainInfo ? (
             <input
               type="text"
               value={notes}
@@ -517,227 +571,36 @@ export default function TagihanDetailPage() {
         </div>
       </div>
 
-      {/* Section: Related Documents (ERP, PO, Manual) */}
-      <div className="space-y-4">
-        {/* 1. ERP Commodity Documents */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <FileCheck2 className="h-4.5 w-4.5 text-emerald-600" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                1. Dokumen ERP Commodity ({selectedErpDocs.length} Dokumen)
-              </h4>
-            </div>
-            {isEditing && (
-              <button
-                type="button"
-                onClick={() => setIsErpModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="h-3 w-3" />
-                Kelola Dokumen ERP
-              </button>
-            )}
-          </div>
-
-          {selectedErpDocs.length === 0 ? (
-            <p className="text-xs text-slate-400 py-2">Belum ada dokumen ERP terkait.</p>
-          ) : (
-            <div className="space-y-2">
-              {selectedErpDocs.map((doc: any) => (
-                <div
-                  key={doc.uuid}
-                  className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 flex items-center justify-between gap-4"
-                >
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
-                        {doc.documentNumber}
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                        {doc.pickingTypeCode}
-                      </span>
-                      {doc.refFax && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-50 text-amber-700 border border-amber-200">
-                          Ref Fax: {doc.refFax}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 truncate">
-                      Mitra: <strong>{doc.partnerName || "Tanpa Mitra"}</strong> • Total Qty:{" "}
-                      <strong>{Number(doc.totalQuantity || 0).toLocaleString("id-ID")}</strong> •{" "}
-                      {(doc.items || []).map((i: any) => `${i.productName} (${i.quantity} ${i.uom || "UNIT"})`).join(", ")}
-                    </p>
-                  </div>
-
-                  {isEditing && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedErpDocs((prev) => prev.filter((d) => d.uuid !== doc.uuid))
-                      }
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 transition cursor-pointer"
-                      title="Hapus tautan dokumen ERP"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 2. Non-Commodity Documents */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Receipt className="h-4.5 w-4.5 text-amber-600" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                2. Dokumen Non-Commodity ({selectedPoDocs.length} Dokumen PO)
-              </h4>
-            </div>
-            {isEditing && (
-              <button
-                type="button"
-                onClick={() => setIsPoModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="h-3 w-3" />
-                Kelola Dokumen PO
-              </button>
-            )}
-          </div>
-
-          {selectedPoDocs.length === 0 ? (
-            <p className="text-xs text-slate-400 py-2">Belum ada dokumen PO Non-Commodity terkait.</p>
-          ) : (
-            <div className="space-y-2">
-              {selectedPoDocs.map((po: any) => (
-                <div
-                  key={po.uuid}
-                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 flex items-center justify-between gap-4"
-                >
-                  <div className="space-y-0.5 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
-                        {po.documentNumber}
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
-                        {po.state}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 truncate">
-                      Mitra: <strong>{po.partner || "-"}</strong> • Total PO:{" "}
-                      <strong>{formatCurrency(po.amountTotal)}</strong>
-                    </p>
-                  </div>
-
-                  {isEditing && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedPoDocs((prev) => prev.filter((d) => d.uuid !== po.uuid))
-                      }
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 transition cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 3. Manual Documents */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4.5 w-4.5 text-purple-600" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                3. Dokumen Manual / Text Only ({manualDocs.length} Baris)
-              </h4>
-            </div>
-            {isEditing && (
-              <button
-                type="button"
-                onClick={() =>
-                  setManualDocs((prev) => [
-                    ...prev,
-                    { id: String(Date.now()), documentNumber: "", description: "" },
-                  ])
-                }
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 transition inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="h-3 w-3" />
-                Tambah Baris Manual
-              </button>
-            )}
-          </div>
-
-          {manualDocs.length === 0 ? (
-            <p className="text-xs text-slate-400 py-2">Belum ada dokumen manual terkait.</p>
-          ) : (
-            <div className="space-y-2">
-              {manualDocs.map((m, idx) => (
-                <div
-                  key={m.id || idx}
-                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 flex items-center justify-between gap-4"
-                >
-                  {isEditing ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-                      <input
-                        type="text"
-                        placeholder="No. Dokumen / Referensi..."
-                        value={m.documentNumber}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setManualDocs((prev) =>
-                            prev.map((item) => (item.id === m.id ? { ...item, documentNumber: val } : item)),
-                          );
-                        }}
-                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono font-bold"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Keterangan..."
-                        value={m.description}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setManualDocs((prev) =>
-                            prev.map((item) => (item.id === m.id ? { ...item, description: val } : item)),
-                          );
-                        }}
-                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
-                      />
-                    </div>
-                  ) : (
-                    <div className="space-y-0.5 min-w-0">
-                      <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
-                        {m.documentNumber}
-                      </span>
-                      {m.description && (
-                        <p className="text-xs text-slate-500">{m.description}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {isEditing && (
-                    <button
-                      type="button"
-                      onClick={() => setManualDocs((prev) => prev.filter((item) => item.id !== m.id))}
-                      className="p-1.5 text-slate-400 hover:text-red-600 transition cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Section: Related Documents (Tabs & Tables) */}
+      <RelatedDocumentsManager
+        type={type}
+        selectedErpDocs={selectedErpDocs}
+        selectedPoDocs={selectedPoDocs}
+        manualDocs={manualDocs}
+        onRemoveErpDoc={(dUuid) =>
+          setSelectedErpDocs((prev) => prev.filter((d) => d.uuid !== dUuid))
+        }
+        onRemovePoDoc={(pUuid) =>
+          setSelectedPoDocs((prev) => prev.filter((d) => d.uuid !== pUuid))
+        }
+        onAddManualDoc={() =>
+          setManualDocs((prev) => [
+            ...prev,
+            { id: String(Date.now()), documentNumber: "", description: "" },
+          ])
+        }
+        onUpdateManualDoc={(id, field, val) =>
+          setManualDocs((prev) =>
+            prev.map((m) => (m.id === id ? { ...m, [field]: val } : m)),
+          )
+        }
+        onRemoveManualDoc={(id) =>
+          setManualDocs((prev) => prev.filter((m) => m.id !== id))
+        }
+        onOpenErpModal={() => setIsErpModalOpen(true)}
+        onOpenPoModal={() => setIsPoModalOpen(true)}
+        readOnly={!isEditing}
+      />
 
       {/* Section: Tagihan Summary Table */}
       <TagihanSummaryTable

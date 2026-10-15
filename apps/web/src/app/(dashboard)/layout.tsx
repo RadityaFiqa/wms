@@ -75,6 +75,25 @@ export default function DashboardLayout({
       } else if (user.isFirstLogin && pathname !== "/profile") {
         toast.warning("Anda harus mengubah password bawaan terlebih dahulu");
         router.push("/profile?force_reset=true");
+      } else if (user.role === "FINANCE") {
+        const allowedPaths = [
+          "/finance/tagihan",
+          "/finance/non-commodity-documents",
+          "/profile",
+        ];
+        const isAllowed = allowedPaths.some(
+          (p) => pathname === p || pathname.startsWith(p + "/"),
+        );
+        const isDisallowedCreate = pathname === "/finance/tagihan/create";
+
+        if (!isAllowed || isDisallowedCreate) {
+          if (isDisallowedCreate) {
+            toast.error("Role Finance tidak diperbolehkan membuat tagihan baru.");
+          } else if (pathname !== "/") {
+            toast.error("Role Finance tidak memiliki hak akses ke halaman tersebut.");
+          }
+          router.replace("/finance/tagihan");
+        }
       }
     }
   }, [user, token, isInitialized, router, pathname]);
@@ -124,12 +143,19 @@ export default function DashboardLayout({
     );
   }
 
+  const isFinance = user?.role === "FINANCE";
+
   // Sidebar Links dynamically mapped from central config with permission checks
   const menuGroups = configMenuGroups.map((group) => ({
     title: group.title,
     items: group.items.map((item) => {
       let show = true;
-      if (item.superAdminOnly) {
+      if (isFinance) {
+        // Finance is strictly permitted ONLY to Tagihan and Non Commodity Document
+        show =
+          item.href === "/finance/tagihan" ||
+          item.href === "/finance/non-commodity-documents";
+      } else if (item.superAdminOnly) {
         show = user?.role === "SUPER_ADMIN";
       } else if (item.permissionSubject) {
         show = hasPermission(item.permissionAction || "read", item.permissionSubject);
@@ -153,12 +179,15 @@ export default function DashboardLayout({
   const sidebarContent = (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
       {/* Sidebar Header Logo */}
-      <div className="flex items-center h-16 px-6 border-b border-slate-200 dark:border-slate-800">
+      <Link
+        href={isFinance ? "/finance/tagihan" : "/"}
+        className="flex items-center h-16 px-6 border-b border-slate-200 dark:border-slate-800 hover:opacity-90 transition cursor-pointer"
+      >
         <Warehouse className="h-6 w-6 text-blue-600 mr-3" />
         <span className="text-xl font-black tracking-tight text-slate-800 dark:text-slate-200">
           BULOG <span className="text-blue-600 text-sm font-bold">WMS</span>
         </span>
-      </div>
+      </Link>
 
       {/* User Card */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800/65 bg-slate-50/50 dark:bg-slate-900/30">

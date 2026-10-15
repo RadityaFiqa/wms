@@ -1,15 +1,26 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useAuthStore } from "@/store/auth";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowUpRight, Warehouse } from "lucide-react";
 import { menuGroups as configMenuGroups } from "@/config/menu";
 
 export default function DashboardOverviewPage() {
+  const router = useRouter();
   const pathname = usePathname();
   const { user, hasPermission } = useAuthStore();
+
+  useEffect(() => {
+    if (user?.role === "FINANCE") {
+      router.replace("/finance/tagihan");
+    }
+  }, [user, router]);
+
+  if (user?.role === "FINANCE") {
+    return null;
+  }
 
   // Dynamically map module groups from the central configuration
   const moduleGroups = configMenuGroups.map((group) => ({

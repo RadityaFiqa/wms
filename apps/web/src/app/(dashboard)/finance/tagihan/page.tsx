@@ -27,19 +27,21 @@ import {
 import { useTagihans, useMasterTagihanStatuses } from "@/hooks/useTagihan";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuthStore } from "@/store/auth";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
 export default function TagihanListPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  const { activeWarehouse } = useAuthStore();
+  const { activeWarehouse, user, hasPermission } = useAuthStore();
+  const canCreateTagihan = hasPermission("create", "Tagihan") && user?.role !== "FINANCE";
 
   // Read URL query parameters
   const page = Number(searchParams.get("page")) || 1;
   const limit = Number(searchParams.get("limit")) || 10;
-  const relatedDocumentNumber = searchParams.get("relatedDocumentNumber") || "";
-  const documentNumber = searchParams.get("documentNumber") || "";
+  // Unified search term across tagihan and related documents
+  const searchTerm = searchParams.get("search") || searchParams.get("relatedDocumentNumber") || "";
   const type = searchParams.get("type") || "";
   const statusUuid = searchParams.get("statusUuid") || "";
   const productName = searchParams.get("productName") || "";
@@ -49,35 +51,38 @@ export default function TagihanListPage() {
   const sortOrder = (searchParams.get("sortOrder") || "desc") as "asc" | "desc";
 
   // Search input state with debouncing
-  const [searchInput, setSearchInput] = useState(relatedDocumentNumber);
+  const [searchInput, setSearchInput] = useState(searchTerm);
   const debouncedSearch = useDebounce(searchInput, 400);
 
   const { statuses } = useMasterTagihanStatuses();
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
-    const current = params.get("relatedDocumentNumber") || "";
+    const current = params.get("search") || params.get("relatedDocumentNumber") || "";
     if (debouncedSearch === current) return;
 
     if (debouncedSearch) {
+      params.set("search", debouncedSearch);
       params.set("relatedDocumentNumber", debouncedSearch);
     } else {
+      params.delete("search");
       params.delete("relatedDocumentNumber");
+      params.delete("documentNumber");
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
   }, [debouncedSearch, searchParams, pathname, router]);
 
   useEffect(() => {
-    setSearchInput(relatedDocumentNumber);
-  }, [relatedDocumentNumber]);
+    setSearchInput(searchTerm);
+  }, [searchTerm]);
 
   // SWR Hook
   const { tagihansData, isLoading } = useTagihans({
     page,
     limit,
-    relatedDocumentNumber: relatedDocumentNumber || undefined,
-    documentNumber: documentNumber || undefined,
+    search: debouncedSearch || undefined,
+    relatedDocumentNumber: debouncedSearch || undefined,
     type: type || undefined,
     statusUuid: statusUuid || undefined,
     productName: productName || undefined,
@@ -96,6 +101,25 @@ export default function TagihanListPage() {
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const updateDateRange = (start: string, end: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (start) params.set("startDate", start);
+    else params.delete("startDate");
+
+    if (end) params.set("endDate", end);
+    else params.delete("endDate");
+
+    params.set("page", "1");
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleResetFilters = () => {
+    const params = new URLSearchParams();
+    if (activeWarehouse?.uuid) params.set("warehouseUuid", activeWarehouse.uuid);
+    router.push(`${pathname}?${params.toString()}`);
+    setSearchInput("");
   };
 
   const handlePageChange = (newPage: number) => {
@@ -207,13 +231,15 @@ export default function TagihanListPage() {
           </p>
         </div>
 
-        <Link
-          href="/finance/tagihan/create"
-          className="inline-flex items-center px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition cursor-pointer self-start sm:self-auto gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Buat Tagihan Baru
-        </Link>
+        {canCreateTagihan && (
+          <Link
+            href="/finance/tagihan/create"
+            className="inline-flex items-center px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition cursor-pointer self-start sm:self-auto gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Buat Tagihan Baru
+          </Link>
+        )}
       </div>
 
       {/* Summary Statistics Cards */}
@@ -285,22 +311,33 @@ export default function TagihanListPage() {
 
       {/* Filter and Queries Box */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center text-sm font-bold text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2">
-          <Filter className="h-4.5 w-4.5 mr-2 text-emerald-600" />
-          Filter & Pencarian Tagihan
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+          <div className="flex items-center text-sm font-bold text-slate-700 dark:text-slate-300">
+            <Filter className="h-4.5 w-4.5 mr-2 text-emerald-600" />
+            Filter & Pencarian Tagihan
+          </div>
+          {(Boolean(searchTerm || type || statusUuid || productName || startDate || endDate)) && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+            >
+              Reset Filter
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Document Related Filter (Unified across 4 document types) */}
+          {/* Unified Document Number & Related Document Search Input */}
           <div className="md:col-span-2">
             <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
-              Document Related (No. Dokumen/SDI & ERP & PO & Manual)
+              Nomor Dokumen / SDI & Dokumen Terkait
             </label>
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari No. Tagihan, Dokumen ERP, PO, atau Dokumen Manual..."
+                placeholder="Cari No. Tagihan/SDI, Dokumen ERP, PO, atau Manual..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-emerald-500"
@@ -347,24 +384,10 @@ export default function TagihanListPage() {
           </div>
         </div>
 
-        {/* Row 2: No Dokumen specific, Commodity/Product, and Date Range */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
-          {/* Specific No. Dokumen / SDI */}
-          <div>
-            <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
-              No. Dokumen / SDI Tagihan
-            </label>
-            <input
-              type="text"
-              placeholder="Contoh: SDI/2026/..."
-              value={documentNumber}
-              onChange={(e) => updateQueryParam("documentNumber", e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500 font-mono"
-            />
-          </div>
-
+        {/* Row 2: Commodity/Product and Date Range */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1">
           {/* Commodity / Product */}
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
               Komoditas / Produk
             </label>
@@ -377,36 +400,17 @@ export default function TagihanListPage() {
             />
           </div>
 
-          {/* Start Date */}
-          <div>
+          {/* Date Range Picker */}
+          <div className="md:col-span-2">
             <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
-              Tanggal Awal
+              Rentang Tanggal Tagihan
             </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => updateQueryParam("startDate", e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-emerald-500 cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {/* End Date */}
-          <div>
-            <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
-              Tanggal Akhir
-            </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => updateQueryParam("endDate", e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-emerald-500 cursor-pointer"
-              />
-            </div>
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={updateDateRange}
+              placeholder="Pilih Rentang Tanggal Tagihan..."
+            />
           </div>
         </div>
       </div>

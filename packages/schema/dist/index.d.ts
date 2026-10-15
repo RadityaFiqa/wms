@@ -1412,4 +1412,12 @@ export declare function validateTagihanTypeRules(type: TagihanType, documents: E
     isValid: boolean;
     error?: string;
 };
+/**
+ * Calculates the secondary quantity based on product quantity and UoM.
+ * Extracted numeric multiplier from UoM (e.g. "Pack 5 Kg" -> multiplier is 5).
+ * If no numeric value exists inside the UoM, the multiplier defaults to 1.
+ */
+export declare function getSecondaryQty(qty: number, uom?: string | null): number;
+export declare function getSecondaryUnit(uom?: string | null): string;
+export declare function formatSecondaryQty(qty: number, uom?: string | null): string;
 //# sourceMappingURL=index.d.ts.map

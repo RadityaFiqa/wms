@@ -160,6 +160,11 @@ async function main() {
     { action: 'read', subject: 'DocumentPurchaseOrder' },
     { action: 'update', subject: 'DocumentPurchaseOrder' },
     { action: 'delete', subject: 'DocumentPurchaseOrder' },
+    // Tagihan (Invoicing)
+    { action: 'create', subject: 'Tagihan' },
+    { action: 'read', subject: 'Tagihan' },
+    { action: 'update', subject: 'Tagihan' },
+    { action: 'delete', subject: 'Tagihan' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -234,6 +239,10 @@ async function main() {
         'delete:DocumentGenerated',
         'read:DocumentPurchaseOrder',
         'update:DocumentPurchaseOrder',
+        'create:Tagihan',
+        'read:Tagihan',
+        'update:Tagihan',
+        'delete:Tagihan',
       ],
     },
     {
@@ -293,6 +302,17 @@ async function main() {
         'read:GateOperation',
         'create:FileAttachment',
         'read:FileAttachment',
+      ],
+    },
+    {
+      id: 8,
+      name: 'FINANCE',
+      description:
+        'Finance staff managing invoices (tagihan) and non-commodity documents',
+      permissionKeys: [
+        'read:Tagihan',
+        'update:Tagihan',
+        'read:DocumentPurchaseOrder',
       ],
     },
   ];
@@ -399,6 +419,43 @@ async function main() {
     },
   });
   console.log('Seeded WarehouseAccess for Super Admin');
+
+  // 6. Create Default Finance User
+  const financeEmail = 'finance@wms.com';
+  const hashedFinancePassword = await bcrypt.hash('Finance123!', 10);
+  const financeUser = await prisma.user.upsert({
+    where: { email: financeEmail },
+    update: {
+      roleId: 8,
+      warehouseId: 1,
+      isActive: true,
+    },
+    create: {
+      name: 'Staff Finance',
+      email: financeEmail,
+      password: hashedFinancePassword,
+      isActive: true,
+      isFirstLogin: false,
+      roleId: 8, // FINANCE
+      warehouseId: 1,
+    },
+  });
+  console.log('Seeded Finance user:', financeUser.email);
+
+  await prisma.warehouseAccess.upsert({
+    where: {
+      userId_warehouseId: {
+        userId: financeUser.id,
+        warehouseId: 1,
+      },
+    },
+    update: {},
+    create: {
+      userId: financeUser.id,
+      warehouseId: 1,
+    },
+  });
+  console.log('Seeded WarehouseAccess for Finance');
 
   console.log('Seeding completed successfully!');
 }

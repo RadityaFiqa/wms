@@ -13,6 +13,9 @@ var __assign = (this && this.__assign) || function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TagihanQuerySchema = exports.UpdateTagihanSchema = exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
 exports.validateTagihanTypeRules = validateTagihanTypeRules;
+exports.getSecondaryQty = getSecondaryQty;
+exports.getSecondaryUnit = getSecondaryUnit;
+exports.formatSecondaryQty = formatSecondaryQty;
 var zod_1 = require("zod");
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
@@ -455,11 +458,11 @@ exports.TagihanQuerySchema = zod_1.z.object({
     sortOrder: zod_1.z.enum(["asc", "desc"]).optional(),
 });
 function validateTagihanTypeRules(type, documents) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     if (!documents || documents.length === 0) {
         return { isValid: true };
     }
-    // 1. Loading: OUT only, same product/commodity, same month
+    // 1. Loading: OUT only, same month (Multiple SKUs permitted)
     if (type === "LOADING") {
         for (var _i = 0, documents_1 = documents; _i < documents_1.length; _i++) {
             var doc = documents_1[_i];
@@ -470,26 +473,6 @@ function validateTagihanTypeRules(type, documents) {
                 };
             }
         }
-        // Check same product across all documents
-        var firstDocProducts = (((_a = documents[0]) === null || _a === void 0 ? void 0 : _a.items) || []).map(function (i) {
-            return i.productName.trim().toLowerCase();
-        });
-        var referenceProduct_1 = firstDocProducts[0] || null;
-        if (referenceProduct_1) {
-            for (var _q = 0, documents_2 = documents; _q < documents_2.length; _q++) {
-                var doc = documents_2[_q];
-                var docProducts = (doc.items || []).map(function (i) {
-                    return i.productName.trim().toLowerCase();
-                });
-                var matches = docProducts.some(function (p) { return p === referenceProduct_1; });
-                if (!matches && docProducts.length > 0) {
-                    return {
-                        isValid: false,
-                        error: "Dokumen ".concat(doc.documentNumber, " memiliki komoditas berbeda (").concat(docProducts.join(", "), "). Tipe Loading harus komoditas yang sama (").concat(referenceProduct_1, ")."),
-                    };
-                }
-            }
-        }
         // Check same month
         var getMonthYear = function (d) {
             if (!d)
@@ -500,10 +483,10 @@ function validateTagihanTypeRules(type, documents) {
             var m = date.getMonth() + 1;
             return "".concat(date.getFullYear(), "-").concat(m < 10 ? "0" + m : m);
         };
-        var firstMonth = getMonthYear(((_b = documents[0]) === null || _b === void 0 ? void 0 : _b.scheduledDate) || ((_c = documents[0]) === null || _c === void 0 ? void 0 : _c.dateDone));
+        var firstMonth = getMonthYear(((_a = documents[0]) === null || _a === void 0 ? void 0 : _a.scheduledDate) || ((_b = documents[0]) === null || _b === void 0 ? void 0 : _b.dateDone));
         if (firstMonth) {
-            for (var _r = 0, documents_3 = documents; _r < documents_3.length; _r++) {
-                var doc = documents_3[_r];
+            for (var _o = 0, documents_2 = documents; _o < documents_2.length; _o++) {
+                var doc = documents_2[_o];
                 var docMonth = getMonthYear(doc.scheduledDate || doc.dateDone);
                 if (docMonth && docMonth !== firstMonth) {
                     return {
@@ -514,35 +497,15 @@ function validateTagihanTypeRules(type, documents) {
             }
         }
     }
-    // 2. Unloading: IN only, same product/commodity, same month
+    // 2. Unloading: IN only, same month (Multiple SKUs permitted)
     if (type === "UNLOADING") {
-        for (var _s = 0, documents_4 = documents; _s < documents_4.length; _s++) {
-            var doc = documents_4[_s];
+        for (var _p = 0, documents_3 = documents; _p < documents_3.length; _p++) {
+            var doc = documents_3[_p];
             if (doc.pickingTypeCode !== "incoming") {
                 return {
                     isValid: false,
                     error: "Dokumen ".concat(doc.documentNumber, " bertipe ").concat(doc.pickingTypeCode.toUpperCase(), ", bukan IN (incoming). Tipe Unloading hanya mengizinkan dokumen IN."),
                 };
-            }
-        }
-        // Check same product across all documents
-        var firstDocProducts = (((_d = documents[0]) === null || _d === void 0 ? void 0 : _d.items) || []).map(function (i) {
-            return i.productName.trim().toLowerCase();
-        });
-        var referenceProduct_2 = firstDocProducts[0] || null;
-        if (referenceProduct_2) {
-            for (var _t = 0, documents_5 = documents; _t < documents_5.length; _t++) {
-                var doc = documents_5[_t];
-                var docProducts = (doc.items || []).map(function (i) {
-                    return i.productName.trim().toLowerCase();
-                });
-                var matches = docProducts.some(function (p) { return p === referenceProduct_2; });
-                if (!matches && docProducts.length > 0) {
-                    return {
-                        isValid: false,
-                        error: "Dokumen ".concat(doc.documentNumber, " memiliki komoditas berbeda (").concat(docProducts.join(", "), "). Tipe Unloading harus komoditas yang sama (").concat(referenceProduct_2, ")."),
-                    };
-                }
             }
         }
         // Check same month
@@ -555,10 +518,10 @@ function validateTagihanTypeRules(type, documents) {
             var m = date.getMonth() + 1;
             return "".concat(date.getFullYear(), "-").concat(m < 10 ? "0" + m : m);
         };
-        var firstMonth = getMonthYear(((_e = documents[0]) === null || _e === void 0 ? void 0 : _e.scheduledDate) || ((_f = documents[0]) === null || _f === void 0 ? void 0 : _f.dateDone));
+        var firstMonth = getMonthYear(((_c = documents[0]) === null || _c === void 0 ? void 0 : _c.scheduledDate) || ((_d = documents[0]) === null || _d === void 0 ? void 0 : _d.dateDone));
         if (firstMonth) {
-            for (var _u = 0, documents_6 = documents; _u < documents_6.length; _u++) {
-                var doc = documents_6[_u];
+            for (var _q = 0, documents_4 = documents; _q < documents_4.length; _q++) {
+                var doc = documents_4[_q];
                 var docMonth = getMonthYear(doc.scheduledDate || doc.dateDone);
                 if (docMonth && docMonth !== firstMonth) {
                     return {
@@ -571,8 +534,8 @@ function validateTagihanTypeRules(type, documents) {
     }
     // 3. Rebagging: IN & OUT, same refFax
     if (type === "REBAGGING") {
-        for (var _v = 0, documents_7 = documents; _v < documents_7.length; _v++) {
-            var doc = documents_7[_v];
+        for (var _r = 0, documents_5 = documents; _r < documents_5.length; _r++) {
+            var doc = documents_5[_r];
             if (doc.pickingTypeCode !== "incoming" &&
                 doc.pickingTypeCode !== "outgoing") {
                 return {
@@ -581,16 +544,16 @@ function validateTagihanTypeRules(type, documents) {
                 };
             }
         }
-        var firstRefFax = ((_h = (_g = documents[0]) === null || _g === void 0 ? void 0 : _g.refFax) === null || _h === void 0 ? void 0 : _h.trim()) || null;
+        var firstRefFax = ((_f = (_e = documents[0]) === null || _e === void 0 ? void 0 : _e.refFax) === null || _f === void 0 ? void 0 : _f.trim()) || null;
         if (!firstRefFax) {
             return {
                 isValid: false,
-                error: "Dokumen ".concat((_j = documents[0]) === null || _j === void 0 ? void 0 : _j.documentNumber, " tidak memiliki Ref Fax. Tipe Rebagging mewajibkan dokumen dengan refFax yang sama."),
+                error: "Dokumen ".concat((_g = documents[0]) === null || _g === void 0 ? void 0 : _g.documentNumber, " tidak memiliki Ref Fax. Tipe Rebagging mewajibkan dokumen dengan refFax yang sama."),
             };
         }
-        for (var _w = 0, documents_8 = documents; _w < documents_8.length; _w++) {
-            var doc = documents_8[_w];
-            var docRefFax = ((_k = doc.refFax) === null || _k === void 0 ? void 0 : _k.trim()) || null;
+        for (var _s = 0, documents_6 = documents; _s < documents_6.length; _s++) {
+            var doc = documents_6[_s];
+            var docRefFax = ((_h = doc.refFax) === null || _h === void 0 ? void 0 : _h.trim()) || null;
             if (!docRefFax || docRefFax.toLowerCase() !== firstRefFax.toLowerCase()) {
                 return {
                     isValid: false,
@@ -601,8 +564,8 @@ function validateTagihanTypeRules(type, documents) {
     }
     // 4. Reproses: IN & OUT, same refFax
     if (type === "REPROSES") {
-        for (var _x = 0, documents_9 = documents; _x < documents_9.length; _x++) {
-            var doc = documents_9[_x];
+        for (var _t = 0, documents_7 = documents; _t < documents_7.length; _t++) {
+            var doc = documents_7[_t];
             if (doc.pickingTypeCode !== "incoming" &&
                 doc.pickingTypeCode !== "outgoing") {
                 return {
@@ -611,16 +574,16 @@ function validateTagihanTypeRules(type, documents) {
                 };
             }
         }
-        var firstRefFax = ((_m = (_l = documents[0]) === null || _l === void 0 ? void 0 : _l.refFax) === null || _m === void 0 ? void 0 : _m.trim()) || null;
+        var firstRefFax = ((_k = (_j = documents[0]) === null || _j === void 0 ? void 0 : _j.refFax) === null || _k === void 0 ? void 0 : _k.trim()) || null;
         if (!firstRefFax) {
             return {
                 isValid: false,
-                error: "Dokumen ".concat((_o = documents[0]) === null || _o === void 0 ? void 0 : _o.documentNumber, " tidak memiliki Ref Fax. Tipe Reproses mewajibkan dokumen dengan refFax yang sama."),
+                error: "Dokumen ".concat((_l = documents[0]) === null || _l === void 0 ? void 0 : _l.documentNumber, " tidak memiliki Ref Fax. Tipe Reproses mewajibkan dokumen dengan refFax yang sama."),
             };
         }
-        for (var _y = 0, documents_10 = documents; _y < documents_10.length; _y++) {
-            var doc = documents_10[_y];
-            var docRefFax = ((_p = doc.refFax) === null || _p === void 0 ? void 0 : _p.trim()) || null;
+        for (var _u = 0, documents_8 = documents; _u < documents_8.length; _u++) {
+            var doc = documents_8[_u];
+            var docRefFax = ((_m = doc.refFax) === null || _m === void 0 ? void 0 : _m.trim()) || null;
             if (!docRefFax || docRefFax.toLowerCase() !== firstRefFax.toLowerCase()) {
                 return {
                     isValid: false,
@@ -631,8 +594,8 @@ function validateTagihanTypeRules(type, documents) {
     }
     // 5. Overstapel: INT / internal only
     if (type === "OVERSTAPEL") {
-        for (var _z = 0, documents_11 = documents; _z < documents_11.length; _z++) {
-            var doc = documents_11[_z];
+        for (var _v = 0, documents_9 = documents; _v < documents_9.length; _v++) {
+            var doc = documents_9[_v];
             if (doc.pickingTypeCode !== "internal") {
                 return {
                     isValid: false,
@@ -642,4 +605,42 @@ function validateTagihanTypeRules(type, documents) {
         }
     }
     return { isValid: true };
+}
+/**
+ * Calculates the secondary quantity based on product quantity and UoM.
+ * Extracted numeric multiplier from UoM (e.g. "Pack 5 Kg" -> multiplier is 5).
+ * If no numeric value exists inside the UoM, the multiplier defaults to 1.
+ */
+function getSecondaryQty(qty, uom) {
+    if (!uom)
+        return qty;
+    var match = uom.match(/(\d+(?:\.\d+)?)/);
+    var multiplier = match ? parseFloat(match[0]) : 1;
+    return qty * multiplier;
+}
+function getSecondaryUnit(uom) {
+    if (!uom)
+        return "Kg";
+    var uomLower = uom.toLowerCase();
+    if (uomLower.indexOf("liter") !== -1 || uomLower.indexOf("litre") !== -1) {
+        return "Liter";
+    }
+    if (/\d+(?:\.\d+)?\s*(l|L)(?![a-zA-Z])/.test(uom)) {
+        return "L";
+    }
+    if (uomLower.indexOf("lembar") !== -1) {
+        return "Lembar";
+    }
+    if (uomLower.indexOf("pcs") !== -1) {
+        return "Pcs";
+    }
+    return "Kg";
+}
+function formatSecondaryQty(qty, uom) {
+    var secondaryQty = getSecondaryQty(qty, uom);
+    var unit = getSecondaryUnit(uom);
+    return "".concat(secondaryQty.toLocaleString("id-ID", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 3,
+    }), " ").concat(unit);
 }

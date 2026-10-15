@@ -593,7 +593,7 @@ export function validateTagihanTypeRules(
     return { isValid: true };
   }
 
-  // 1. Loading: OUT only, same product/commodity, same month
+  // 1. Loading: OUT only, same month (Multiple SKUs permitted)
   if (type === "LOADING") {
     for (const doc of documents) {
       if (doc.pickingTypeCode !== "outgoing") {
@@ -601,27 +601,6 @@ export function validateTagihanTypeRules(
           isValid: false,
           error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}, bukan OUT (outgoing). Tipe Loading hanya mengizinkan dokumen OUT.`,
         };
-      }
-    }
-
-    // Check same product across all documents
-    const firstDocProducts = (documents[0]?.items || []).map((i) =>
-      i.productName.trim().toLowerCase(),
-    );
-    const referenceProduct = firstDocProducts[0] || null;
-
-    if (referenceProduct) {
-      for (const doc of documents) {
-        const docProducts = (doc.items || []).map((i) =>
-          i.productName.trim().toLowerCase(),
-        );
-        const matches = docProducts.some((p) => p === referenceProduct);
-        if (!matches && docProducts.length > 0) {
-          return {
-            isValid: false,
-            error: `Dokumen ${doc.documentNumber} memiliki komoditas berbeda (${docProducts.join(", ")}). Tipe Loading harus komoditas yang sama (${referenceProduct}).`,
-          };
-        }
       }
     }
 
@@ -650,7 +629,7 @@ export function validateTagihanTypeRules(
     }
   }
 
-  // 2. Unloading: IN only, same product/commodity, same month
+  // 2. Unloading: IN only, same month (Multiple SKUs permitted)
   if (type === "UNLOADING") {
     for (const doc of documents) {
       if (doc.pickingTypeCode !== "incoming") {
@@ -658,27 +637,6 @@ export function validateTagihanTypeRules(
           isValid: false,
           error: `Dokumen ${doc.documentNumber} bertipe ${doc.pickingTypeCode.toUpperCase()}, bukan IN (incoming). Tipe Unloading hanya mengizinkan dokumen IN.`,
         };
-      }
-    }
-
-    // Check same product across all documents
-    const firstDocProducts = (documents[0]?.items || []).map((i) =>
-      i.productName.trim().toLowerCase(),
-    );
-    const referenceProduct = firstDocProducts[0] || null;
-
-    if (referenceProduct) {
-      for (const doc of documents) {
-        const docProducts = (doc.items || []).map((i) =>
-          i.productName.trim().toLowerCase(),
-        );
-        const matches = docProducts.some((p) => p === referenceProduct);
-        if (!matches && docProducts.length > 0) {
-          return {
-            isValid: false,
-            error: `Dokumen ${doc.documentNumber} memiliki komoditas berbeda (${docProducts.join(", ")}). Tipe Unloading harus komoditas yang sama (${referenceProduct}).`,
-          };
-        }
       }
     }
 
@@ -788,6 +746,44 @@ export function validateTagihanTypeRules(
   return { isValid: true };
 }
 
+/**
+ * Calculates the secondary quantity based on product quantity and UoM.
+ * Extracted numeric multiplier from UoM (e.g. "Pack 5 Kg" -> multiplier is 5).
+ * If no numeric value exists inside the UoM, the multiplier defaults to 1.
+ */
+export function getSecondaryQty(qty: number, uom?: string | null): number {
+  if (!uom) return qty;
+  const match = uom.match(/(\d+(?:\.\d+)?)/);
+  const multiplier = match ? parseFloat(match[0]) : 1;
+  return qty * multiplier;
+}
 
+export function getSecondaryUnit(uom?: string | null): string {
+  if (!uom) return "Kg";
+  const uomLower = uom.toLowerCase();
+  if (uomLower.indexOf("liter") !== -1 || uomLower.indexOf("litre") !== -1) {
+    return "Liter";
+  }
+  if (/\d+(?:\.\d+)?\s*(l|L)(?![a-zA-Z])/.test(uom)) {
+    return "L";
+  }
 
+  if (uomLower.indexOf("lembar") !== -1) {
+    return "Lembar";
+  }
 
+  if (uomLower.indexOf("pcs") !== -1) {
+    return "Pcs";
+  }
+
+  return "Kg";
+}
+
+export function formatSecondaryQty(qty: number, uom?: string | null): string {
+  const secondaryQty = getSecondaryQty(qty, uom);
+  const unit = getSecondaryUnit(uom);
+  return `${secondaryQty.toLocaleString("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  })} ${unit}`;
+}
