@@ -21,6 +21,9 @@ interface TagihanFileItem {
   fileName: string;
   fileSize: number;
   mimeType: string;
+  fileType?: string | null;
+  fingerprint?: string | null;
+  generatedAt?: string | null;
   uploadedAt?: string;
   downloadUrl?: string | null;
   uploadedBy?: { name: string } | null;
@@ -261,12 +264,30 @@ export function TagihanFilesManager({
                 <FileText className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                  {file.fileName}
-                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                    {file.fileName}
+                  </p>
+                  {file.fileType === "COMMODITY_RECAP_EXCEL" && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                      Rekap Excel
+                    </span>
+                  )}
+                  {file.fileType === "COMMODITY_RECAP_PDF" && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800 shrink-0">
+                      Rekap PDF
+                    </span>
+                  )}
+                  {file.fileType === "ODOO_REPORT_PDF" && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shrink-0">
+                      Odoo Report
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-slate-400">
                   {formatFileSize(file.fileSize)}
                   {file.uploadedBy ? ` • Diunggah oleh: ${file.uploadedBy.name}` : ""}
+                  {file.generatedAt ? ` • Dibuat: ${new Date(file.generatedAt).toLocaleString("id-ID")}` : ""}
                 </p>
               </div>
             </div>

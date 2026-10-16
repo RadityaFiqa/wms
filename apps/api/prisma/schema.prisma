@@ -900,6 +900,7 @@ model Tagihan {
   manualDocuments        TagihanManualDocument[]
   summaries              TagihanSummary[]
   files                  TagihanFile[]
+  reportJobs             TagihanReportJob[]
 
   @@index([warehouseId])
   @@index([uuid])
@@ -979,20 +980,61 @@ model TagihanSummary {
 }
 
 model TagihanFile {
-  id           Int      @id @default(autoincrement())
-  uuid         String   @unique @default(uuid())
+  id           Int                @id @default(autoincrement())
+  uuid         String             @unique @default(uuid())
   tagihanId    Int
   filePath     String
   fileName     String
   fileSize     Int
   mimeType     String
+  fileType     String?            @default("MANUAL")
+  fingerprint  String?
+  generatedAt  DateTime?          @db.Timestamptz(3)
+  jobId        String?
   uploadedById Int?
-  uploadedAt   DateTime @default(now()) @db.Timestamptz(3)
+  uploadedAt   DateTime           @default(now()) @db.Timestamptz(3)
 
-  tagihan      Tagihan  @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
-  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  tagihan      Tagihan            @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+  uploadedBy   User?              @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  reportJobs   TagihanReportJob[]
 
   @@index([tagihanId])
   @@index([uuid])
+  @@index([fileType])
+  @@index([fingerprint])
   @@map("TagihanFile")
 }
+
+enum TagihanJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model TagihanReportJob {
+  id            Int              @id @default(autoincrement())
+  uuid          String           @unique @default(uuid())
+  tagihanId     Int
+  reportType    String
+  status        TagihanJobStatus @default(PENDING)
+  fingerprint   String
+  progress      Int              @default(0)
+  errorMessage  String?
+  tagihanFileId Int?
+  startedAt     DateTime?        @db.Timestamptz(3)
+  completedAt   DateTime?        @db.Timestamptz(3)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(3)
+
+  tagihan       Tagihan          @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
+  tagihanFile   TagihanFile?     @relation(fields: [tagihanFileId], references: [id], onDelete: SetNull)
+
+  @@index([tagihanId])
+  @@index([uuid])
+  @@index([status])
+  @@index([reportType])
+  @@index([tagihanId, reportType])
+  @@map("TagihanReportJob")
+}
+

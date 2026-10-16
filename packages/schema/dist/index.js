@@ -12,6 +12,7 @@ var __assign = (this && this.__assign) || function () {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TagihanQuerySchema = exports.UpdateTagihanSchema = exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = void 0;
 exports.validateTagihanTypeRules = validateTagihanTypeRules;
 exports.getSecondaryQty = getSecondaryQty;
 exports.getSecondaryUnit = getSecondaryUnit;
@@ -457,6 +458,21 @@ exports.TagihanQuerySchema = zod_1.z.object({
     sortBy: zod_1.z.string().optional(),
     sortOrder: zod_1.z.enum(["asc", "desc"]).optional(),
 });
+exports.TagihanReportTypeEnum = zod_1.z.enum([
+    "COMMODITY_RECAP_EXCEL",
+    "COMMODITY_RECAP_PDF",
+    "ODOO_REPORT_PDF",
+]);
+exports.GenerateTagihanReportInputSchema = zod_1.z.object({
+    reportType: exports.TagihanReportTypeEnum,
+});
+exports.TagihanReportJobStatusEnum = zod_1.z.enum([
+    "IDLE",
+    "PENDING",
+    "PROCESSING",
+    "COMPLETED",
+    "FAILED",
+]);
 function validateTagihanTypeRules(type, documents) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     if (!documents || documents.length === 0) {

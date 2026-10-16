@@ -571,6 +571,29 @@ export const TagihanQuerySchema = z.object({
 });
 export type TagihanQueryInput = z.infer<typeof TagihanQuerySchema>;
 
+export const TagihanReportTypeEnum = z.enum([
+  "COMMODITY_RECAP_EXCEL",
+  "COMMODITY_RECAP_PDF",
+  "ODOO_REPORT_PDF",
+]);
+export type TagihanReportType = z.infer<typeof TagihanReportTypeEnum>;
+
+export const GenerateTagihanReportInputSchema = z.object({
+  reportType: TagihanReportTypeEnum,
+});
+export type GenerateTagihanReportInput = z.infer<
+  typeof GenerateTagihanReportInputSchema
+>;
+
+export const TagihanReportJobStatusEnum = z.enum([
+  "IDLE",
+  "PENDING",
+  "PROCESSING",
+  "COMPLETED",
+  "FAILED",
+]);
+export type TagihanReportJobStatus = z.infer<typeof TagihanReportJobStatusEnum>;
+
 export interface ErpDocumentCandidate {
   uuid: string;
   documentNumber: string;

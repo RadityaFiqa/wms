@@ -1176,6 +1176,9 @@ export class TagihanService {
         fileName: f.fileName,
         fileSize: f.fileSize,
         mimeType: f.mimeType,
+        fileType: f.fileType || 'MANUAL',
+        fingerprint: f.fingerprint || null,
+        generatedAt: f.generatedAt || null,
         uploadedAt: f.uploadedAt,
         downloadUrl: f.downloadUrl || null,
         uploadedBy: f.uploadedBy

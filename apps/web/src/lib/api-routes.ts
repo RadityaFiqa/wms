@@ -102,6 +102,8 @@ export const API_ROUTES = {
         `/tagihan/${uuid}/files/${fileUuid}`,
       downloadFile: (uuid: string, fileUuid: string) =>
         `/tagihan/${uuid}/files/${fileUuid}/download`,
+      reportsStatus: (uuid: string) => `/tagihan/${uuid}/reports/status`,
+      generateReport: (uuid: string) => `/tagihan/${uuid}/reports/generate`,
     },
   },
   auditLog: {

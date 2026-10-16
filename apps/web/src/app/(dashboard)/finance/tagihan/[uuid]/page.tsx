@@ -23,6 +23,7 @@ import { ErpDocumentSelectorModal } from "@/components/finance/tagihan/ErpDocume
 import { NonCommoditySelectorModal } from "@/components/finance/tagihan/NonCommoditySelectorModal";
 import { CreateStatusModal } from "@/components/finance/tagihan/CreateStatusModal";
 import { TagihanSummaryTable } from "@/components/finance/tagihan/TagihanSummaryTable";
+import { TagihanExportReports } from "@/components/finance/tagihan/TagihanExportReports";
 import { TagihanFilesManager } from "@/components/finance/tagihan/TagihanFilesManager";
 import {
   RelatedDocumentsManager,
@@ -609,6 +610,14 @@ export default function TagihanDetailPage() {
         onCostChange={(key, val) => setCosts((prev) => ({ ...prev, [key]: val }))}
         readOnly={!isEditing}
         initialSummaries={tagihan.summaries}
+      />
+
+      {/* Section: Export & Reports (Commodity Recap & Odoo Report) */}
+      <TagihanExportReports
+        tagihanUuid={uuid}
+        tagihanType={tagihan.type}
+        hasErpDocuments={(selectedErpDocs || []).length > 0}
+        onFilesChange={refresh}
       />
 
       {/* Section: Supporting Files Manager */}

@@ -122,7 +122,7 @@ export class OdooClient {
    * Fetches session information from Odoo (useful for getting uid, company_id, user_context, etc.).
    */
   async getSessionInfo(baseUrl: string, sessionId: string): Promise<any> {
-    const url = `${baseUrl.replace(/\/$/, '')}/web/session/info`;
+    const url = `${baseUrl.replace(/\/$/, '')}/web/session/get_session_info`;
     const payload = {
       id: Math.floor(Math.random() * 1000000),
       jsonrpc: '2.0',
@@ -149,6 +149,30 @@ export class OdooClient {
       return response.data.result;
     } catch (err: any) {
       throw new Error(`Gagal memanggil Session Info Odoo: ${err.message}`);
+    }
+  }
+
+  /**
+   * Fetches the web client page with active session cookie to extract fresh CSRF token.
+   */
+  async getWebCsrfToken(baseUrl: string, sessionId: string): Promise<string> {
+    const url = `${baseUrl.replace(/\/$/, '')}/web`;
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          Cookie: `session_id=${sessionId}`,
+          'User-Agent': 'Bulog-WMS/1.0',
+        },
+        timeout: 15000,
+      });
+      const html = response.data;
+      const csrfMatch =
+        html.match(/csrf_token[:=]\s*["']([^"']+)["']/i) ||
+        html.match(/["']csrf_token["']:\s*["']([^"']+)["']/i) ||
+        html.match(/name="csrf_token"\s+value="([^"]+)"/i);
+      return csrfMatch ? csrfMatch[1] : '';
+    } catch {
+      return '';
     }
   }
 

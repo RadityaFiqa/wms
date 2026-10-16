@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TagihanService } from './tagihan.service';
 import { MasterTagihanStatusService } from './master-tagihan-status.service';
+import { TagihanReportService } from './tagihan-report.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '@/core/warehouse-context/warehouse.guard';
 import { PoliciesGuard } from '../casl/policies.guard';
@@ -33,6 +34,8 @@ import {
   type TagihanQueryInput,
   CreateMasterTagihanStatusSchema,
   type CreateMasterTagihanStatusInput,
+  GenerateTagihanReportInputSchema,
+  type GenerateTagihanReportInput,
 } from '@bulog-wms/schema';
 
 @Controller('tagihan')
@@ -42,6 +45,7 @@ export class TagihanController {
   constructor(
     private readonly tagihanService: TagihanService,
     private readonly statusService: MasterTagihanStatusService,
+    private readonly reportService: TagihanReportService,
     private readonly warehouseContext: WarehouseContextService,
   ) {}
 
@@ -206,4 +210,37 @@ export class TagihanController {
     const warehouseId = this.warehouseContext.getWarehouseId()!;
     return this.tagihanService.getFileDownloadUrl(warehouseId, uuid, fileUuid);
   }
+
+  /**
+   * Get reports status and cached files for Tagihan.
+   */
+  @Get(':uuid/reports/status')
+  @CheckPolicies((ability) => ability.can('read', 'Tagihan'))
+  async getReportsStatus(@Param('uuid') uuid: string) {
+    const warehouseId = this.warehouseContext.getWarehouseId()!;
+    return this.reportService.getReportsStatus(warehouseId, uuid);
+  }
+
+  /**
+   * Request report generation (Excel, PDF, Odoo Report) with background job & caching.
+   */
+  @Post(':uuid/reports/generate')
+  @CheckPolicies((ability) => ability.can('read', 'Tagihan'))
+  @AuditLogAction('TAGIHAN_REPORT_GENERATE')
+  async generateReport(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(GenerateTagihanReportInputSchema))
+    body: GenerateTagihanReportInput,
+    @Req() req: any,
+  ) {
+    const warehouseId = this.warehouseContext.getWarehouseId()!;
+    const userId = req.user.id;
+    return this.reportService.requestReportGeneration(
+      warehouseId,
+      uuid,
+      body.reportType,
+      userId,
+    );
+  }
 }
+

@@ -196,3 +196,43 @@ export async function deleteTagihanFile(uuid: string, fileUuid: string) {
   mutate(API_ROUTES.finance.tagihan.detail(uuid));
   return res.data;
 }
+
+export function useTagihanReportsStatus(uuid: string | null) {
+  const swrKey = uuid ? API_ROUTES.finance.tagihan.reportsStatus(uuid) : null;
+
+  const { data, error, isLoading, mutate: mutateStatus } = useSWR(
+    swrKey,
+    (url) => api.get(url).then((res) => res.data),
+    {
+      refreshInterval: (latestData) => {
+        if (!latestData?.reports) return 0;
+        const isAnyRunning = Object.values(latestData.reports).some(
+          (r: any) => r?.status === "PENDING" || r?.status === "PROCESSING",
+        );
+        return isAnyRunning ? 2000 : 0;
+      },
+      revalidateOnFocus: true,
+    },
+  );
+
+  return {
+    reportsStatus: data,
+    isLoading,
+    error,
+    refresh: mutateStatus,
+  };
+}
+
+export async function generateTagihanReport(
+  uuid: string,
+  reportType: "COMMODITY_RECAP_EXCEL" | "COMMODITY_RECAP_PDF" | "ODOO_REPORT_PDF",
+) {
+  const res = await api.post(API_ROUTES.finance.tagihan.generateReport(uuid), {
+    reportType,
+  });
+  // Mutate report status and tagihan detail (supporting files)
+  mutate(API_ROUTES.finance.tagihan.reportsStatus(uuid));
+  mutate(API_ROUTES.finance.tagihan.detail(uuid));
+  return res.data;
+}
+
