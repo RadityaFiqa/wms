@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Receipt,
   ReceiptText,
+  HardHat,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -228,6 +229,17 @@ export const menuGroups: MenuGroup[] = [
         permissionSubject: "DocumentPurchaseOrder",
         permissionAction: "read",
         priority: true,
+      },
+      {
+        name: "Buruh",
+        description: "Kelola data buruh gudang beserta foto KTP untuk tanda terima upah.",
+        href: "/finance/buruh",
+        icon: HardHat,
+        color: "text-sky-600 bg-sky-50 border-sky-100 dark:bg-sky-950/20 dark:border-sky-900/30",
+        btnText: "Kelola Buruh",
+        permissionSubject: "Buruh",
+        permissionAction: "read",
+        priority: false,
       },
     ],
   },

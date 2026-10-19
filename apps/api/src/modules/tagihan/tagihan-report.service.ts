@@ -12,14 +12,73 @@ import { WarehouseContextService } from '@/core/warehouse-context/warehouse-cont
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
+import { promises as fs } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import axios from 'axios';
 import PDFDocument from 'pdfkit';
+import {
+  PDFDocument as PdfLibDocument,
+  PDFEmbeddedPage,
+  PDFPage,
+  degrees,
+} from 'pdf-lib';
 import * as ExcelJS from 'exceljs';
 import {
   getSecondaryQty,
   type TagihanReportType,
   type TagihanReportJobStatus,
+  type TagihanReportStage,
 } from '@bulog-wms/schema';
+
+const ODOO_PDF_TIMEOUT_MS = 60_000;
+const ODOO_PDF_MAX_ATTEMPTS = 3;
+const ODOO_PDF_RETRY_DELAY_MS = 2_000;
+// PDFs with at least this many pages are converted to a 2-up layout
+const TWO_UP_MIN_PAGES = 2;
+// Bump when the Odoo report page layout changes so cached files are regenerated
+const ODOO_REPORT_LAYOUT_VERSION = 3;
+const TWO_UP_MARGIN = 12;
+const TWO_UP_GAP = 12;
+
+// A job whose progress has not been updated for this long is considered stuck
+const STUCK_JOB_THRESHOLD_MS = 5 * 60 * 1000;
+
+// Progress boundaries (percent) for each stage of the Odoo report pipeline
+const PROGRESS = {
+  PREPARING: 5,
+  DOWNLOADED: 50,
+  OPTIMIZED: 80,
+  MERGED: 90,
+  SAVING: 95,
+} as const;
+
+export interface OdooReportProgress {
+  stage: TagihanReportStage;
+  progress: number;
+  processedCount: number;
+  totalCount: number;
+  currentItem: string | null;
+}
+
+interface OdooReportRequestContext {
+  baseUrl: string;
+  sessionId: string;
+  csrfToken: string;
+  uid: number;
+  userContext: Record<string, any>;
+  allowedCompanyIds: number[];
+  reportTemplate: string;
+}
+
+class OdooReportDownloadError extends Error {
+  constructor(
+    message: string,
+    public readonly isSessionError = false,
+  ) {
+    super(message);
+  }
+}
 
 export interface ReportStatusResponse {
   fingerprint: string;
@@ -38,6 +97,10 @@ export interface ReportStatusResponse {
       } | null;
       jobUuid?: string | null;
       progress: number;
+      stage?: string | null;
+      processedCount?: number;
+      totalCount?: number;
+      currentItem?: string | null;
       errorMessage?: string | null;
     }
   >;
@@ -97,6 +160,21 @@ export class TagihanReportService {
     return crypto
       .createHash('sha256')
       .update(JSON.stringify(payload))
+      .digest('hex');
+  }
+
+  /**
+   * Fingerprint used to cache a specific report type. Odoo reports include the page
+   * layout version so files generated with an older layout are regenerated.
+   */
+  public getReportFingerprint(
+    tagihanFingerprint: string,
+    reportType: TagihanReportType,
+  ): string {
+    if (reportType !== 'ODOO_REPORT_PDF') return tagihanFingerprint;
+    return crypto
+      .createHash('sha256')
+      .update(`${tagihanFingerprint}:odoo-layout-v${ODOO_REPORT_LAYOUT_VERSION}`)
       .digest('hex');
   }
 
@@ -233,9 +311,11 @@ export class TagihanReportService {
     const reportsResult: any = {};
 
     for (const rType of reportTypes) {
+      const reportFingerprint = this.getReportFingerprint(currentFingerprint, rType);
+
       // 1. Check for existing cached TagihanFile with matching fingerprint
       const cachedFile = tagihan.files.find(
-        (f) => f.fileType === rType && f.fingerprint === currentFingerprint,
+        (f) => f.fileType === rType && f.fingerprint === reportFingerprint,
       );
 
       if (cachedFile) {
@@ -266,15 +346,15 @@ export class TagihanReportService {
 
       // 2. Check for active or recent job for this report type
       const latestJob = tagihan.reportJobs.find(
-        (j) => j.reportType === rType && j.fingerprint === currentFingerprint,
+        (j) => j.reportType === rType && j.fingerprint === reportFingerprint,
       );
 
       if (latestJob) {
-        // Check for stuck job (> 5 minutes in PENDING/PROCESSING)
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        // Check for stuck job (no progress heartbeat for > 5 minutes in PENDING/PROCESSING)
+        const stuckThreshold = new Date(Date.now() - STUCK_JOB_THRESHOLD_MS);
         if (
           (latestJob.status === 'PENDING' || latestJob.status === 'PROCESSING') &&
-          latestJob.createdAt < fiveMinutesAgo
+          latestJob.updatedAt < stuckThreshold
         ) {
           this.logger.warn(
             `Job ${latestJob.uuid} stuck for tagihan ${tagihan.documentNumber}. Marking as FAILED.`,
@@ -283,6 +363,7 @@ export class TagihanReportService {
             where: { id: latestJob.id },
             data: {
               status: 'FAILED',
+              stage: 'FAILED',
               errorMessage: 'Proses generate melebihi batas waktu (timeout).',
               completedAt: new Date(),
             },
@@ -292,6 +373,10 @@ export class TagihanReportService {
             file: null,
             jobUuid: latestJob.uuid,
             progress: 0,
+            stage: 'FAILED',
+            processedCount: latestJob.processedCount,
+            totalCount: latestJob.totalCount,
+            currentItem: latestJob.currentItem,
             errorMessage: 'Proses generate melebihi batas waktu (timeout).',
           };
           continue;
@@ -332,6 +417,10 @@ export class TagihanReportService {
           file: null,
           jobUuid: latestJob.uuid,
           progress: latestJob.progress,
+          stage: latestJob.stage,
+          processedCount: latestJob.processedCount,
+          totalCount: latestJob.totalCount,
+          currentItem: latestJob.currentItem,
           errorMessage: latestJob.errorMessage,
         };
         continue;
@@ -395,7 +484,10 @@ export class TagihanReportService {
       );
     }
 
-    const currentFingerprint = this.computeTagihanFingerprint(tagihan);
+    const currentFingerprint = this.getReportFingerprint(
+      this.computeTagihanFingerprint(tagihan),
+      reportType,
+    );
 
     // 1. Direct cache check: Valid file exists with matching fingerprint & physically present
     const cachedFile = tagihan.files.find(
@@ -423,49 +515,61 @@ export class TagihanReportService {
       }
     }
 
-    // 2. Atomic duplicate check: Find active job (PENDING or PROCESSING)
-    const activeJob = await this.prisma.tagihanReportJob.findFirst({
-      where: {
-        tagihanId: tagihan.id,
-        reportType,
-        status: { in: ['PENDING', 'PROCESSING'] },
-      },
-    });
+    // 2 & 3. Atomic duplicate check + job creation, serialized per (tagihan, reportType)
+    // with a transaction-scoped advisory lock so concurrent requests cannot both create a job.
+    const isOdooReport = reportType === 'ODOO_REPORT_PDF';
+    const { activeJob, newJob } = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${tagihan.id}::int, hashtext(${reportType}))`;
 
-    if (activeJob) {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      if (activeJob.createdAt < fiveMinutesAgo) {
-        this.logger.warn(`Stuck job ${activeJob.uuid} detected. Cancelling...`);
-        await this.prisma.tagihanReportJob.update({
-          where: { id: activeJob.id },
+      const existing = await tx.tagihanReportJob.findFirst({
+        where: {
+          tagihanId: tagihan.id,
+          reportType,
+          status: { in: ['PENDING', 'PROCESSING'] },
+        },
+      });
+
+      if (existing) {
+        const stuckThreshold = new Date(Date.now() - STUCK_JOB_THRESHOLD_MS);
+        if (existing.updatedAt >= stuckThreshold) {
+          return { activeJob: existing, newJob: null };
+        }
+        this.logger.warn(`Stuck job ${existing.uuid} detected. Cancelling...`);
+        await tx.tagihanReportJob.update({
+          where: { id: existing.id },
           data: {
             status: 'FAILED',
+            stage: 'FAILED',
             errorMessage: 'Timeout: Pekerjaan sebelumnya dibatalkan karena tidak merespon.',
             completedAt: new Date(),
           },
         });
-      } else {
-        // Return existing running job, avoid duplicate!
-        return {
-          status: activeJob.status,
-          isCached: false,
-          jobUuid: activeJob.uuid,
-          progress: activeJob.progress,
-          message: 'Pekerjaan sedang berlangsung.',
-        };
       }
-    }
 
-    // 3. Create new TagihanReportJob in database
-    const newJob = await this.prisma.tagihanReportJob.create({
-      data: {
-        tagihanId: tagihan.id,
-        reportType,
-        status: 'PENDING',
-        fingerprint: currentFingerprint,
-        progress: 10,
-      },
+      const created = await tx.tagihanReportJob.create({
+        data: {
+          tagihanId: tagihan.id,
+          reportType,
+          status: 'PENDING',
+          fingerprint: currentFingerprint,
+          progress: isOdooReport ? 0 : 10,
+          stage: 'PREPARING',
+          totalCount: isOdooReport ? tagihan.documentReferences.length : 0,
+        },
+      });
+      return { activeJob: null, newJob: created };
     });
+
+    if (activeJob || !newJob) {
+      // Return existing running job, avoid duplicate!
+      return {
+        status: activeJob!.status,
+        isCached: false,
+        jobUuid: activeJob!.uuid,
+        progress: activeJob!.progress,
+        message: 'Pekerjaan sedang berlangsung.',
+      };
+    }
 
     // 4. Enqueue BullMQ job
     try {
@@ -482,7 +586,8 @@ export class TagihanReportService {
         },
         {
           jobId: newJob.uuid,
-          attempts: 2,
+          // Odoo downloads already retry per document; a failed job must stay failed
+          attempts: isOdooReport ? 1 : 2,
           backoff: { type: 'exponential', delay: 2000 },
           removeOnComplete: true,
           removeOnFail: false,
@@ -497,6 +602,7 @@ export class TagihanReportService {
         where: { id: newJob.id },
         data: {
           status: 'FAILED',
+          stage: 'FAILED',
           errorMessage: enqueueErr.message || 'Gagal menambahkan antrean job.',
           completedAt: new Date(),
         },
@@ -508,7 +614,7 @@ export class TagihanReportService {
       status: 'PENDING',
       isCached: false,
       jobUuid: newJob.uuid,
-      progress: 10,
+      progress: newJob.progress,
       message: 'Permintaan generate laporan telah dijadwalkan.',
     };
   }
@@ -919,37 +1025,17 @@ export class TagihanReportService {
   }
 
   /**
-   * Downloads original consolidated PDF from Odoo using /report/download.
+   * Resolves a fresh Odoo session, CSRF token, and user context for report downloads.
+   * Set `forceRelogin` to discard the current session (e.g. after an expired-session response).
    */
-  async downloadOdooReportPdf(tagihan: any): Promise<Buffer> {
-    const isOut = tagihan.type === 'LOADING';
-    const isIn = tagihan.type === 'UNLOADING';
-
-    if (!isOut && !isIn) {
-      throw new BadRequestException(
-        'Download Odoo Report hanya tersedia untuk tagihan Loading dan Unloading.',
-      );
-    }
-
-    // 1. Gather picking IDs from related ERP documents
-    const pickingIds = Array.from(
-      new Set(
-        (tagihan.documentReferences || [])
-          .map((r: any) => r.documentReference?.id || r.documentReferenceId)
-          .filter(Boolean),
-      ),
-    );
-
-    if (pickingIds.length === 0) {
-      throw new BadRequestException(
-        'Tidak ada ID dokumen ERP Commodity yang valid untuk mengunduh laporan Odoo.',
-      );
-    }
-
-    // 2. Fetch active Odoo account for this warehouse
+  private async prepareOdooReportContext(
+    warehouseId: number,
+    isOut: boolean,
+    forceRelogin = false,
+  ): Promise<OdooReportRequestContext> {
     const odooAccount = await this.prisma.odooAccount.findFirst({
       where: {
-        warehouseId: tagihan.warehouseId,
+        warehouseId,
         isNonCommodity: false,
         isActive: true,
       },
@@ -959,6 +1045,10 @@ export class TagihanReportService {
       throw new NotFoundException(
         'Akun Odoo untuk gudang ini belum dikonfigurasi atau tidak aktif.',
       );
+    }
+
+    if (forceRelogin) {
+      await this.odooSessionManager.invalidateSession(odooAccount.id);
     }
 
     // Ensure session is fresh and valid
@@ -971,7 +1061,7 @@ export class TagihanReportService {
       throw new BadRequestException('Sesi Odoo tidak dapat diverifikasi.');
     }
 
-    // 3. Dynamically fetch session info to build complete context
+    // Dynamically fetch session info to build complete context
     let sessionInfo: any = {};
     let activeAccount = account;
     try {
@@ -1024,82 +1114,405 @@ export class TagihanReportService {
         .catch(() => {});
     }
 
-    // 4. Construct Odoo report path and dynamic context
-    const reportTemplate = isOut
-      ? 'bulog_stock.bulog_picking_operation_template'
-      : 'stock.report_deliveryslip';
+    return {
+      baseUrl: activeAccount.baseUrl,
+      sessionId: activeAccount.sessionId!,
+      csrfToken: csrfToken || '',
+      uid,
+      userContext,
+      allowedCompanyIds,
+      reportTemplate: isOut
+        ? 'bulog_stock.bulog_picking_operation_template'
+        : 'stock.report_deliveryslip',
+    };
+  }
 
-    const idListStr = pickingIds.join(',');
-    const reportPath = `/report/pdf/${reportTemplate}/${idListStr}`;
+  /**
+   * Downloads a single stock.picking report PDF from Odoo using /report/download
+   * and validates that the response is a real, parseable PDF.
+   */
+  private async fetchOdooPickingPdf(
+    ctx: OdooReportRequestContext,
+    pickingId: number,
+  ): Promise<Buffer> {
+    const reportPath = `/report/pdf/${ctx.reportTemplate}/${pickingId}`;
 
     const reportContext = {
-      ...userContext,
-      lang: userContext.lang || 'en_US',
-      tz: userContext.tz || 'Asia/Jakarta',
-      uid,
-      allowed_company_ids: allowedCompanyIds,
+      ...ctx.userContext,
+      lang: ctx.userContext.lang || 'en_US',
+      tz: ctx.userContext.tz || 'Asia/Jakarta',
+      uid: ctx.uid,
+      allowed_company_ids: ctx.allowedCompanyIds,
       active_model: 'stock.picking',
-      active_id: pickingIds[0],
-      active_ids: pickingIds,
+      active_id: pickingId,
+      active_ids: [pickingId],
     };
 
-    // 5. Build multipart/form-data request using native Node.js FormData
+    // Build multipart/form-data request using native Node.js FormData
     const formData = new FormData();
     formData.append('data', JSON.stringify([reportPath, 'qweb-pdf']));
     formData.append('context', JSON.stringify(reportContext));
     formData.append('token', String(Date.now()));
-    if (csrfToken) {
-      formData.append('csrf_token', csrfToken);
+    if (ctx.csrfToken) {
+      formData.append('csrf_token', ctx.csrfToken);
     }
 
-    const downloadEndpoint = `${activeAccount.baseUrl.replace(/\/$/, '')}/report/download`;
+    const downloadEndpoint = `${ctx.baseUrl.replace(/\/$/, '')}/report/download`;
 
-    this.logger.log(
-      `Sending Odoo report request: endpoint=${downloadEndpoint}, report=${reportPath}, count=${pickingIds.length}`,
-    );
-
+    let response;
     try {
-      const response = await axios.post(downloadEndpoint, formData, {
+      response = await axios.post(downloadEndpoint, formData, {
         headers: {
-          Cookie: `session_id=${activeAccount.sessionId}`,
+          Cookie: `session_id=${ctx.sessionId}`,
           'User-Agent': 'Bulog-WMS/1.0',
         },
         responseType: 'arraybuffer',
-        timeout: 90000,
+        timeout: ODOO_PDF_TIMEOUT_MS,
       });
-
-      const contentType = String(response.headers['content-type'] || '').toLowerCase();
-      const buffer = Buffer.from(response.data);
-
-      // Validate response is a real PDF
-      if (
-        response.status !== 200 ||
-        !contentType.includes('application/pdf') ||
-        buffer.length < 5 ||
-        buffer.subarray(0, 4).toString() !== '%PDF'
-      ) {
-        let errorSnippet = 'Bukan berkas PDF yang valid dari Odoo.';
-        try {
-          const text = buffer.toString('utf8');
-          if (text.includes('error') || text.includes('Traceback') || text.includes('Exception')) {
-            errorSnippet = text.slice(0, 400);
-          }
-        } catch {}
-        this.logger.error(`Odoo report download failed response: ${errorSnippet}`);
-        throw new Error(`Gagal mengunduh laporan dari Odoo: ${errorSnippet}`);
-      }
-
-      return buffer;
     } catch (err: any) {
-      let errorSnippet = err.message;
+      let errorSnippet = err.code === 'ECONNABORTED' ? 'Timeout' : err.message;
+      let bodyStr = '';
       if (err.response?.data) {
         try {
-          const bodyStr = Buffer.from(err.response.data).toString('utf8');
+          bodyStr = Buffer.from(err.response.data).toString('utf8');
           errorSnippet = `${err.message}: ${bodyStr.slice(0, 300)}`;
         } catch {}
       }
-      this.logger.error(`Odoo report HTTP error: ${errorSnippet}`);
-      throw new Error(`Gagal mengunduh laporan dari Odoo: ${errorSnippet}`);
+      const status = err.response?.status;
+      throw new OdooReportDownloadError(
+        errorSnippet,
+        status === 401 || status === 403 || /session.?expired/i.test(bodyStr),
+      );
+    }
+
+    const contentType = String(response.headers['content-type'] || '').toLowerCase();
+    const buffer = Buffer.from(response.data);
+
+    if (
+      response.status !== 200 ||
+      !contentType.includes('application/pdf') ||
+      buffer.length < 5 ||
+      buffer.subarray(0, 4).toString() !== '%PDF'
+    ) {
+      let errorSnippet = 'Bukan berkas PDF yang valid dari Odoo.';
+      let isSessionError = false;
+      try {
+        const text = buffer.toString('utf8');
+        // Odoo answers expired sessions with a login page or a SessionExpired JSON error
+        isSessionError =
+          /session.?expired/i.test(text) || text.includes('/web/login');
+        if (text.includes('error') || text.includes('Traceback') || text.includes('Exception')) {
+          errorSnippet = text.slice(0, 400);
+        }
+      } catch {}
+      throw new OdooReportDownloadError(errorSnippet, isSessionError);
+    }
+
+    // Ensure the PDF is structurally valid (guards against truncated responses)
+    try {
+      const parsed = await PdfLibDocument.load(buffer);
+      if (parsed.getPageCount() === 0) {
+        throw new Error('PDF tidak memiliki halaman.');
+      }
+    } catch (err: any) {
+      throw new OdooReportDownloadError(`PDF rusak atau tidak lengkap: ${err.message}`);
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Converts a PDF into a 2-up layout (2 original pages per output sheet).
+   * Portrait pages are placed side by side on a landscape sheet; landscape pages are
+   * stacked on a portrait sheet. Pages are scaled to fit without cropping and keep
+   * their display rotation. An odd trailing page is placed alone on the last sheet.
+   */
+  private async convertPdfToTwoUp(source: PdfLibDocument): Promise<PdfLibDocument> {
+    const output = await PdfLibDocument.create();
+    const sourcePages = source.getPages();
+
+    // Use one sheet layout per document, based on its dominant page orientation
+    const displaySizes = sourcePages.map((p) => {
+      const rotation = this.normalizePageRotation(p.getRotation().angle);
+      const { width, height } = p.getSize();
+      const swapped = rotation === 90 || rotation === 270;
+      return swapped ? { width: height, height: width } : { width, height };
+    });
+    const portraitCount = displaySizes.filter((s) => s.height >= s.width).length;
+    const isPortrait = portraitCount * 2 >= displaySizes.length;
+    const reference =
+      displaySizes.find((s) => s.height >= s.width === isPortrait) || displaySizes[0];
+
+    // Sheet keeps the source paper size, rotated by 90 degrees
+    const sheetWidth = reference.height;
+    const sheetHeight = reference.width;
+
+    for (let i = 0; i < sourcePages.length; i += 2) {
+      const pairPages = sourcePages.slice(i, i + 2);
+      const embeddedPair = await Promise.all(
+        pairPages.map((p) =>
+          // Pages without a content stream cannot be embedded; they render as blank
+          output.embedPage(p).catch(() => null),
+        ),
+      );
+
+      const sheet = output.addPage([sheetWidth, sheetHeight]);
+
+      const m = TWO_UP_MARGIN;
+      const g = TWO_UP_GAP;
+      const slots = isPortrait
+        ? [
+            { x: m, y: m, width: (sheetWidth - 2 * m - g) / 2, height: sheetHeight - 2 * m },
+            {
+              x: m + (sheetWidth - 2 * m - g) / 2 + g,
+              y: m,
+              width: (sheetWidth - 2 * m - g) / 2,
+              height: sheetHeight - 2 * m,
+            },
+          ]
+        : [
+            {
+              x: m,
+              y: m + (sheetHeight - 2 * m - g) / 2 + g,
+              width: sheetWidth - 2 * m,
+              height: (sheetHeight - 2 * m - g) / 2,
+            },
+            { x: m, y: m, width: sheetWidth - 2 * m, height: (sheetHeight - 2 * m - g) / 2 },
+          ];
+
+      embeddedPair.forEach((embedded, k) => {
+        if (!embedded) return;
+        this.drawPageInSlot(
+          sheet,
+          embedded,
+          this.normalizePageRotation(pairPages[k].getRotation().angle),
+          slots[k],
+        );
+      });
+    }
+
+    return output;
+  }
+
+  private normalizePageRotation(angle: number): 0 | 90 | 180 | 270 {
+    const normalized = (((Math.round(angle / 90) * 90) % 360) + 360) % 360;
+    return normalized as 0 | 90 | 180 | 270;
+  }
+
+  /**
+   * Draws an embedded page centered inside a slot, preserving aspect ratio and the
+   * page's clockwise display rotation (PDF /Rotate).
+   */
+  private drawPageInSlot(
+    sheet: PDFPage,
+    embedded: PDFEmbeddedPage,
+    rotation: 0 | 90 | 180 | 270,
+    slot: { x: number; y: number; width: number; height: number },
+  ) {
+    const swapped = rotation === 90 || rotation === 270;
+    const displayWidth = swapped ? embedded.height : embedded.width;
+    const displayHeight = swapped ? embedded.width : embedded.height;
+    const scale = Math.min(slot.width / displayWidth, slot.height / displayHeight);
+
+    const scaledWidth = embedded.width * scale;
+    const scaledHeight = embedded.height * scale;
+    const boxX = slot.x + (slot.width - displayWidth * scale) / 2;
+    const boxY = slot.y + (slot.height - displayHeight * scale) / 2;
+
+    // pdf-lib rotates counter-clockwise around (x, y); PDF /Rotate is clockwise
+    const placement = {
+      0: { x: boxX, y: boxY, rotate: 0 },
+      90: { x: boxX, y: boxY + scaledWidth, rotate: -90 },
+      180: { x: boxX + scaledWidth, y: boxY + scaledHeight, rotate: 180 },
+      270: { x: boxX + scaledHeight, y: boxY, rotate: 90 },
+    }[rotation];
+
+    sheet.drawPage(embedded, {
+      x: placement.x,
+      y: placement.y,
+      xScale: scale,
+      yScale: scale,
+      rotate: degrees(placement.rotate),
+    });
+  }
+
+  /**
+   * Downloads Odoo report PDFs for every related ERP document sequentially (in document
+   * order), converts PDFs with 2 or more pages into a 2-up layout, and merges them into
+   * a single PDF. Intermediate files live in a temporary directory that is always removed.
+   * Any document that still fails after retries fails the whole process.
+   */
+  async downloadOdooReportPdf(
+    tagihan: any,
+    onProgress?: (progress: OdooReportProgress) => Promise<void>,
+  ): Promise<Buffer> {
+    const isOut = tagihan.type === 'LOADING';
+    const isIn = tagihan.type === 'UNLOADING';
+
+    if (!isOut && !isIn) {
+      throw new BadRequestException(
+        'Download Odoo Report hanya tersedia untuk tagihan Loading dan Unloading.',
+      );
+    }
+
+    const report = async (p: OdooReportProgress) => {
+      if (onProgress) await onProgress(p);
+    };
+
+    // 1. Gather picking IDs from related ERP documents, preserving document order
+    const documents: { pickingId: number; name: string }[] = [];
+    const seen = new Set<number>();
+    for (const r of tagihan.documentReferences || []) {
+      const pickingId = r.documentReference?.id || r.documentReferenceId;
+      if (!pickingId || seen.has(pickingId)) continue;
+      seen.add(pickingId);
+      documents.push({
+        pickingId,
+        name: r.documentReference?.documentNumber || `#${pickingId}`,
+      });
+    }
+
+    if (documents.length === 0) {
+      throw new BadRequestException(
+        'Tidak ada ID dokumen ERP Commodity yang valid untuk mengunduh laporan Odoo.',
+      );
+    }
+
+    const total = documents.length;
+    const pct = (start: number, end: number, done: number) =>
+      Math.round(start + ((end - start) * done) / total);
+
+    await report({
+      stage: 'PREPARING',
+      progress: PROGRESS.PREPARING,
+      processedCount: 0,
+      totalCount: total,
+      currentItem: null,
+    });
+
+    let ctx = await this.prepareOdooReportContext(tagihan.warehouseId, isOut);
+
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulog-odoo-report-'));
+    try {
+      // 2. Sequential download with timeout + retry
+      const rawPaths: string[] = [];
+      for (let i = 0; i < total; i++) {
+        const doc = documents[i];
+        let buffer: Buffer | null = null;
+        let lastError: OdooReportDownloadError | null = null;
+
+        for (let attempt = 1; attempt <= ODOO_PDF_MAX_ATTEMPTS; attempt++) {
+          // Also acts as a heartbeat for stuck-job detection
+          await report({
+            stage: 'DOWNLOADING',
+            progress: pct(PROGRESS.PREPARING, PROGRESS.DOWNLOADED, i),
+            processedCount: i,
+            totalCount: total,
+            currentItem:
+              attempt > 1
+                ? `${doc.name} (percobaan ${attempt}/${ODOO_PDF_MAX_ATTEMPTS})`
+                : doc.name,
+          });
+
+          try {
+            buffer = await this.fetchOdooPickingPdf(ctx, doc.pickingId);
+            break;
+          } catch (err: any) {
+            lastError =
+              err instanceof OdooReportDownloadError
+                ? err
+                : new OdooReportDownloadError(err.message);
+            this.logger.warn(
+              `Odoo PDF download failed for ${doc.name} (attempt ${attempt}/${ODOO_PDF_MAX_ATTEMPTS}): ${lastError.message}`,
+            );
+            if (attempt < ODOO_PDF_MAX_ATTEMPTS) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, ODOO_PDF_RETRY_DELAY_MS * attempt),
+              );
+              if (lastError.isSessionError) {
+                ctx = await this.prepareOdooReportContext(tagihan.warehouseId, isOut, true);
+              }
+            }
+          }
+        }
+
+        if (!buffer) {
+          throw new Error(
+            `Gagal mengunduh laporan Odoo untuk dokumen ${doc.name} setelah ${ODOO_PDF_MAX_ATTEMPTS} percobaan: ${lastError?.message || 'Unknown error'}`,
+          );
+        }
+
+        const rawPath = path.join(tempDir, `${String(i + 1).padStart(4, '0')}-raw.pdf`);
+        await fs.writeFile(rawPath, buffer);
+        rawPaths.push(rawPath);
+      }
+
+      // 3. Page optimization (2-up for PDFs with 2 or more pages)
+      const processedPaths: string[] = [];
+      for (let i = 0; i < total; i++) {
+        await report({
+          stage: 'OPTIMIZING',
+          progress: pct(PROGRESS.DOWNLOADED, PROGRESS.OPTIMIZED, i),
+          processedCount: i,
+          totalCount: total,
+          currentItem: documents[i].name,
+        });
+
+        const source = await PdfLibDocument.load(await fs.readFile(rawPaths[i]));
+        if (source.getPageCount() >= TWO_UP_MIN_PAGES) {
+          const optimized = await this.convertPdfToTwoUp(source);
+          const processedPath = path.join(
+            tempDir,
+            `${String(i + 1).padStart(4, '0')}-processed.pdf`,
+          );
+          await fs.writeFile(processedPath, await optimized.save());
+          processedPaths.push(processedPath);
+        } else {
+          processedPaths.push(rawPaths[i]);
+        }
+      }
+
+      // 4. Merge all processed PDFs in document order
+      const merged = await PdfLibDocument.create();
+      let expectedPages = 0;
+      for (let i = 0; i < total; i++) {
+        await report({
+          stage: 'MERGING',
+          progress: pct(PROGRESS.OPTIMIZED, PROGRESS.MERGED, i),
+          processedCount: i,
+          totalCount: total,
+          currentItem: documents[i].name,
+        });
+
+        const part = await PdfLibDocument.load(await fs.readFile(processedPaths[i]));
+        const copied = await merged.copyPages(part, part.getPageIndices());
+        copied.forEach((p) => merged.addPage(p));
+        expectedPages += copied.length;
+      }
+
+      const finalBytes = await merged.save();
+
+      // Validate final PDF before it is reported as successful
+      const verify = await PdfLibDocument.load(finalBytes);
+      if (verify.getPageCount() !== expectedPages || expectedPages === 0) {
+        throw new Error('Validasi PDF gabungan gagal: jumlah halaman tidak sesuai.');
+      }
+
+      await report({
+        stage: 'MERGING',
+        progress: PROGRESS.MERGED,
+        processedCount: total,
+        totalCount: total,
+        currentItem: null,
+      });
+
+      return Buffer.from(finalBytes);
+    } finally {
+      await fs
+        .rm(tempDir, { recursive: true, force: true })
+        .catch((e) =>
+          this.logger.warn(`Failed to clean temp dir ${tempDir}: ${e.message}`),
+        );
     }
   }
 
@@ -1124,7 +1537,8 @@ export class TagihanReportService {
       where: { uuid: jobUuid },
       data: {
         status: 'PROCESSING',
-        progress: 25,
+        progress: reportType === 'ODOO_REPORT_PDF' ? 0 : 25,
+        stage: 'PREPARING',
         startedAt: new Date(),
       },
     });
@@ -1134,6 +1548,8 @@ export class TagihanReportService {
       include: {
         warehouse: true,
         documentReferences: {
+          // Preserve the order in which documents were linked to the tagihan
+          orderBy: { id: 'asc' },
           include: {
             documentReference: {
               include: { items: true },
@@ -1165,15 +1581,31 @@ export class TagihanReportService {
     } else if (reportType === 'ODOO_REPORT_PDF') {
       fileName = `Odoo_Report_${safeDocNumber}_${timestampStr}.pdf`;
       mimeType = 'application/pdf';
-      buffer = await this.downloadOdooReportPdf(tagihan);
+      buffer = await this.downloadOdooReportPdf(tagihan, (p) =>
+        this.prisma.tagihanReportJob
+          .update({
+            where: { uuid: jobUuid },
+            data: {
+              stage: p.stage,
+              progress: p.progress,
+              processedCount: p.processedCount,
+              totalCount: p.totalCount,
+              currentItem: p.currentItem,
+            },
+          })
+          .then(() => undefined),
+      );
     } else {
       throw new Error(`Tipe laporan ${reportType} tidak didukung.`);
     }
 
-    // Update progress to 75%
     await this.prisma.tagihanReportJob.update({
       where: { uuid: jobUuid },
-      data: { progress: 75 },
+      data: {
+        stage: 'SAVING',
+        progress: reportType === 'ODOO_REPORT_PDF' ? PROGRESS.SAVING : 75,
+        currentItem: fileName,
+      },
     });
 
     // Upload to MinIO Storage
@@ -1202,7 +1634,9 @@ export class TagihanReportService {
       where: { uuid: jobUuid },
       data: {
         status: 'COMPLETED',
+        stage: 'COMPLETED',
         progress: 100,
+        currentItem: null,
         tagihanFileId: tagihanFile.id,
         completedAt: new Date(),
       },

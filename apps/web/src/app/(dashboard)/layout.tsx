@@ -79,6 +79,7 @@ export default function DashboardLayout({
         const allowedPaths = [
           "/finance/tagihan",
           "/finance/non-commodity-documents",
+          "/finance/buruh",
           "/profile",
         ];
         const isAllowed = allowedPaths.some(
@@ -151,10 +152,11 @@ export default function DashboardLayout({
     items: group.items.map((item) => {
       let show = true;
       if (isFinance) {
-        // Finance is strictly permitted ONLY to Tagihan and Non Commodity Document
+        // Finance is strictly permitted ONLY to Tagihan, Non Commodity Document and Buruh
         show =
           item.href === "/finance/tagihan" ||
-          item.href === "/finance/non-commodity-documents";
+          item.href === "/finance/non-commodity-documents" ||
+          item.href === "/finance/buruh";
       } else if (item.superAdminOnly) {
         show = user?.role === "SUPER_ADMIN";
       } else if (item.permissionSubject) {

@@ -10,14 +10,30 @@ var __assign = (this && this.__assign) || function () {
     };
     return __assign.apply(this, arguments);
 };
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TagihanQuerySchema = exports.UpdateTagihanSchema = exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
-exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = void 0;
+exports.BuruhQuerySchema = exports.UpdateBuruhSchema = exports.CreateBuruhSchema = exports.TagihanReportStageEnum = exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = void 0;
 exports.validateTagihanTypeRules = validateTagihanTypeRules;
 exports.getSecondaryQty = getSecondaryQty;
 exports.getSecondaryUnit = getSecondaryUnit;
 exports.formatSecondaryQty = formatSecondaryQty;
 var zod_1 = require("zod");
+var tagihan_document_1 = require("./tagihan-document");
+__exportStar(require("./tagihan-document"), exports);
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
     email: zod_1.z.string().email("Format email tidak valid"),
@@ -326,12 +342,12 @@ exports.CreateDocumentTemplateSchema = zod_1.z.object({
     name: zod_1.z.string().min(2, "Nama template wajib diisi").max(255),
     description: zod_1.z.string().optional().nullable(),
     isActive: zod_1.z.boolean().optional().default(true),
-});
+}).merge(tagihan_document_1.TagihanTemplateUsageSchema);
 exports.UpdateDocumentTemplateSchema = zod_1.z.object({
     name: zod_1.z.string().min(2, "Nama template wajib diisi").max(255),
     description: zod_1.z.string().optional().nullable(),
     isActive: zod_1.z.boolean(),
-});
+}).merge(tagihan_document_1.TagihanTemplateUsageSchema);
 // Document Assembly Schema
 exports.AssemblyItemSchema = zod_1.z.object({
     type: zod_1.z.enum(["TEMPLATE", "PDF"]),
@@ -470,6 +486,15 @@ exports.TagihanReportJobStatusEnum = zod_1.z.enum([
     "IDLE",
     "PENDING",
     "PROCESSING",
+    "COMPLETED",
+    "FAILED",
+]);
+exports.TagihanReportStageEnum = zod_1.z.enum([
+    "PREPARING",
+    "DOWNLOADING",
+    "OPTIMIZING",
+    "MERGING",
+    "SAVING",
     "COMPLETED",
     "FAILED",
 ]);
@@ -660,3 +685,29 @@ function formatSecondaryQty(qty, uom) {
         maximumFractionDigits: 3,
     }), " ").concat(unit);
 }
+// Buruh (Labor) Master Schemas
+// Multipart form fields arrive as strings, so "false" must not coerce to true.
+var FormBooleanSchema = zod_1.z.preprocess(function (v) { return (typeof v === "string" ? v === "true" : v); }, zod_1.z.boolean());
+exports.CreateBuruhSchema = zod_1.z.object({
+    name: zod_1.z.string().trim().min(2, "Nama buruh minimal 2 karakter").max(150),
+    nik: zod_1.z
+        .string()
+        .trim()
+        .regex(/^\d{16}$/, "NIK harus 16 digit angka")
+        .optional()
+        .nullable()
+        .or(zod_1.z.literal("")),
+    isActive: FormBooleanSchema.optional().default(true),
+    // Only one mandor per warehouse; setting this replaces the current mandor
+    isMandor: FormBooleanSchema.optional().default(false),
+});
+exports.UpdateBuruhSchema = exports.CreateBuruhSchema.partial().extend({
+    removeKtpPhoto: FormBooleanSchema.optional(),
+});
+exports.BuruhQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    page: zod_1.z.string().or(zod_1.z.number()).optional(),
+    limit: zod_1.z.string().or(zod_1.z.number()).optional(),
+    isActive: zod_1.z.enum(["true", "false"]).optional(),
+    isMandor: zod_1.z.enum(["true", "false"]).optional(),
+});

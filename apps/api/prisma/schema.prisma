@@ -38,6 +38,7 @@ model User {
   generatedDocuments        DocumentGenerated[]
   tagihansCreated           Tagihan[]
   tagihanFilesUploaded      TagihanFile[]
+  buruhsCreated             Buruh[]
 
   @@index([email])
   @@index([uuid])
@@ -166,6 +167,7 @@ model Warehouse {
   auditLogs           AuditLog[]
   documentPurchaseOrders DocumentPurchaseOrder[]
   tagihans               Tagihan[]
+  buruhs                 Buruh[]
 
   @@index([uuid])
   @@index([code])
@@ -570,6 +572,10 @@ model DocumentTemplate {
   isActive          Boolean             @default(true)
   createdBy         Int
   warehouseId       Int?
+  // Tagihan document usage; null keeps the template general-purpose only
+  tagihanPurpose    TagihanDocumentPurpose?
+  // Null applies the template to every Tagihan type
+  tagihanType       TagihanType?
   createdAt         DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
   deletedAt         DateTime?           @db.Timestamptz(3)
@@ -581,6 +587,7 @@ model DocumentTemplate {
   @@index([code])
   @@index([categoryId])
   @@index([isActive])
+  @@index([tagihanPurpose, tagihanType])
   @@map("DocumentTemplate")
 }
 
@@ -600,6 +607,13 @@ model DocumentGenerated {
   status            String           @default("PROCESSING") // PROCESSING, GENERATED, FAILED
   errorMessage      String?
   warehouseId       Int?
+  // Set when generated from a Tagihan (Surat Permohonan / Tanda Terima)
+  tagihanId         Int?
+  tagihanPurpose    TagihanDocumentPurpose?
+  progress          Int              @default(0)
+  stage             String?
+  // Exact values / payment allocation used, kept for history
+  inputSnapshot     Json?
   createdAt         DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
   deletedAt         DateTime?        @db.Timestamptz(3)
@@ -607,12 +621,15 @@ model DocumentGenerated {
   template          DocumentTemplate @relation(fields: [templateId], references: [id])
   category          DocumentCategory @relation(fields: [categoryId], references: [id])
   generator         User             @relation(fields: [generatedBy], references: [id])
+  tagihan           Tagihan?         @relation(fields: [tagihanId], references: [id], onDelete: SetNull)
+  tagihanFiles      TagihanFile[]
 
   @@index([templateId])
   @@index([categoryId])
   @@index([documentNumber])
   @@index([generatedAt])
   @@index([status])
+  @@index([tagihanId, tagihanPurpose])
   @@map("DocumentGenerated")
 }
 
@@ -864,6 +881,11 @@ enum TagihanType {
   OVERSTAPEL
 }
 
+enum TagihanDocumentPurpose {
+  SURAT_PERMOHONAN
+  TANDA_TERIMA
+}
+
 model MasterTagihanStatus {
   id          Int       @id @default(autoincrement())
   uuid        String    @unique @default(uuid())
@@ -901,6 +923,7 @@ model Tagihan {
   summaries              TagihanSummary[]
   files                  TagihanFile[]
   reportJobs             TagihanReportJob[]
+  generatedDocuments     DocumentGenerated[]
 
   @@index([warehouseId])
   @@index([uuid])
@@ -993,15 +1016,19 @@ model TagihanFile {
   jobId        String?
   uploadedById Int?
   uploadedAt   DateTime           @default(now()) @db.Timestamptz(3)
+  // Generation that produced this attachment (Surat Permohonan / Tanda Terima)
+  documentGeneratedId Int?
 
   tagihan      Tagihan            @relation(fields: [tagihanId], references: [id], onDelete: Cascade)
   uploadedBy   User?              @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  documentGenerated DocumentGenerated? @relation(fields: [documentGeneratedId], references: [id], onDelete: SetNull)
   reportJobs   TagihanReportJob[]
 
   @@index([tagihanId])
   @@index([uuid])
   @@index([fileType])
   @@index([fingerprint])
+  @@index([documentGeneratedId])
   @@map("TagihanFile")
 }
 
@@ -1019,8 +1046,12 @@ model TagihanReportJob {
   reportType    String
   status        TagihanJobStatus @default(PENDING)
   fingerprint   String
-  progress      Int              @default(0)
-  errorMessage  String?
+  progress       Int              @default(0)
+  stage          String?
+  processedCount Int              @default(0)
+  totalCount     Int              @default(0)
+  currentItem    String?
+  errorMessage   String?
   tagihanFileId Int?
   startedAt     DateTime?        @db.Timestamptz(3)
   completedAt   DateTime?        @db.Timestamptz(3)
@@ -1038,3 +1069,29 @@ model TagihanReportJob {
   @@map("TagihanReportJob")
 }
 
+
+model Buruh {
+  id           Int       @id @default(autoincrement())
+  uuid         String    @unique @default(uuid())
+  warehouseId  Int
+  name         String
+  nik          String?
+  ktpPhotoKey  String?
+  isActive     Boolean   @default(true)
+  // At most one active mandor per warehouse; enforced in BuruhService
+  isMandor     Boolean   @default(false)
+  createdById  Int?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt    DateTime? @db.Timestamptz(3)
+
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdBy    User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([warehouseId])
+  @@index([uuid])
+  @@index([name])
+  @@index([isActive])
+  @@index([warehouseId, isMandor])
+  @@map("Buruh")
+}

@@ -106,6 +106,13 @@ export class DocumentTemplateController {
     return this.service.uploadNewVersion(uuid, file, userId);
   }
 
+  @Get(':uuid/download')
+  @CheckPolicies((ability) => ability.can('read', 'DocumentTemplate'))
+  async getDownloadUrl(@Param('uuid') uuid: string) {
+    const url = await this.service.getDownloadUrl(uuid);
+    return { url };
+  }
+
   @Delete(':uuid')
   @CheckPolicies((ability) => ability.can('delete', 'DocumentTemplate'))
   @AuditLogAction('TEMPLATE_DELETE')

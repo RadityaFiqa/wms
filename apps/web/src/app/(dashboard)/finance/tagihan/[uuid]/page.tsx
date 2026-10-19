@@ -12,6 +12,8 @@ import {
   Calendar,
   Loader2,
   AlertCircle,
+  FileSignature,
+  ReceiptText,
 } from "lucide-react";
 import {
   useTagihanDetail,
@@ -29,6 +31,10 @@ import {
   RelatedDocumentsManager,
   type ManualDocItem,
 } from "@/components/finance/tagihan/RelatedDocumentsManager";
+import { GenerateSuratPermohonanModal } from "@/components/finance/tagihan/documents/GenerateSuratPermohonanModal";
+import { GenerateTandaTerimaModal } from "@/components/finance/tagihan/documents/GenerateTandaTerimaModal";
+import { TagihanGeneratedDocuments } from "@/components/finance/tagihan/documents/TagihanGeneratedDocuments";
+import { useTagihanGeneratedDocuments } from "@/hooks/useTagihanDocuments";
 import { getSecondaryQty, getSecondaryUnit } from "@/lib/quantity";
 import { validateTagihanTypeRules, type TagihanType } from "@bulog-wms/schema";
 import { useAuthStore } from "@/store/auth";
@@ -45,6 +51,11 @@ export default function TagihanDetailPage() {
 
   const { tagihan, isLoading, error, refresh } = useTagihanDetail(uuid);
   const { statuses, refresh: refreshStatuses } = useMasterTagihanStatuses();
+  const { documents: generatedDocs, isLoading: generatedDocsLoading } = useTagihanGeneratedDocuments(uuid);
+  const canGenerateDocuments = hasPermission("update", "Tagihan");
+  const [docModal, setDocModal] = useState<"SURAT_PERMOHONAN" | "TANDA_TERIMA" | null>(null);
+  const isGenerating = (purpose: "SURAT_PERMOHONAN" | "TANDA_TERIMA") =>
+    generatedDocs.some((d) => d.purpose === purpose && d.status === "PROCESSING");
 
   // Mode: View vs Edit
   const [isEditing, setIsEditing] = useState(false);
@@ -353,6 +364,26 @@ export default function TagihanDetailPage() {
         <div className="flex items-center gap-2">
           {!isEditing ? (
             <>
+              {canGenerateDocuments && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDocModal("SURAT_PERMOHONAN")}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 transition inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <FileSignature className="h-3.5 w-3.5 text-emerald-600" />
+                    Generate Dokumen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDocModal("TANDA_TERIMA")}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 transition inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <ReceiptText className="h-3.5 w-3.5 text-amber-600" />
+                    Generate Tanda Terima
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
@@ -620,6 +651,13 @@ export default function TagihanDetailPage() {
         onFilesChange={refresh}
       />
 
+      {/* Section: Generated Surat Permohonan & Tanda Terima */}
+      <TagihanGeneratedDocuments
+        tagihanUuid={uuid}
+        documents={generatedDocs}
+        isLoading={generatedDocsLoading}
+      />
+
       {/* Section: Supporting Files Manager */}
       <TagihanFilesManager
         tagihanUuid={uuid}
@@ -629,6 +667,23 @@ export default function TagihanDetailPage() {
       />
 
       {/* Modals */}
+      {docModal === "SURAT_PERMOHONAN" && (
+        <GenerateSuratPermohonanModal
+          tagihanUuid={uuid}
+          tagihanType={tagihan.type}
+          isProcessing={isGenerating("SURAT_PERMOHONAN")}
+          onClose={() => setDocModal(null)}
+        />
+      )}
+      {docModal === "TANDA_TERIMA" && (
+        <GenerateTandaTerimaModal
+          tagihanUuid={uuid}
+          tagihanType={tagihan.type}
+          isProcessing={isGenerating("TANDA_TERIMA")}
+          onClose={() => setDocModal(null)}
+        />
+      )}
+
       <ErpDocumentSelectorModal
         isOpen={isErpModalOpen}
         onClose={() => setIsErpModalOpen(false)}

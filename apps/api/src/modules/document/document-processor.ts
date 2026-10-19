@@ -11,6 +11,7 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as crypto from 'crypto';
+import type { TagihanAttachmentJobData } from '@/modules/document/document-generation.service';
 
 const execAsync = promisify(exec);
 
@@ -113,14 +114,15 @@ export class DocumentProcessor extends WorkerHost {
    * BullMQ queue job worker process
    */
   async process(job: Job<any, any, string>): Promise<any> {
-    const { id, templateId, placeholder, attachments, userId, warehouseId } =
-      job.data;
+    const { id, templateId, placeholder, attachments, userId } = job.data;
+    const tagihanAttachment: TagihanAttachmentJobData | undefined =
+      job.data.tagihanAttachment;
     this.logger.log(`Processing document generation job for ID: ${id}`);
 
     // Update status to PROCESSING (redundant but safe)
     await this.prisma.documentGenerated.update({
       where: { id },
-      data: { status: 'PROCESSING' },
+      data: { status: 'PROCESSING', progress: 5, stage: 'PREPARING' },
     });
 
     try {
@@ -142,11 +144,14 @@ export class DocumentProcessor extends WorkerHost {
 
       // Compile Main Template
       this.logger.log('Compiling main template DOCX...');
+      await this.setProgress(id, 20, 'RENDERING');
       const mainDocxBuffer = this.compileDocx(mainTemplateBuffer, placeholder);
 
       // Convert Main DOCX to PDF
       this.logger.log('Converting main DOCX to PDF...');
+      await this.setProgress(id, 40, 'CONVERTING');
       const mainPdfBuffer = await this.convertDocxToPdf(mainDocxBuffer);
+      await this.setProgress(id, 60, 'MERGING');
 
       // 2. Process Document Assembly
       const assemblySchema = (template.assemblySchema as any[]) || [];
@@ -289,6 +294,7 @@ export class DocumentProcessor extends WorkerHost {
       const finalPdfBuffer = await this.mergePdfBuffers(pdfBuffersToMerge);
 
       // 4. Upload Files to MinIO
+      await this.setProgress(id, 80, 'SAVING');
       const docxPath = `generated/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.docx`;
       const pdfPath = `generated/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.pdf`;
 
@@ -312,15 +318,43 @@ export class DocumentProcessor extends WorkerHost {
         .update(finalPdfBuffer)
         .digest('hex');
 
-      // 5. Update Database Record
-      await this.prisma.documentGenerated.update({
-        where: { id },
-        data: {
-          docxObjectKey: docxPath,
-          pdfObjectKey: pdfPath,
-          fileHash: hash,
-          status: 'GENERATED',
-        },
+      // 5. Store separate Tagihan Supporting File copies when requested
+      const supportingFiles = tagihanAttachment
+        ? await this.uploadTagihanCopies(tagihanAttachment, {
+            docx: mainDocxBuffer,
+            pdf: finalPdfBuffer,
+          })
+        : [];
+
+      // 6. Update Database Record (and attach supporting files atomically)
+      await this.prisma.$transaction(async (tx) => {
+        await tx.documentGenerated.update({
+          where: { id },
+          data: {
+            docxObjectKey: docxPath,
+            pdfObjectKey: pdfPath,
+            fileHash: hash,
+            status: 'GENERATED',
+            progress: 100,
+            stage: 'COMPLETED',
+          },
+        });
+        if (tagihanAttachment && supportingFiles.length > 0) {
+          await tx.tagihanFile.createMany({
+            data: supportingFiles.map((f) => ({
+              tagihanId: tagihanAttachment.tagihanId,
+              filePath: f.filePath,
+              fileName: f.fileName,
+              fileSize: f.fileSize,
+              mimeType: f.mimeType,
+              fileType: tagihanAttachment.fileType,
+              generatedAt: new Date(),
+              jobId: String(job.id ?? ''),
+              uploadedById: userId,
+              documentGeneratedId: id,
+            })),
+          });
+        }
       });
 
       this.logger.log(
@@ -337,11 +371,68 @@ export class DocumentProcessor extends WorkerHost {
         where: { id },
         data: {
           status: 'FAILED',
+          stage: 'FAILED',
           errorMessage: error.message || 'Internal processing error',
         },
       });
 
       throw error;
     }
+  }
+
+  /**
+   * Best-effort progress heartbeat; never fails the job.
+   */
+  private async setProgress(id: number, progress: number, stage: string) {
+    try {
+      await this.prisma.documentGenerated.update({
+        where: { id },
+        data: { progress, stage },
+      });
+    } catch (e: any) {
+      this.logger.warn(`Failed to update progress for ID ${id}: ${e.message}`);
+    }
+  }
+
+  /**
+   * Upload Supporting File copies under the Tagihan folder. Copies (not shared
+   * keys) because deleting a TagihanFile removes its object from storage.
+   */
+  private async uploadTagihanCopies(
+    target: TagihanAttachmentJobData,
+    buffers: { docx: Buffer; pdf: Buffer },
+  ) {
+    const safeName = target.fileBaseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const files = [
+      {
+        buffer: buffers.pdf,
+        fileName: `${safeName}.pdf`,
+        mimeType: 'application/pdf',
+      },
+      {
+        buffer: buffers.docx,
+        fileName: `${safeName}.docx`,
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      },
+    ];
+
+    const uploaded: Array<{
+      filePath: string;
+      fileName: string;
+      fileSize: number;
+      mimeType: string;
+    }> = [];
+    for (const f of files) {
+      const filePath = `tagihan/${target.tagihanUuid}/generated/${crypto.randomUUID()}-${f.fileName}`;
+      await this.storageService.uploadBuffer(f.buffer, filePath, f.mimeType);
+      uploaded.push({
+        filePath,
+        fileName: f.fileName,
+        fileSize: f.buffer.length,
+        mimeType: f.mimeType,
+      });
+    }
+    return uploaded;
   }
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+export * from "./tagihan-document";
 export declare const LoginSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
@@ -68,13 +69,13 @@ export declare const CreateUserSchema: z.ZodObject<{
     roleId: z.ZodNumber;
     warehouseId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    email: string;
     name: string;
+    email: string;
     roleId: number;
     warehouseId?: number | null | undefined;
 }, {
-    email: string;
     name: string;
+    email: string;
     roleId: number;
     warehouseId?: number | null | undefined;
 }>;
@@ -86,14 +87,14 @@ export declare const UpdateUserSchema: z.ZodObject<{
     warehouseId: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     isActive: z.ZodBoolean;
 }, "strip", z.ZodTypeAny, {
-    email: string;
     name: string;
+    email: string;
     roleId: number;
     isActive: boolean;
     warehouseId?: number | null | undefined;
 }, {
-    email: string;
     name: string;
+    email: string;
     roleId: number;
     isActive: boolean;
     warehouseId?: number | null | undefined;
@@ -891,16 +892,23 @@ export declare const CreateDocumentTemplateSchema: z.ZodObject<{
     name: z.ZodString;
     description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     isActive: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+} & {
+    tagihanPurpose: z.ZodOptional<z.ZodEffects<z.ZodNullable<z.ZodEnum<["SURAT_PERMOHONAN", "TANDA_TERIMA"]>>, "SURAT_PERMOHONAN" | "TANDA_TERIMA" | null, unknown>>;
+    tagihanType: z.ZodOptional<z.ZodEffects<z.ZodNullable<z.ZodEnum<["LOADING", "UNLOADING", "REBAGGING", "REPROSES", "OVERSTAPEL"]>>, "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL" | null, unknown>>;
 }, "strip", z.ZodTypeAny, {
     code: string;
     name: string;
     isActive: boolean;
     categoryId: string | number;
+    tagihanPurpose?: "SURAT_PERMOHONAN" | "TANDA_TERIMA" | null | undefined;
+    tagihanType?: "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL" | null | undefined;
     description?: string | null | undefined;
 }, {
     code: string;
     name: string;
     categoryId: string | number;
+    tagihanPurpose?: unknown;
+    tagihanType?: unknown;
     isActive?: boolean | undefined;
     description?: string | null | undefined;
 }>;
@@ -909,13 +917,20 @@ export declare const UpdateDocumentTemplateSchema: z.ZodObject<{
     name: z.ZodString;
     description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     isActive: z.ZodBoolean;
+} & {
+    tagihanPurpose: z.ZodOptional<z.ZodEffects<z.ZodNullable<z.ZodEnum<["SURAT_PERMOHONAN", "TANDA_TERIMA"]>>, "SURAT_PERMOHONAN" | "TANDA_TERIMA" | null, unknown>>;
+    tagihanType: z.ZodOptional<z.ZodEffects<z.ZodNullable<z.ZodEnum<["LOADING", "UNLOADING", "REBAGGING", "REPROSES", "OVERSTAPEL"]>>, "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL" | null, unknown>>;
 }, "strip", z.ZodTypeAny, {
     name: string;
     isActive: boolean;
+    tagihanPurpose?: "SURAT_PERMOHONAN" | "TANDA_TERIMA" | null | undefined;
+    tagihanType?: "LOADING" | "UNLOADING" | "REBAGGING" | "REPROSES" | "OVERSTAPEL" | null | undefined;
     description?: string | null | undefined;
 }, {
     name: string;
     isActive: boolean;
+    tagihanPurpose?: unknown;
+    tagihanType?: unknown;
     description?: string | null | undefined;
 }>;
 export type UpdateDocumentTemplateInput = z.infer<typeof UpdateDocumentTemplateSchema>;
@@ -1407,6 +1422,8 @@ export declare const GenerateTagihanReportInputSchema: z.ZodObject<{
 export type GenerateTagihanReportInput = z.infer<typeof GenerateTagihanReportInputSchema>;
 export declare const TagihanReportJobStatusEnum: z.ZodEnum<["IDLE", "PENDING", "PROCESSING", "COMPLETED", "FAILED"]>;
 export type TagihanReportJobStatus = z.infer<typeof TagihanReportJobStatusEnum>;
+export declare const TagihanReportStageEnum: z.ZodEnum<["PREPARING", "DOWNLOADING", "OPTIMIZING", "MERGING", "SAVING", "COMPLETED", "FAILED"]>;
+export type TagihanReportStage = z.infer<typeof TagihanReportStageEnum>;
 export interface ErpDocumentCandidate {
     uuid: string;
     documentNumber: string;
@@ -1432,4 +1449,72 @@ export declare function validateTagihanTypeRules(type: TagihanType, documents: E
 export declare function getSecondaryQty(qty: number, uom?: string | null): number;
 export declare function getSecondaryUnit(uom?: string | null): string;
 export declare function formatSecondaryQty(qty: number, uom?: string | null): string;
+export declare const CreateBuruhSchema: z.ZodObject<{
+    name: z.ZodString;
+    nik: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>;
+    isActive: z.ZodDefault<z.ZodOptional<z.ZodEffects<z.ZodBoolean, boolean, unknown>>>;
+    isMandor: z.ZodDefault<z.ZodOptional<z.ZodEffects<z.ZodBoolean, boolean, unknown>>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    isActive: boolean;
+    isMandor: boolean;
+    nik?: string | null | undefined;
+}, {
+    name: string;
+    isActive?: unknown;
+    nik?: string | null | undefined;
+    isMandor?: unknown;
+}>;
+export type CreateBuruhInput = z.infer<typeof CreateBuruhSchema>;
+export declare const UpdateBuruhSchema: z.ZodObject<{
+    name: z.ZodOptional<z.ZodString>;
+    nik: z.ZodOptional<z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodLiteral<"">]>>;
+    isActive: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodEffects<z.ZodBoolean, boolean, unknown>>>>;
+    isMandor: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodEffects<z.ZodBoolean, boolean, unknown>>>>;
+} & {
+    removeKtpPhoto: z.ZodOptional<z.ZodEffects<z.ZodBoolean, boolean, unknown>>;
+}, "strip", z.ZodTypeAny, {
+    name?: string | undefined;
+    isActive?: boolean | undefined;
+    nik?: string | null | undefined;
+    isMandor?: boolean | undefined;
+    removeKtpPhoto?: boolean | undefined;
+}, {
+    name?: string | undefined;
+    isActive?: unknown;
+    nik?: string | null | undefined;
+    isMandor?: unknown;
+    removeKtpPhoto?: unknown;
+}>;
+export type UpdateBuruhInput = z.infer<typeof UpdateBuruhSchema>;
+export declare const BuruhQuerySchema: z.ZodObject<{
+    search: z.ZodOptional<z.ZodString>;
+    page: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    limit: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    isActive: z.ZodOptional<z.ZodEnum<["true", "false"]>>;
+    isMandor: z.ZodOptional<z.ZodEnum<["true", "false"]>>;
+}, "strip", z.ZodTypeAny, {
+    isActive?: "true" | "false" | undefined;
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    isMandor?: "true" | "false" | undefined;
+}, {
+    isActive?: "true" | "false" | undefined;
+    search?: string | undefined;
+    page?: string | number | undefined;
+    limit?: string | number | undefined;
+    isMandor?: "true" | "false" | undefined;
+}>;
+export type BuruhQueryInput = z.infer<typeof BuruhQuerySchema>;
+export interface BuruhResponse {
+    uuid: string;
+    name: string;
+    nik: string | null;
+    isActive: boolean;
+    isMandor: boolean;
+    ktpPhotoUrl: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
 //# sourceMappingURL=index.d.ts.map

@@ -283,6 +283,16 @@ export function TagihanFilesManager({
                       Odoo Report
                     </span>
                   )}
+                  {file.fileType === "SURAT_PERMOHONAN" && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-200 dark:border-teal-800 shrink-0">
+                      Surat Permohonan
+                    </span>
+                  )}
+                  {file.fileType === "TANDA_TERIMA" && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shrink-0">
+                      Tanda Terima
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-400">
                   {formatFileSize(file.fileSize)}

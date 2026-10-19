@@ -32,6 +32,7 @@ type ExtendedSubjects =
       DocumentProductPurchaseOrder: any;
       Tagihan: any;
       MasterTagihanStatus: any;
+      Buruh: any;
     }>
   | 'all';
 

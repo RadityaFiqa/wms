@@ -165,6 +165,11 @@ async function main() {
     { action: 'read', subject: 'Tagihan' },
     { action: 'update', subject: 'Tagihan' },
     { action: 'delete', subject: 'Tagihan' },
+    // Buruh (Labor master)
+    { action: 'create', subject: 'Buruh' },
+    { action: 'read', subject: 'Buruh' },
+    { action: 'update', subject: 'Buruh' },
+    { action: 'delete', subject: 'Buruh' },
   ];
 
   const permissions: Record<string, any> = {};
@@ -243,6 +248,10 @@ async function main() {
         'read:Tagihan',
         'update:Tagihan',
         'delete:Tagihan',
+        'create:Buruh',
+        'read:Buruh',
+        'update:Buruh',
+        'delete:Buruh',
       ],
     },
     {
@@ -312,6 +321,9 @@ async function main() {
       permissionKeys: [
         'read:Tagihan',
         'update:Tagihan',
+        'create:Buruh',
+        'read:Buruh',
+        'update:Buruh',
         'read:DocumentPurchaseOrder',
       ],
     },

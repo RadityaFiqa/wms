@@ -6,10 +6,35 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
-import type { GenerateDocumentInput } from '@bulog-wms/schema';
+import type {
+  GenerateDocumentInput,
+  TagihanDocumentPurpose,
+} from '@bulog-wms/schema';
+import type { Prisma } from '@prisma/client';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
+
+/**
+ * When present, the processor also stores the result as Tagihan Supporting
+ * Files (separate copies, so deleting a supporting file keeps the history).
+ */
+export interface TagihanAttachmentJobData {
+  tagihanId: number;
+  tagihanUuid: string;
+  fileType: TagihanDocumentPurpose;
+  fileBaseName: string;
+}
+
+export interface DocumentGenerationJobData {
+  documentGeneratedId: number;
+  templateId: number;
+  placeholder: Record<string, any>;
+  attachments?: Array<{ type: 'PDF'; objectKey: string }>;
+  userId: number;
+  warehouseId?: number | null;
+  tagihanAttachment?: TagihanAttachmentJobData;
+}
 
 @Injectable()
 export class DocumentGenerationService {
@@ -25,13 +50,40 @@ export class DocumentGenerationService {
    */
   async generate(body: GenerateDocumentInput, userId: number) {
     const warehouseId = this.warehouseContext.getWarehouseId();
+    const template = await this.resolveActiveTemplate(body.templateId);
 
-    // Find template
+    const documentGenerated = await this.createGenerationRecord(this.prisma, {
+      template,
+      title: body.title,
+      documentNumber: body.documentNumber,
+      userId,
+      warehouseId,
+    });
+
+    await this.enqueueGeneration({
+      documentGeneratedId: documentGenerated.id,
+      templateId: template.id,
+      placeholder: body.placeholder,
+      attachments: body.attachments || [],
+      userId,
+      warehouseId,
+    });
+
+    return {
+      uuid: documentGenerated.uuid,
+      status: documentGenerated.status,
+    };
+  }
+
+  /**
+   * Find an active, non-deleted template by uuid or numeric id
+   */
+  async resolveActiveTemplate(templateRef: string | number) {
     const template = await this.prisma.documentTemplate.findFirst({
       where: {
         OR: [
-          { uuid: String(body.templateId) },
-          { id: isNaN(Number(body.templateId)) ? -1 : Number(body.templateId) },
+          { uuid: String(templateRef) },
+          { id: isNaN(Number(templateRef)) ? -1 : Number(templateRef) },
         ],
         deletedAt: null,
       },
@@ -45,44 +97,66 @@ export class DocumentGenerationService {
       throw new BadRequestException('Template sedang tidak aktif.');
     }
 
-    // Generate unique verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    return template;
+  }
 
-    // Create initial DOCUMENT_GENERATED record
-    const documentGenerated = await this.prisma.documentGenerated.create({
+  /**
+   * Create the PROCESSING record; accepts a transaction client so callers can
+   * combine it with their own locking (e.g. one active Tagihan generation).
+   */
+  async createGenerationRecord(
+    client: Prisma.TransactionClient | PrismaService,
+    params: {
+      template: { id: number; categoryId: number };
+      title: string;
+      documentNumber: string;
+      userId: number;
+      warehouseId?: number | null;
+      tagihan?: {
+        tagihanId: number;
+        tagihanPurpose: TagihanDocumentPurpose;
+        inputSnapshot: Prisma.InputJsonValue;
+      };
+    },
+  ) {
+    return client.documentGenerated.create({
       data: {
-        templateId: template.id,
-        categoryId: template.categoryId,
-        title: body.title,
-        documentNumber: body.documentNumber,
-        verificationToken,
-        generatedBy: userId,
+        templateId: params.template.id,
+        categoryId: params.template.categoryId,
+        title: params.title,
+        documentNumber: params.documentNumber,
+        verificationToken: crypto.randomBytes(32).toString('hex'),
+        generatedBy: params.userId,
         status: 'PROCESSING',
-        warehouseId,
+        stage: 'PENDING',
+        warehouseId: params.warehouseId,
+        tagihanId: params.tagihan?.tagihanId,
+        tagihanPurpose: params.tagihan?.tagihanPurpose,
+        inputSnapshot: params.tagihan?.inputSnapshot,
       },
     });
+  }
 
-    // Enqueue BullMQ job
+  /**
+   * Enqueue the BullMQ render job for an existing PROCESSING record
+   */
+  async enqueueGeneration(payload: DocumentGenerationJobData) {
     await this.documentQueue.add(
       'generate-job',
       {
-        id: documentGenerated.id,
-        templateId: template.id,
-        placeholder: body.placeholder,
-        attachments: body.attachments || [],
-        userId,
-        warehouseId,
+        id: payload.documentGeneratedId,
+        templateId: payload.templateId,
+        placeholder: payload.placeholder,
+        attachments: payload.attachments || [],
+        userId: payload.userId,
+        warehouseId: payload.warehouseId,
+        tagihanAttachment: payload.tagihanAttachment,
       },
       {
         removeOnComplete: true,
         removeOnFail: false,
       },
     );
-
-    return {
-      uuid: documentGenerated.uuid,
-      status: documentGenerated.status,
-    };
   }
 
   /**
