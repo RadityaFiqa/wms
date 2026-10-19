@@ -6,12 +6,17 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
-import type {
-  CreateDocumentTemplateInput,
-  UpdateDocumentTemplateInput,
-  UpdateAssemblyInput,
-  UpdatePlaceholdersInput,
+import {
+  checkTagihanTemplateTags,
+  type CreateDocumentTemplateInput,
+  type UpdateDocumentTemplateInput,
+  type UpdateAssemblyInput,
+  type UpdatePlaceholdersInput,
+  type TagihanDocumentPurpose,
+  type TagihanType,
+  type TemplateTagCheckResult,
 } from '@bulog-wms/schema';
+import type { Prisma } from '@prisma/client';
 import PizZip = require('pizzip');
 import Docxtemplater = require('docxtemplater');
 
@@ -257,25 +262,43 @@ export class DocumentTemplateService {
     // Auto-detect placeholders
     const placeholders = this.extractPlaceholders(file.buffer);
 
+    const tagihanPurpose = body.tagihanPurpose ?? null;
+    const tagihanType = body.tagihanType ?? null;
+    const tagCheck = this.assertTagihanTags(tagihanPurpose, placeholders);
+
     const attachment = await this.storageService.uploadFile(
       file,
       folder,
       userId,
     );
 
-    return this.prisma.documentTemplate.create({
-      data: {
-        code: body.code,
-        name: body.name,
-        description: body.description,
-        categoryId: category.id,
-        objectKey: attachment.filePath,
-        placeholderSchema: placeholders as any,
-        createdBy: userId,
-        warehouseId,
-        isActive: body.isActive ?? true,
-      },
+    const isActive = body.isActive ?? true;
+    const template = await this.prisma.$transaction(async (tx) => {
+      if (isActive) {
+        await this.deactivateOtherTandaTerima(tx, {
+          warehouseId: warehouseId ?? null,
+          tagihanPurpose,
+          tagihanType,
+        });
+      }
+      return tx.documentTemplate.create({
+        data: {
+          code: body.code,
+          name: body.name,
+          description: body.description,
+          categoryId: category.id,
+          objectKey: attachment.filePath,
+          placeholderSchema: placeholders as any,
+          createdBy: userId,
+          warehouseId,
+          isActive,
+          tagihanPurpose,
+          tagihanType,
+        },
+      });
     });
+
+    return { ...template, tagCheck };
   }
 
   /**
@@ -284,14 +307,38 @@ export class DocumentTemplateService {
   async update(uuid: string, body: UpdateDocumentTemplateInput) {
     const template = await this.findOne(uuid);
 
-    return this.prisma.documentTemplate.update({
-      where: { id: template.id },
-      data: {
-        name: body.name,
-        description: body.description,
-        isActive: body.isActive,
-      },
+    const tagihanPurpose =
+      body.tagihanPurpose === undefined ? template.tagihanPurpose : body.tagihanPurpose;
+    const tagihanType =
+      body.tagihanType === undefined ? template.tagihanType : body.tagihanType;
+    // Re-check tags when the template is (re)assigned to a Tagihan purpose
+    const tagCheck = this.assertTagihanTags(
+      tagihanPurpose,
+      template.placeholderSchema as any[],
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (body.isActive) {
+        await this.deactivateOtherTandaTerima(tx, {
+          warehouseId: template.warehouseId,
+          tagihanPurpose,
+          tagihanType,
+          exceptId: template.id,
+        });
+      }
+      return tx.documentTemplate.update({
+        where: { id: template.id },
+        data: {
+          name: body.name,
+          description: body.description,
+          isActive: body.isActive,
+          tagihanPurpose,
+          tagihanType,
+        },
+      });
     });
+
+    return { ...updated, tagCheck };
   }
 
   /**
@@ -306,6 +353,10 @@ export class DocumentTemplateService {
 
     // Auto-detect placeholders of the new file
     const placeholders = this.extractPlaceholders(file.buffer);
+    const tagCheck = this.assertTagihanTags(
+      template.tagihanPurpose,
+      placeholders,
+    );
 
     // Upload new template DOCX to MinIO
     const warehouseId = this.warehouseContext.getWarehouseId();
@@ -318,7 +369,7 @@ export class DocumentTemplateService {
       userId,
     );
 
-    return this.prisma.documentTemplate.update({
+    const updated = await this.prisma.documentTemplate.update({
       where: { id: template.id },
       data: {
         objectKey: attachment.filePath,
@@ -326,6 +377,71 @@ export class DocumentTemplateService {
         version: template.version + 1,
       },
     });
+
+    return { ...updated, tagCheck };
+  }
+
+  /**
+   * Enforce the Tagihan tag contract; Tanda Terima templates missing required
+   * tags are rejected, Surat Permohonan only gets warnings.
+   */
+  private assertTagihanTags(
+    purpose: TagihanDocumentPurpose | null,
+    placeholders: Array<{ key: string }> | null,
+  ): TemplateTagCheckResult | null {
+    if (!purpose) return null;
+    const keys = (placeholders || []).map((p) => p.key);
+    const result = checkTagihanTemplateTags(purpose, keys);
+    if (!result.isValid) {
+      throw new BadRequestException(
+        `Template Tanda Terima belum memiliki tag wajib: ${result.missingRequired
+          .map((k) => `{${k}}`)
+          .join(', ')}`,
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Keep a single active Tanda Terima template per warehouse scope and
+   * Tagihan type (null type = all types, null warehouse = global).
+   */
+  private async deactivateOtherTandaTerima(
+    tx: Prisma.TransactionClient,
+    scope: {
+      warehouseId: number | null;
+      tagihanPurpose: TagihanDocumentPurpose | null;
+      tagihanType: TagihanType | null;
+      exceptId?: number;
+    },
+  ) {
+    if (scope.tagihanPurpose !== 'TANDA_TERIMA') return;
+    await tx.documentTemplate.updateMany({
+      where: {
+        tagihanPurpose: 'TANDA_TERIMA',
+        warehouseId: scope.warehouseId,
+        tagihanType: scope.tagihanType,
+        isActive: true,
+        deletedAt: null,
+        ...(scope.exceptId ? { id: { not: scope.exceptId } } : {}),
+      },
+      data: { isActive: false },
+    });
+  }
+
+  /**
+   * Generate presigned download URL for the current template DOCX
+   */
+  async getDownloadUrl(uuid: string) {
+    const template = await this.findOne(uuid);
+    if (!template.objectKey) {
+      throw new NotFoundException('File template tidak ditemukan.');
+    }
+    return this.storageService.getFilePrivateUrl(
+      template.objectKey,
+      3600,
+      `${template.code}_v${template.version}.docx`,
+    );
   }
 
   /**

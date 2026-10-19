@@ -192,14 +192,19 @@ export class StorageService implements OnModuleInit {
 
   /**
    * Generates private pre-signed URL of a file path.
+   * When downloadFileName is given, the URL forces an attachment download with that name.
    */
   async getFilePrivateUrl(
     filePath: string,
     expiresSeconds = 3600,
+    downloadFileName?: string,
   ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: filePath,
+      ResponseContentDisposition: downloadFileName
+        ? `attachment; filename="${downloadFileName.replace(/[^\w.-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(downloadFileName)}`
+        : undefined,
     });
     return getSignedUrl(this.s3Client, command, { expiresIn: expiresSeconds });
   }

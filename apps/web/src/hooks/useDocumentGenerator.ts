@@ -78,6 +78,13 @@ export function useDocumentGenerator() {
     [],
   );
 
+  const getTemplateDownloadUrl = async (uuid: string) => {
+    const res = await api.get(
+      API_ROUTES.documentGenerator.templates.download(uuid),
+    );
+    return res.data.url;
+  };
+
   const deleteTemplate = useCallback(async (uuid: string) => {
     const res = await api.delete(
       API_ROUTES.documentGenerator.templates.delete(uuid),
@@ -203,6 +210,7 @@ export function useDocumentGenerator() {
     createTemplate,
     updateTemplate,
     createNewTemplateVersion,
+    getTemplateDownloadUrl,
     deleteTemplate,
     getAssembly,
     updateAssembly,

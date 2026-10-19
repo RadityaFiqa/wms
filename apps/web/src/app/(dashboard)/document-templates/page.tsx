@@ -20,6 +20,86 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
+import {
+  TagihanTypeEnum,
+  TagihanDocumentPurposeEnum,
+  TAGIHAN_PURPOSE_LABELS,
+  type TagihanDocumentPurpose,
+  type TemplateTagCheckResult,
+} from "@bulog-wms/schema";
+
+interface TagihanUsage {
+  tagihanPurpose: TagihanDocumentPurpose | "";
+  tagihanType: string;
+}
+
+const EMPTY_USAGE: TagihanUsage = { tagihanPurpose: "", tagihanType: "" };
+
+const selectClass =
+  "w-full px-4 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500";
+
+function notifyTagCheck(tagCheck?: TemplateTagCheckResult | null) {
+  if (!tagCheck || tagCheck.unusedStandard.length === 0) return;
+  const shown = tagCheck.unusedStandard.slice(0, 6).map((k) => `{${k}}`).join(", ");
+  const more = tagCheck.unusedStandard.length > 6 ? ` +${tagCheck.unusedStandard.length - 6} lainnya` : "";
+  toast.warning(`Tag standar belum dipakai di template: ${shown}${more}. Nilainya tidak akan terisi otomatis.`);
+}
+
+/** Tagihan usage selects shared by the create and edit modals */
+function TagihanUsageFields({
+  value,
+  onChange,
+}: {
+  value: TagihanUsage;
+  onChange: (usage: TagihanUsage) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Penggunaan Tagihan</label>
+        <select
+          value={value.tagihanPurpose}
+          onChange={(e) =>
+            onChange({
+              tagihanPurpose: e.target.value as TagihanUsage["tagihanPurpose"],
+              tagihanType: e.target.value ? value.tagihanType : "",
+            })
+          }
+          className={selectClass}
+        >
+          <option value="">Tidak digunakan</option>
+          {TagihanDocumentPurposeEnum.options.map((p) => (
+            <option key={p} value={p}>
+              {TAGIHAN_PURPOSE_LABELS[p]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipe Tagihan</label>
+        <select
+          value={value.tagihanType}
+          disabled={!value.tagihanPurpose}
+          onChange={(e) => onChange({ ...value, tagihanType: e.target.value })}
+          className={`${selectClass} disabled:opacity-50`}
+        >
+          <option value="">Semua Tipe</option>
+          {TagihanTypeEnum.options.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      {value.tagihanPurpose === "TANDA_TERIMA" && (
+        <p className="md:col-span-2 text-xs text-slate-500 -mt-2">
+          Wajib berisi tag {"{#buruh}{nama}{diterima}{/buruh}"}, {"{total_upah}"} dan {"{tanggal}"}. Hanya 1 template
+          Tanda Terima aktif per gudang &amp; tipe; template aktif lain akan dinonaktifkan.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function DocumentTemplatesPage() {
   const { hasPermission } = useAuthStore();
@@ -30,6 +110,7 @@ export default function DocumentTemplatesPage() {
     createTemplate,
     updateTemplate,
     createNewTemplateVersion,
+    getTemplateDownloadUrl,
     deleteTemplate,
   } = useDocumentGenerator();
 
@@ -49,19 +130,22 @@ export default function DocumentTemplatesPage() {
   const [isVersionOpen, setIsVersionOpen] = useState(false);
 
   // Form states
-  const [createForm, setCreateForm] = useState({
+  const emptyCreateForm = {
     code: "",
     name: "",
     description: "",
     categoryId: "",
     file: null as File | null,
-  });
+    ...EMPTY_USAGE,
+  };
+  const [createForm, setCreateForm] = useState(emptyCreateForm);
 
   const [editForm, setEditForm] = useState({
     uuid: "",
     name: "",
     description: "",
     isActive: true,
+    ...EMPTY_USAGE,
   });
 
   const [versionForm, setVersionForm] = useState({
@@ -110,12 +194,15 @@ export default function DocumentTemplatesPage() {
       data.append("name", createForm.name);
       data.append("description", createForm.description);
       data.append("categoryId", createForm.categoryId);
+      data.append("tagihanPurpose", createForm.tagihanPurpose);
+      data.append("tagihanType", createForm.tagihanType);
       data.append("file", createForm.file);
 
-      await createTemplate(data);
+      const created = await createTemplate(data);
       toast.success("Template berhasil dibuat!", { id: toastId });
+      notifyTagCheck(created?.tagCheck);
       setIsCreateOpen(false);
-      setCreateForm({ code: "", name: "", description: "", categoryId: "", file: null });
+      setCreateForm(emptyCreateForm);
       loadTemplates();
     } catch (err: any) {
       const msg = err.response?.data?.message || "Gagal membuat template.";
@@ -132,12 +219,15 @@ export default function DocumentTemplatesPage() {
     setSubmitting(true);
     const toastId = toast.loading("Memperbarui template...");
     try {
-      await updateTemplate(editForm.uuid, {
+      const updated = await updateTemplate(editForm.uuid, {
         name: editForm.name,
         description: editForm.description,
         isActive: editForm.isActive,
+        tagihanPurpose: editForm.tagihanPurpose || null,
+        tagihanType: editForm.tagihanType || null,
       });
       toast.success("Template berhasil diperbarui!", { id: toastId });
+      notifyTagCheck(updated?.tagCheck);
       setIsEditOpen(false);
       loadTemplates();
     } catch (err: any) {
@@ -158,8 +248,9 @@ export default function DocumentTemplatesPage() {
       const data = new FormData();
       data.append("file", versionForm.file);
 
-      await createNewTemplateVersion(versionForm.uuid, data);
+      const versioned = await createNewTemplateVersion(versionForm.uuid, data);
       toast.success("Versi baru berhasil diunggah!", { id: toastId });
+      notifyTagCheck(versioned?.tagCheck);
       setIsVersionOpen(false);
       setVersionForm({ uuid: "", name: "", file: null });
       loadTemplates();
@@ -179,6 +270,16 @@ export default function DocumentTemplatesPage() {
       loadTemplates();
     } catch (err: any) {
       toast.error("Gagal menghapus template.");
+    }
+  };
+
+  const handleDownload = async (uuid: string) => {
+    try {
+      const url = await getTemplateDownloadUrl(uuid);
+      window.location.assign(url);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Gagal mengunduh template.";
+      toast.error(msg);
     }
   };
 
@@ -280,6 +381,15 @@ export default function DocumentTemplatesPage() {
                     </td>
                     <td className="px-6 py-4 text-slate-650 dark:text-slate-350">
                       {tpl.category?.name || "-"}
+                      {tpl.tagihanPurpose && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/40 dark:text-emerald-400">
+                            {TAGIHAN_PURPOSE_LABELS[tpl.tagihanPurpose as TagihanDocumentPurpose]}
+                            {" · "}
+                            {tpl.tagihanType || "Semua Tipe"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 font-mono font-bold text-blue-600 dark:text-blue-400">
                       v{tpl.version}
@@ -302,6 +412,15 @@ export default function DocumentTemplatesPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right space-x-1.5 whitespace-nowrap">
+                      <button
+                        onClick={() => handleDownload(tpl.uuid)}
+                        className="inline-flex items-center justify-center p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded-lg cursor-pointer transition"
+                        title="Download template (.docx)"
+                        aria-label="Download template (.docx)"
+                      >
+                        <FileDown className="h-4 w-4" />
+                      </button>
+
                       {hasPermission("update", "DocumentTemplate") && (
                         <>
                           <button
@@ -311,6 +430,8 @@ export default function DocumentTemplatesPage() {
                                 name: tpl.name,
                                 description: tpl.description || "",
                                 isActive: tpl.isActive,
+                                tagihanPurpose: tpl.tagihanPurpose || "",
+                                tagihanType: tpl.tagihanType || "",
                               });
                               setIsEditOpen(true);
                             }}
@@ -465,6 +586,11 @@ export default function DocumentTemplatesPage() {
                 </div>
               </div>
 
+              <TagihanUsageFields
+                value={createForm}
+                onChange={(usage) => setCreateForm({ ...createForm, ...usage })}
+              />
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Deskripsi</label>
                 <textarea
@@ -530,6 +656,11 @@ export default function DocumentTemplatesPage() {
                   className="w-full px-4 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-blue-500 min-h-[80px]"
                 />
               </div>
+
+              <TagihanUsageFields
+                value={editForm}
+                onChange={(usage) => setEditForm({ ...editForm, ...usage })}
+              />
 
               <div className="flex items-center space-x-3 pt-2">
                 <input

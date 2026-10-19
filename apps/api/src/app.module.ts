@@ -26,6 +26,7 @@ import { StackCardModule } from './modules/stack-card/stack-card.module';
 import { DocumentModule } from './modules/document/document.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { TagihanModule } from './modules/tagihan/tagihan.module';
+import { BuruhModule } from '@/modules/buruh/buruh.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interceptor';
 
@@ -68,6 +69,7 @@ import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interce
     DocumentModule,
     FinanceModule,
     TagihanModule,
+    BuruhModule,
   ],
   controllers: [AppController],
   providers: [

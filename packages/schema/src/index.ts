@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { TagihanTemplateUsageSchema } from "./tagihan-document";
+
+export * from "./tagihan-document";
 
 // Authentication Schemas
 export const LoginSchema = z.object({
@@ -395,14 +398,14 @@ export const CreateDocumentTemplateSchema = z.object({
   name: z.string().min(2, "Nama template wajib diisi").max(255),
   description: z.string().optional().nullable(),
   isActive: z.boolean().optional().default(true),
-});
+}).merge(TagihanTemplateUsageSchema);
 export type CreateDocumentTemplateInput = z.infer<typeof CreateDocumentTemplateSchema>;
 
 export const UpdateDocumentTemplateSchema = z.object({
   name: z.string().min(2, "Nama template wajib diisi").max(255),
   description: z.string().optional().nullable(),
   isActive: z.boolean(),
-});
+}).merge(TagihanTemplateUsageSchema);
 export type UpdateDocumentTemplateInput = z.infer<typeof UpdateDocumentTemplateSchema>;
 
 // Document Assembly Schema
@@ -820,4 +823,51 @@ export function formatSecondaryQty(qty: number, uom?: string | null): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 3,
   })} ${unit}`;
+}
+
+// Buruh (Labor) Master Schemas
+// Multipart form fields arrive as strings, so "false" must not coerce to true.
+const FormBooleanSchema = z.preprocess(
+  (v) => (typeof v === "string" ? v === "true" : v),
+  z.boolean(),
+);
+
+export const CreateBuruhSchema = z.object({
+  name: z.string().trim().min(2, "Nama buruh minimal 2 karakter").max(150),
+  nik: z
+    .string()
+    .trim()
+    .regex(/^\d{16}$/, "NIK harus 16 digit angka")
+    .optional()
+    .nullable()
+    .or(z.literal("")),
+  isActive: FormBooleanSchema.optional().default(true),
+  // Only one mandor per warehouse; setting this replaces the current mandor
+  isMandor: FormBooleanSchema.optional().default(false),
+});
+export type CreateBuruhInput = z.infer<typeof CreateBuruhSchema>;
+
+export const UpdateBuruhSchema = CreateBuruhSchema.partial().extend({
+  removeKtpPhoto: FormBooleanSchema.optional(),
+});
+export type UpdateBuruhInput = z.infer<typeof UpdateBuruhSchema>;
+
+export const BuruhQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.string().or(z.number()).optional(),
+  limit: z.string().or(z.number()).optional(),
+  isActive: z.enum(["true", "false"]).optional(),
+  isMandor: z.enum(["true", "false"]).optional(),
+});
+export type BuruhQueryInput = z.infer<typeof BuruhQuerySchema>;
+
+export interface BuruhResponse {
+  uuid: string;
+  name: string;
+  nik: string | null;
+  isActive: boolean;
+  isMandor: boolean;
+  ktpPhotoUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

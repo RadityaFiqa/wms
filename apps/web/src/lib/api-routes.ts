@@ -104,6 +104,23 @@ export const API_ROUTES = {
         `/tagihan/${uuid}/files/${fileUuid}/download`,
       reportsStatus: (uuid: string) => `/tagihan/${uuid}/reports/status`,
       generateReport: (uuid: string) => `/tagihan/${uuid}/reports/generate`,
+      documents: {
+        history: (uuid: string) => `/tagihan/${uuid}/documents`,
+        templates: (uuid: string) => `/tagihan/${uuid}/documents/templates`,
+        prefill: (uuid: string) => `/tagihan/${uuid}/documents/prefill`,
+        generateSuratPermohonan: (uuid: string) => `/tagihan/${uuid}/documents/surat-permohonan`,
+        generateTandaTerima: (uuid: string) => `/tagihan/${uuid}/documents/tanda-terima`,
+        preview: (uuid: string, docUuid: string) => `/tagihan/${uuid}/documents/${docUuid}/preview`,
+        download: (uuid: string, docUuid: string, format: "pdf" | "docx") =>
+          `/tagihan/${uuid}/documents/${docUuid}/download/${format}`,
+      },
+    },
+    buruh: {
+      list: "/buruh",
+      create: "/buruh",
+      detail: (uuid: string) => `/buruh/${uuid}`,
+      update: (uuid: string) => `/buruh/${uuid}`,
+      delete: (uuid: string) => `/buruh/${uuid}`,
     },
   },
   auditLog: {
@@ -193,6 +210,7 @@ export const API_ROUTES = {
       create: "/templates",
       update: (uuid: string) => `/templates/${uuid}`,
       version: (uuid: string) => `/templates/${uuid}/version`,
+      download: (uuid: string) => `/templates/${uuid}/download`,
       delete: (uuid: string) => `/templates/${uuid}`,
       assembly: (uuid: string) => `/templates/${uuid}/assembly`,
       placeholders: (uuid: string) => `/templates/${uuid}/placeholders`,
