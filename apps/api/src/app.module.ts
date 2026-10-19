@@ -41,6 +41,8 @@ import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interce
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
+      // Isolates queues per environment when sharing one Redis (BullMQ default: 'bull')
+      prefix: process.env.BULLMQ_PREFIX || 'bull',
     }),
     ScheduleModule.forRoot(),
     LoggerModule,

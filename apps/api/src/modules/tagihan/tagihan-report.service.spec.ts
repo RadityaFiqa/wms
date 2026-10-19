@@ -53,6 +53,10 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
         documentReferenceId: 20,
         documentReference: { id: 20, documentNumber: 'OUT/020' },
       },
+      {
+        documentReferenceId: 40,
+        documentReference: { id: 40, documentNumber: 'OUT/040' },
+      },
     ],
   };
 
@@ -89,7 +93,7 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
     );
   });
 
-  it('downloads sequentially in document order, applies 2-up to >2 page PDFs and merges', async () => {
+  it('downloads sequentially in document order, applies 2-up to PDFs with 2+ pages and merges', async () => {
     const pdfs: Record<number, Buffer> = {
       30: await buildPdf([{}]), // 1 page -> unchanged
       10: await buildPdf([{}, {}, {}]), // 3 portrait pages -> 2 landscape sheets
@@ -99,6 +103,7 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
         { size: A4_LANDSCAPE, rotate: 90 },
         { size: A4_LANDSCAPE },
       ]), // 4 landscape pages -> 2 portrait sheets
+      40: await buildPdf([{}, {}]), // 2 portrait pages -> 1 landscape sheet
     };
 
     let inFlight = 0;
@@ -126,9 +131,9 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
         .split('/')
         .pop(),
     );
-    expect(requestedIds).toEqual(['30', '10', '20']);
+    expect(requestedIds).toEqual(['30', '10', '20', '40']);
 
-    // Merged output: 1 + 2 + 2 pages
+    // Merged output: 1 + 2 + 2 + 1 pages
     const merged = await PDFDocument.load(result);
     const sizes = merged.getPages().map((p) => {
       const { width, height } = p.getSize();
@@ -140,6 +145,7 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
       [842, 595], // 2-up sheet (odd trailing page 3)
       [595, 842], // landscape pages stacked on portrait sheet
       [595, 842],
+      [842, 595], // 2-page PDF -> single 2-up sheet
     ]);
 
     // Progress is monotonic and covers every stage
@@ -155,8 +161,8 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
       return p.progress;
     }, 0);
     expect(progress[progress.length - 1]).toMatchObject({
-      processedCount: 3,
-      totalCount: 3,
+      processedCount: 4,
+      totalCount: 4,
     });
 
     // Temp directory cleaned up
@@ -200,8 +206,17 @@ describe('TagihanReportService - downloadOdooReportPdf', () => {
     await expect(service.downloadOdooReportPdf(tagihan)).rejects.toThrow(
       /OUT\/010 setelah 3 percobaan/,
     );
-    // Doc 30 once, doc 10 three times, doc 20 never attempted
+    // Doc 30 once, doc 10 three times, docs 20 and 40 never attempted
     expect(mockedPost).toHaveBeenCalledTimes(4);
     expect(tempDirs().length).toBe(before);
   }, 20000);
+
+  it('versions only the Odoo report fingerprint by page layout', () => {
+    const base = 'abc';
+    expect(service.getReportFingerprint(base, 'COMMODITY_RECAP_PDF')).toBe(base);
+    expect(service.getReportFingerprint(base, 'COMMODITY_RECAP_EXCEL')).toBe(base);
+    const odoo = service.getReportFingerprint(base, 'ODOO_REPORT_PDF');
+    expect(odoo).not.toBe(base);
+    expect(service.getReportFingerprint(base, 'ODOO_REPORT_PDF')).toBe(odoo);
+  });
 });

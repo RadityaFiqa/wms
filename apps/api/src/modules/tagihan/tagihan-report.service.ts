@@ -34,6 +34,10 @@ import {
 const ODOO_PDF_TIMEOUT_MS = 60_000;
 const ODOO_PDF_MAX_ATTEMPTS = 3;
 const ODOO_PDF_RETRY_DELAY_MS = 2_000;
+// PDFs with at least this many pages are converted to a 2-up layout
+const TWO_UP_MIN_PAGES = 2;
+// Bump when the Odoo report page layout changes so cached files are regenerated
+const ODOO_REPORT_LAYOUT_VERSION = 3;
 const TWO_UP_MARGIN = 12;
 const TWO_UP_GAP = 12;
 
@@ -156,6 +160,21 @@ export class TagihanReportService {
     return crypto
       .createHash('sha256')
       .update(JSON.stringify(payload))
+      .digest('hex');
+  }
+
+  /**
+   * Fingerprint used to cache a specific report type. Odoo reports include the page
+   * layout version so files generated with an older layout are regenerated.
+   */
+  public getReportFingerprint(
+    tagihanFingerprint: string,
+    reportType: TagihanReportType,
+  ): string {
+    if (reportType !== 'ODOO_REPORT_PDF') return tagihanFingerprint;
+    return crypto
+      .createHash('sha256')
+      .update(`${tagihanFingerprint}:odoo-layout-v${ODOO_REPORT_LAYOUT_VERSION}`)
       .digest('hex');
   }
 
@@ -292,9 +311,11 @@ export class TagihanReportService {
     const reportsResult: any = {};
 
     for (const rType of reportTypes) {
+      const reportFingerprint = this.getReportFingerprint(currentFingerprint, rType);
+
       // 1. Check for existing cached TagihanFile with matching fingerprint
       const cachedFile = tagihan.files.find(
-        (f) => f.fileType === rType && f.fingerprint === currentFingerprint,
+        (f) => f.fileType === rType && f.fingerprint === reportFingerprint,
       );
 
       if (cachedFile) {
@@ -325,7 +346,7 @@ export class TagihanReportService {
 
       // 2. Check for active or recent job for this report type
       const latestJob = tagihan.reportJobs.find(
-        (j) => j.reportType === rType && j.fingerprint === currentFingerprint,
+        (j) => j.reportType === rType && j.fingerprint === reportFingerprint,
       );
 
       if (latestJob) {
@@ -463,7 +484,10 @@ export class TagihanReportService {
       );
     }
 
-    const currentFingerprint = this.computeTagihanFingerprint(tagihan);
+    const currentFingerprint = this.getReportFingerprint(
+      this.computeTagihanFingerprint(tagihan),
+      reportType,
+    );
 
     // 1. Direct cache check: Valid file exists with matching fingerprint & physically present
     const cachedFile = tagihan.files.find(
@@ -1314,7 +1338,7 @@ export class TagihanReportService {
 
   /**
    * Downloads Odoo report PDFs for every related ERP document sequentially (in document
-   * order), converts PDFs with more than 2 pages into a 2-up layout, and merges them into
+   * order), converts PDFs with 2 or more pages into a 2-up layout, and merges them into
    * a single PDF. Intermediate files live in a temporary directory that is always removed.
    * Any document that still fails after retries fails the whole process.
    */
@@ -1423,7 +1447,7 @@ export class TagihanReportService {
         rawPaths.push(rawPath);
       }
 
-      // 3. Page optimization (2-up for PDFs with more than 2 pages)
+      // 3. Page optimization (2-up for PDFs with 2 or more pages)
       const processedPaths: string[] = [];
       for (let i = 0; i < total; i++) {
         await report({
@@ -1435,7 +1459,7 @@ export class TagihanReportService {
         });
 
         const source = await PdfLibDocument.load(await fs.readFile(rawPaths[i]));
-        if (source.getPageCount() > 2) {
+        if (source.getPageCount() >= TWO_UP_MIN_PAGES) {
           const optimized = await this.convertPdfToTwoUp(source);
           const processedPath = path.join(
             tempDir,

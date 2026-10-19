@@ -381,7 +381,7 @@ export function TagihanExportReports({
                 Laporan Asli Odoo
               </h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
-                Unduh PDF resmi dari Odoo ({odooDocName}) per dokumen stock.picking secara berurutan, PDF lebih dari 2 halaman dibuat 2-up, lalu digabung menjadi satu berkas.
+                Unduh PDF resmi dari Odoo ({odooDocName}) per dokumen stock.picking secara berurutan, PDF 2 halaman atau lebih dibuat 2-up, lalu digabung menjadi satu berkas.
               </p>
             </div>
 
