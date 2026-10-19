@@ -1019,8 +1019,12 @@ model TagihanReportJob {
   reportType    String
   status        TagihanJobStatus @default(PENDING)
   fingerprint   String
-  progress      Int              @default(0)
-  errorMessage  String?
+  progress       Int              @default(0)
+  stage          String?
+  processedCount Int              @default(0)
+  totalCount     Int              @default(0)
+  currentItem    String?
+  errorMessage   String?
   tagihanFileId Int?
   startedAt     DateTime?        @db.Timestamptz(3)
   completedAt   DateTime?        @db.Timestamptz(3)

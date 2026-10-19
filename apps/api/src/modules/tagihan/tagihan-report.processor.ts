@@ -35,6 +35,7 @@ export class TagihanReportProcessor extends WorkerHost {
           where: { uuid: jobUuid },
           data: {
             status: 'FAILED',
+            stage: 'FAILED',
             errorMessage: err.message || 'Gagal menghasilkan berkas laporan.',
             completedAt: new Date(),
           },

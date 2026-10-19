@@ -82,6 +82,10 @@ export function TagihanExportReports({
         status: "IDLE",
         file: null,
         progress: 0,
+        stage: null,
+        processedCount: 0,
+        totalCount: 0,
+        currentItem: null,
         errorMessage: null,
       }
     );
@@ -110,6 +114,29 @@ export function TagihanExportReports({
     tagihanType === "LOADING"
       ? "Picking Operation Template"
       : "Delivery Slip Template";
+
+  const odooStageLabel = (() => {
+    const counter =
+      odooState.totalCount > 0
+        ? ` (${odooState.processedCount ?? 0}/${odooState.totalCount})`
+        : "";
+    switch (odooState.stage) {
+      case "DOWNLOADING":
+        return `Mengunduh PDF${counter}`;
+      case "OPTIMIZING":
+        return `Mengoptimalkan halaman PDF${counter}`;
+      case "MERGING":
+        return "Menggabungkan PDF";
+      case "SAVING":
+        return "Menyimpan PDF final";
+      case "COMPLETED":
+        return "Selesai";
+      case "FAILED":
+        return "Gagal";
+      default:
+        return "Menyiapkan dokumen";
+    }
+  })();
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 space-y-5">
@@ -354,9 +381,35 @@ export function TagihanExportReports({
                 Laporan Asli Odoo
               </h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
-                Unduh PDF resmi dari Odoo ({odooDocName}) untuk seluruh dokumen stock.picking terkait secara konsolidasi.
+                Unduh PDF resmi dari Odoo ({odooDocName}) per dokumen stock.picking secara berurutan, PDF lebih dari 2 halaman dibuat 2-up, lalu digabung menjadi satu berkas.
               </p>
             </div>
+
+            {isOdooRunning && (
+              <div className="space-y-1.5 p-2.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-800 dark:text-indigo-300">
+                  <span>{odooStageLabel}</span>
+                  <span>{odooState.progress ?? 0}%</span>
+                </div>
+                <div
+                  className="h-1.5 w-full rounded-full bg-indigo-100 dark:bg-indigo-900/50 overflow-hidden"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={odooState.progress ?? 0}
+                >
+                  <div
+                    className="h-full rounded-full bg-indigo-600 transition-all duration-500"
+                    style={{ width: `${odooState.progress ?? 0}%` }}
+                  />
+                </div>
+                {odooState.currentItem && (
+                  <p className="text-[10px] text-indigo-700/80 dark:text-indigo-400/80 truncate" title={odooState.currentItem}>
+                    Dokumen: {odooState.currentItem}
+                  </p>
+                )}
+              </div>
+            )}
 
             {odooState.status === "FAILED" && odooState.errorMessage && (
               <p className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 p-2 rounded-lg border border-red-100 dark:border-red-900/40">

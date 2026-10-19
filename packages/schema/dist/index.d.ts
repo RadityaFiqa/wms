@@ -1407,6 +1407,8 @@ export declare const GenerateTagihanReportInputSchema: z.ZodObject<{
 export type GenerateTagihanReportInput = z.infer<typeof GenerateTagihanReportInputSchema>;
 export declare const TagihanReportJobStatusEnum: z.ZodEnum<["IDLE", "PENDING", "PROCESSING", "COMPLETED", "FAILED"]>;
 export type TagihanReportJobStatus = z.infer<typeof TagihanReportJobStatusEnum>;
+export declare const TagihanReportStageEnum: z.ZodEnum<["PREPARING", "DOWNLOADING", "OPTIMIZING", "MERGING", "SAVING", "COMPLETED", "FAILED"]>;
+export type TagihanReportStage = z.infer<typeof TagihanReportStageEnum>;
 export interface ErpDocumentCandidate {
     uuid: string;
     documentNumber: string;

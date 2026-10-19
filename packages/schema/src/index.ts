@@ -594,6 +594,17 @@ export const TagihanReportJobStatusEnum = z.enum([
 ]);
 export type TagihanReportJobStatus = z.infer<typeof TagihanReportJobStatusEnum>;
 
+export const TagihanReportStageEnum = z.enum([
+  "PREPARING",
+  "DOWNLOADING",
+  "OPTIMIZING",
+  "MERGING",
+  "SAVING",
+  "COMPLETED",
+  "FAILED",
+]);
+export type TagihanReportStage = z.infer<typeof TagihanReportStageEnum>;
+
 export interface ErpDocumentCandidate {
   uuid: string;
   documentNumber: string;
