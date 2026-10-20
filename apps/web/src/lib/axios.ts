@@ -2,7 +2,7 @@ import axios from "axios";
 import { useAuthStore } from "../store/auth";
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "https://wms.bulog.my.id/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "https://wms.gbb-landu.my.id/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -21,7 +21,8 @@ api.interceptors.request.use((config) => {
   }
 
   if (config.headers) {
-    config.headers["x-timezone"] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    config.headers["x-timezone"] =
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
   return config;
 });
