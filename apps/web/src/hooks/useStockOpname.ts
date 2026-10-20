@@ -120,6 +120,22 @@ export function useStockOpnameDetail(uuid?: string) {
     window.URL.revokeObjectURL(url);
   }, [uuid]);
 
+  const downloadPhysicalCountSheet = useCallback(async () => {
+    if (!uuid) return;
+    const res = await api.get(API_ROUTES.stockOpname.physicalCountSheet(uuid), {
+      responseType: "blob",
+    });
+    const blob = new Blob([res.data], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `lembar-perhitungan-fisik-${uuid}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }, [uuid]);
+
   const downloadResultPdf = useCallback(async () => {
     if (!uuid) return;
     const res = await api.get(API_ROUTES.stockOpname.exportPdf(uuid), {
@@ -145,6 +161,7 @@ export function useStockOpnameDetail(uuid?: string) {
     submitOpname,
     deleteOpname,
     downloadCountingSheet,
+    downloadPhysicalCountSheet,
     downloadResultPdf,
   };
 }

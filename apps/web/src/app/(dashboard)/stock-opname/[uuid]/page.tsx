@@ -33,6 +33,7 @@ import {
   Info,
   Layers,
   Trash2,
+  Printer,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
@@ -73,6 +74,7 @@ export default function StockOpnameDetailPage() {
     submitOpname,
     deleteOpname,
     downloadCountingSheet,
+    downloadPhysicalCountSheet,
     downloadResultPdf,
   } = useStockOpnameDetail(uuid);
   const { hasPermission } = useAuthStore();
@@ -276,6 +278,16 @@ export default function StockOpnameDetailPage() {
     }
   };
 
+  const handlePrintPhysicalCountSheet = async () => {
+    const toastId = toast.loading("Mengunduh Lembar Perhitungan Fisik...");
+    try {
+      await downloadPhysicalCountSheet();
+      toast.success("Unduhan sukses!", { id: toastId });
+    } catch (e) {
+      toast.error("Gagal mengunduh berkas PDF.", { id: toastId });
+    }
+  };
+
   const handleExportPdf = async () => {
     const toastId = toast.loading(
       isDraft
@@ -359,6 +371,14 @@ export default function StockOpnameDetailPage() {
           >
             <FileText className="h-4.5 w-4.5 mr-2 text-slate-500" />
             {isDraft ? "Cetak Counting Sheet" : "Unduh Laporan Hasil"}
+          </button>
+
+          <button
+            onClick={handlePrintPhysicalCountSheet}
+            className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm"
+          >
+            <Printer className="h-4.5 w-4.5 mr-2 text-slate-500" />
+            Cetak Lembar Hitung Fisik
           </button>
 
           {isDraft && (

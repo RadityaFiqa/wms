@@ -157,6 +157,33 @@ export class StockOpnameController {
     res.end(pdfBuffer);
   }
 
+  @Get(':uuid/physical-count-sheet/pdf')
+  @CheckPolicies((ability) => ability.can('read', 'StockOpname'))
+  async exportPhysicalCountSheet(
+    @Param('uuid') uuid: string,
+    @Res() res: any,
+  ) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+
+    const pdfBuffer = await this.service.generatePhysicalCountSheetPdf(
+      warehouseId,
+      uuid,
+    );
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=lembar-perhitungan-fisik-${uuid}-${Date.now()}.pdf`,
+      'Content-Length': pdfBuffer.length,
+    });
+
+    res.end(pdfBuffer);
+  }
+
   @Get(':uuid/export/pdf')
   @CheckPolicies((ability) => ability.can('read', 'StockOpname'))
   async exportResultPdf(@Param('uuid') uuid: string, @Res() res: any) {

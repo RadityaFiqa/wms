@@ -162,6 +162,8 @@ export const API_ROUTES = {
     delete: (uuid: string) => `/stock-opname/${uuid}`,
     submit: (uuid: string) => `/stock-opname/${uuid}/submit`,
     countingSheet: (uuid: string) => `/stock-opname/${uuid}/counting-sheet/pdf`,
+    physicalCountSheet: (uuid: string) =>
+      `/stock-opname/${uuid}/physical-count-sheet/pdf`,
     exportPdf: (uuid: string) => `/stock-opname/${uuid}/export/pdf`,
   },
   reports: {

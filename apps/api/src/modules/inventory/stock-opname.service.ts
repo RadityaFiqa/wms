@@ -705,6 +705,247 @@ export class StockOpnameService {
   }
 
   /**
+   * Generate "Lembar Perhitungan Fisik" PDF, grouped by location area
+   * (the part before "/", e.g. "GBB 01/C04.1.2" -> "GBB 01"), one area per page.
+   * Saved calculator rows and totals are printed; uncounted stacks are left blank
+   * so the sheet can be filled in by hand.
+   */
+  async generatePhysicalCountSheetPdf(
+    warehouseId: number,
+    uuid: string,
+  ): Promise<Buffer> {
+    const op = await this.prisma.stockOpname.findFirst({
+      where: { uuid, warehouseId },
+      include: {
+        warehouse: true,
+        items: { include: { stacks: true } },
+      },
+    });
+
+    if (!op) {
+      throw new NotFoundException('Stock Opname tidak ditemukan.');
+    }
+
+    type SheetRow = {
+      productName: string;
+      productSku: string;
+      productUom: string;
+      locationName: string;
+      expressions: string[];
+      actualQty: number | null;
+    };
+
+    // Same location visibility as "Hitung Per Tumpukan / Lokasi"
+    const groups = new Map<string, SheetRow[]>();
+    for (const item of op.items) {
+      for (const st of item.stacks.filter(isStackCountable)) {
+        const slash = st.locationName.indexOf('/');
+        const area = (
+          slash >= 0 ? st.locationName.slice(0, slash) : st.locationName
+        ).trim();
+        const rows = groups.get(area) ?? [];
+        rows.push({
+          productName: item.productName,
+          productSku: item.productSku,
+          productUom: item.productUom || 'Unit',
+          locationName: st.locationName,
+          expressions: (parseCalculationRows(st.calculationRows) ?? []).map(
+            (r) => r.expression,
+          ),
+          actualQty: st.actualQty,
+        });
+        groups.set(area, rows);
+      }
+    }
+
+    const collator = new Intl.Collator('id-ID', { numeric: true });
+    const areas = Array.from(groups.keys()).sort(collator.compare);
+    for (const rows of groups.values()) {
+      rows.sort(
+        (a, b) =>
+          collator.compare(a.locationName, b.locationName) ||
+          collator.compare(a.productName, b.productName),
+      );
+    }
+
+    const formatQty = (n: number) =>
+      n.toLocaleString('id-ID', { maximumFractionDigits: 3 });
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 20, size: 'A4' });
+      const buffers: Buffer[] = [];
+
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (err) => reject(err));
+
+      const PAGE_BOTTOM = 800;
+      const PAD = 4;
+      const cols = {
+        komoditas: { x: 20, w: 170 },
+        tumpukan: { x: 190, w: 110 },
+        hitungan: { x: 300, w: 195 },
+        total: { x: 495, w: 80 },
+      };
+
+      const drawHeader = (area: string, continued: boolean) => {
+        doc
+          .fillColor('#1e293b')
+          .fontSize(12)
+          .font('Helvetica-Bold')
+          .text('LEMBAR PERHITUNGAN FISIK', 20, 20, {
+            align: 'center',
+            width: 555,
+          });
+        doc
+          .fontSize(8)
+          .font('Helvetica')
+          .fillColor('#64748b')
+          .text(
+            `No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Tanggal: ${op.createdAt.toLocaleDateString('id-ID')}`,
+            20,
+            36,
+            { align: 'center', width: 555 },
+          );
+        doc
+          .fillColor('#1e293b')
+          .fontSize(10)
+          .font('Helvetica-Bold')
+          .text(`Lokasi: ${area}${continued ? ' (lanjutan)' : ''}`, 20, 54, {
+            width: 555,
+          });
+
+        // Table header
+        const top = 70;
+        doc.rect(20, top, 555, 16).fill('#f1f5f9');
+        doc.fillColor('#475569').fontSize(7.5).font('Helvetica-Bold');
+        doc.text('Komoditas', cols.komoditas.x + PAD, top + 5, {
+          width: cols.komoditas.w - PAD * 2,
+        });
+        doc.text('Tumpukan', cols.tumpukan.x + PAD, top + 5, {
+          width: cols.tumpukan.w - PAD * 2,
+        });
+        doc.text('Hitungan Perkalian', cols.hitungan.x + PAD, top + 5, {
+          width: cols.hitungan.w - PAD * 2,
+        });
+        doc.text('Total', cols.total.x + PAD, top + 5, {
+          width: cols.total.w - PAD * 2,
+          align: 'right',
+        });
+        doc.rect(20, top, 555, 16).lineWidth(0.5).stroke('#94a3b8');
+        return top + 16;
+      };
+
+      const drawSignatures = (y: number) => {
+        doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica-Bold');
+        doc.text('Petugas Penghitung,', 50, y, { width: 150, align: 'center' });
+        doc.text('Kepala Gudang / Supervisor,', 375, y, {
+          width: 150,
+          align: 'center',
+        });
+        doc.font('Helvetica');
+        doc.text('( ............................ )', 50, y + 45, {
+          width: 150,
+          align: 'center',
+        });
+        doc.text('( ............................ )', 375, y + 45, {
+          width: 150,
+          align: 'center',
+        });
+      };
+
+      if (areas.length === 0) {
+        drawHeader('-', false);
+        doc
+          .fillColor('#64748b')
+          .fontSize(8)
+          .font('Helvetica-Oblique')
+          .text('Tidak ada lokasi untuk dihitung.', 20, 96, {
+            width: 555,
+            align: 'center',
+          });
+      }
+
+      areas.forEach((area, areaIndex) => {
+        if (areaIndex > 0) doc.addPage();
+        let y = drawHeader(area, false);
+
+        for (const row of groups.get(area)!) {
+          const hitunganText = row.expressions.join('  +  ');
+          doc.fontSize(7.5).font('Helvetica');
+          const komoditasH =
+            doc.heightOfString(row.productName, {
+              width: cols.komoditas.w - PAD * 2,
+            }) + 10;
+          const hitunganH = hitunganText
+            ? doc.heightOfString(hitunganText, {
+                width: cols.hitungan.w - PAD * 2,
+              })
+            : 0;
+          // Uncounted rows get extra room for handwriting
+          const rowH = Math.max(
+            hitunganText ? 20 : 26,
+            komoditasH + PAD * 2,
+            hitunganH + PAD * 2,
+          );
+
+          if (y + rowH > PAGE_BOTTOM) {
+            doc.addPage();
+            y = drawHeader(area, true);
+          }
+
+          doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica-Bold');
+          doc.text(row.productName, cols.komoditas.x + PAD, y + PAD, {
+            width: cols.komoditas.w - PAD * 2,
+          });
+          doc.fillColor('#64748b').fontSize(6).font('Helvetica');
+          doc.text(
+            `${row.productSku} | ${row.productUom}`,
+            cols.komoditas.x + PAD,
+            doc.y + 1,
+            { width: cols.komoditas.w - PAD * 2 },
+          );
+
+          doc.fillColor('#334155').fontSize(7.5).font('Helvetica');
+          doc.text(row.locationName, cols.tumpukan.x + PAD, y + PAD, {
+            width: cols.tumpukan.w - PAD * 2,
+          });
+
+          if (hitunganText) {
+            doc.text(hitunganText, cols.hitungan.x + PAD, y + PAD, {
+              width: cols.hitungan.w - PAD * 2,
+            });
+          }
+
+          if (row.actualQty !== null) {
+            doc.font('Helvetica-Bold').text(
+              formatQty(row.actualQty),
+              cols.total.x + PAD,
+              y + PAD,
+              { width: cols.total.w - PAD * 2, align: 'right' },
+            );
+          }
+
+          // Cell borders
+          doc.lineWidth(0.4).strokeColor('#cbd5e1');
+          for (const c of Object.values(cols)) {
+            doc.rect(c.x, y, c.w, rowH).stroke();
+          }
+          y += rowH;
+        }
+
+        if (y + 80 > PAGE_BOTTOM) {
+          doc.addPage();
+          y = 20;
+        }
+        drawSignatures(y + 20);
+      });
+
+      doc.end();
+    });
+  }
+
+  /**
    * Generate Final Stock Opname PDF.
    */
   async generateResultPdf(warehouseId: number, uuid: string): Promise<Buffer> {
