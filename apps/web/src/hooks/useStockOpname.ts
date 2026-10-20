@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
+import type { UpdateStockOpnameInput } from "@bulog-wms/schema";
 
 export function useStockOpname(query?: {
   search?: string;
@@ -37,12 +38,22 @@ export function useStockOpname(query?: {
     [refresh],
   );
 
+  const deleteStockOpname = useCallback(
+    async (uuid: string) => {
+      const res = await api.delete(API_ROUTES.stockOpname.delete(uuid));
+      refresh();
+      return res.data;
+    },
+    [refresh],
+  );
+
   return {
     stockOpnameData: data,
     error,
     isLoading,
     refresh,
     createStockOpname,
+    deleteStockOpname,
   };
 }
 
@@ -57,11 +68,7 @@ export function useStockOpnameDetail(uuid?: string) {
   );
 
   const updateDraft = useCallback(
-    async (body: {
-      notes?: string;
-      stacks?: Array<{ uuid: string; actualQty: number | null }>;
-      attachmentPaths?: string[];
-    }) => {
+    async (body: UpdateStockOpnameInput) => {
       if (!uuid) return;
       const res = await api.put(API_ROUTES.stockOpname.update(uuid), body);
       refreshDetail();
@@ -86,6 +93,16 @@ export function useStockOpnameDetail(uuid?: string) {
     );
     return res.data;
   }, [uuid, refreshDetail]);
+
+  const deleteOpname = useCallback(async () => {
+    if (!uuid) return;
+    const res = await api.delete(API_ROUTES.stockOpname.delete(uuid));
+    mutate(
+      (key) =>
+        typeof key === "string" && key.startsWith(API_ROUTES.stockOpname.list),
+    );
+    return res.data;
+  }, [uuid]);
 
   const downloadCountingSheet = useCallback(async () => {
     if (!uuid) return;
@@ -126,6 +143,7 @@ export function useStockOpnameDetail(uuid?: string) {
     refresh: refreshDetail,
     updateDraft,
     submitOpname,
+    deleteOpname,
     downloadCountingSheet,
     downloadResultPdf,
   };

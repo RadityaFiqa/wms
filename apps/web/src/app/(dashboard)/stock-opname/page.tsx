@@ -19,11 +19,14 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 export default function StockOpnameListPage() {
   const router = useRouter();
-  const { activeWarehouse } = useAuthStore();
+  const { activeWarehouse, hasPermission } = useAuthStore();
+  const canDelete = hasPermission("delete", "StockOpname");
+  const [deletingUuid, setDeletingUuid] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -33,8 +36,13 @@ export default function StockOpnameListPage() {
   const [limit, setLimit] = useState(10);
   const [isCreating, setIsCreating] = useState(false);
 
-  const { stockOpnameData, isLoading, refresh, createStockOpname } =
-    useStockOpname({
+  const {
+    stockOpnameData,
+    isLoading,
+    refresh,
+    createStockOpname,
+    deleteStockOpname,
+  } = useStockOpname({
       search,
       status,
       startDate,
@@ -65,6 +73,24 @@ export default function StockOpnameListPage() {
       });
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleDelete = async (op: { uuid: string; opnameNumber: string }) => {
+    if (
+      !confirm(
+        `Hapus draf Stock Opname ${op.opnameNumber}? Seluruh hasil hitung pada draf ini akan ikut terhapus.`,
+      )
+    )
+      return;
+    setDeletingUuid(op.uuid);
+    try {
+      await deleteStockOpname(op.uuid);
+      toast.success(`Draf ${op.opnameNumber} berhasil dihapus.`);
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || "Gagal menghapus Stock Opname.");
+    } finally {
+      setDeletingUuid(null);
     }
   };
 
@@ -298,6 +324,16 @@ export default function StockOpnameListPage() {
                             className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg transition cursor-pointer"
                           >
                             <Eye className="h-4 w-4" />
+                          </button>
+                        )}
+                        {op.status === "DRAFT" && canDelete && (
+                          <button
+                            onClick={() => handleDelete(op)}
+                            disabled={deletingUuid === op.uuid}
+                            title="Hapus Draf"
+                            className="p-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30 rounded-lg transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>

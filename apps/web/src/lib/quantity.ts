@@ -44,3 +44,20 @@ export function formatSecondaryQty(qty: number, uom?: string): string {
   })} ${unit}`;
 }
 
+
+/**
+ * Formats a quantity in Indonesian locale (max 3 decimals), e.g. 1234.5 -> "1.234,5".
+ */
+export function formatQuantity(qty: number): string {
+  return qty.toLocaleString("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  });
+}
+
+/**
+ * Same as formatQuantity, with an explicit "+" for positive values (variance display).
+ */
+export function formatSignedQuantity(qty: number): string {
+  return qty > 0 ? `+${formatQuantity(qty)}` : formatQuantity(qty);
+}

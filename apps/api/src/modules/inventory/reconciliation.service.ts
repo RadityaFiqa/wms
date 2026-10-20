@@ -677,4 +677,165 @@ export class ReconciliationService {
       adjustmentDetails,
     };
   }
+
+  /**
+   * Per-location calculatedPhysical for every product in the warehouse, in a
+   * fixed number of queries. Mirrors the location breakdown of
+   * getReconciliationDetail (ERP qty + pending IN - pending OUT + distributed
+   * adjustment) so Stock Opname can snapshot it without an N+1 per product.
+   * Keep the two in sync if the reconciliation formula changes.
+   *
+   * @returns inventoryId -> (locationId -> calculatedPhysical)
+   */
+  async getLocationCalculatedPhysicalMap(
+    warehouseId: number,
+  ): Promise<Map<number, Map<number, number>>> {
+    const [quants, contributingGateOps, completedDocs] = await Promise.all([
+      this.prisma.quant.findMany({
+        where: { location: { warehouseId } },
+        select: { inventoryId: true, locationId: true, quantity: true },
+      }),
+      this.prisma.gateOperation.findMany({
+        where: {
+          warehouseId,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+          OR: [
+            { documentReferenceId: null },
+            { documentReference: { state: { not: 'done' } } },
+          ],
+        },
+        select: {
+          cardType: true,
+          products: {
+            select: { inventoryId: true, locationId: true, quantity: true },
+          },
+        },
+      }),
+      this.prisma.documentReference.findMany({
+        where: {
+          warehouseId,
+          state: 'done',
+          pickingTypeCode: { in: ['incoming', 'outgoing'] },
+        },
+        include: {
+          items: true,
+          operationProducts: {
+            where: {
+              gateOperation: { status: { notIn: ['CANCELED', 'REJECTED'] } },
+            },
+          },
+          gateOperations: {
+            where: { status: { notIn: ['CANCELED', 'REJECTED'] } },
+            include: {
+              products: { where: { documentReferenceId: null } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    type LocAcc = {
+      erpQty: number;
+      pendingIncoming: number;
+      pendingOutgoing: number;
+      adjustmentQty: number;
+    };
+    const acc = new Map<number, Map<number, LocAcc>>();
+    const getAcc = (invId: number, locId: number): LocAcc => {
+      let byLoc = acc.get(invId);
+      if (!byLoc) {
+        byLoc = new Map();
+        acc.set(invId, byLoc);
+      }
+      let entry = byLoc.get(locId);
+      if (!entry) {
+        entry = {
+          erpQty: 0,
+          pendingIncoming: 0,
+          pendingOutgoing: 0,
+          adjustmentQty: 0,
+        };
+        byLoc.set(locId, entry);
+      }
+      return entry;
+    };
+
+    for (const q of quants) {
+      getAcc(q.inventoryId, q.locationId).erpQty += q.quantity;
+    }
+
+    for (const op of contributingGateOps) {
+      for (const p of op.products) {
+        if (!p.locationId) continue;
+        const entry = getAcc(p.inventoryId, p.locationId);
+        if (op.cardType === 'IN') {
+          entry.pendingIncoming += p.quantity;
+        } else {
+          entry.pendingOutgoing += p.quantity;
+        }
+      }
+    }
+
+    for (const doc of completedDocs) {
+      const docGateProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+
+      // Same per-product view as getReconciliationDetail: first doc item of the product
+      const seen = new Set<number>();
+      for (const item of doc.items) {
+        const invId = item.inventoryId;
+        if (seen.has(invId)) continue;
+        seen.add(invId);
+
+        const erpQty = item.productQty;
+        const locQties = new Map<number, number>();
+        let sumGateQty = 0;
+        let hasGateProduct = false;
+        for (const gp of docGateProducts) {
+          if (gp.inventoryId !== invId) continue;
+          hasGateProduct = true;
+          sumGateQty += gp.quantity;
+          if (gp.locationId) {
+            locQties.set(
+              gp.locationId,
+              (locQties.get(gp.locationId) || 0) + gp.quantity,
+            );
+          }
+        }
+        if (!hasGateProduct || sumGateQty === erpQty || locQties.size === 0) {
+          continue;
+        }
+
+        const adjustment =
+          doc.pickingTypeCode === 'incoming'
+            ? sumGateQty - erpQty
+            : erpQty - sumGateQty;
+        if (adjustment === 0) continue;
+
+        const locList = Array.from(locQties.entries()).map(([id, qty]) => ({
+          id,
+          qty,
+        }));
+        const distributed = this.distributeAdjustment(adjustment, locList);
+        for (const [locId, locAdj] of distributed.entries()) {
+          getAcc(invId, locId).adjustmentQty += locAdj;
+        }
+      }
+    }
+
+    const result = new Map<number, Map<number, number>>();
+    for (const [invId, byLoc] of acc.entries()) {
+      const out = new Map<number, number>();
+      for (const [locId, e] of byLoc.entries()) {
+        out.set(
+          locId,
+          e.erpQty + (e.pendingIncoming - e.pendingOutgoing) + e.adjustmentQty,
+        );
+      }
+      result.set(invId, out);
+    }
+    return result;
+  }
 }

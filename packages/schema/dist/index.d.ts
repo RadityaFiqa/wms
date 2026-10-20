@@ -1,5 +1,6 @@
 import { z } from "zod";
 export * from "./tagihan-document";
+export * from "./quantity-expression";
 export declare const LoginSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
@@ -273,11 +274,11 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
     clientPartner: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     driverPhone: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
+    notes: string;
+    attachmentPaths: string[];
     cardType: "IN" | "OUT";
     driverName: string;
     licensePlate: string;
-    notes: string;
-    attachmentPaths: string[];
     products: {
         productId: number;
         quantity: number;
@@ -290,12 +291,12 @@ export declare const CreateGateOperationSchema: z.ZodObject<{
     clientPartner?: string | null | undefined;
     driverPhone?: string | null | undefined;
 }, {
+    notes: string;
     cardType: "IN" | "OUT";
     driverName: string;
     licensePlate: string;
-    notes: string;
-    documentReferenceId?: number | null | undefined;
     attachmentPaths?: string[] | undefined;
+    documentReferenceId?: number | null | undefined;
     products?: {
         productId: number;
         quantity: number;
@@ -344,13 +345,13 @@ export declare const CreateGateVerificationSchema: z.ZodObject<{
         documentReferenceId?: number | null | undefined;
     }[];
     documentReferenceIds: number[];
-    documentReferenceId?: number | null | undefined;
     notes?: string | null | undefined;
+    documentReferenceId?: number | null | undefined;
 }, {
     status: "PENDING" | "CANCELED" | "VERIFIED" | "REJECTED";
-    documentReferenceId?: number | null | undefined;
     notes?: string | null | undefined;
     attachmentPaths?: string[] | undefined;
+    documentReferenceId?: number | null | undefined;
     products?: {
         productId: number;
         quantity: number;
@@ -1177,12 +1178,12 @@ export declare const TagihanManualDocumentInputSchema: z.ZodObject<{
     description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     documentNumber: string;
-    description?: string | null | undefined;
     uuid?: string | undefined;
+    description?: string | null | undefined;
 }, {
     documentNumber: string;
-    description?: string | null | undefined;
     uuid?: string | undefined;
+    description?: string | null | undefined;
 }>;
 export type TagihanManualDocumentInput = z.infer<typeof TagihanManualDocumentInputSchema>;
 export declare const TagihanSummaryItemInputSchema: z.ZodObject<{
@@ -1219,12 +1220,12 @@ export declare const CreateTagihanSchema: z.ZodObject<{
         description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }, {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }>, "many">>>;
     summaries: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         documentType: z.ZodString;
@@ -1252,8 +1253,8 @@ export declare const CreateTagihanSchema: z.ZodObject<{
     nonCommodityDocumentUuids: string[];
     manualDocuments: {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }[];
     summaries: {
         quantity: number;
@@ -1275,8 +1276,8 @@ export declare const CreateTagihanSchema: z.ZodObject<{
     nonCommodityDocumentUuids?: string[] | undefined;
     manualDocuments?: {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }[] | undefined;
     summaries?: {
         uom: string;
@@ -1301,12 +1302,12 @@ export declare const UpdateTagihanSchema: z.ZodObject<{
         description: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }, {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }>, "many">>;
     summaries: z.ZodOptional<z.ZodArray<z.ZodObject<{
         documentType: z.ZodString;
@@ -1337,8 +1338,8 @@ export declare const UpdateTagihanSchema: z.ZodObject<{
     nonCommodityDocumentUuids?: string[] | undefined;
     manualDocuments?: {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }[] | undefined;
     summaries?: {
         quantity: number;
@@ -1357,8 +1358,8 @@ export declare const UpdateTagihanSchema: z.ZodObject<{
     nonCommodityDocumentUuids?: string[] | undefined;
     manualDocuments?: {
         documentNumber: string;
-        description?: string | null | undefined;
         uuid?: string | undefined;
+        description?: string | null | undefined;
     }[] | undefined;
     summaries?: {
         uom: string;

@@ -487,6 +487,10 @@ model StockOpnameStack {
   erpQty            Float
   actualQty         Float?
   variance          Float?
+  /// Reconciliation calculatedPhysical for this location, snapshotted when the opname was created
+  calculatedPhysical Float?
+  /// Calculator rows ({ expression, result }[]) that produced actualQty
+  calculationRows   Json?
   location          Location        @relation(fields: [locationId], references: [id])
   item              StockOpnameItem @relation(fields: [stockOpnameItemId], references: [id], onDelete: Cascade)
 

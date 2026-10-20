@@ -12,6 +12,45 @@ import {
   getLocalEndOfDay,
   formatDateInTimezone,
 } from '@/core/utils/date';
+import { Prisma } from '@prisma/client';
+import {
+  evaluateQuantityCalculation,
+  type StockOpnameCalculationRow,
+  type UpdateStockOpnameInput,
+} from '@bulog-wms/schema';
+
+/**
+ * "Hitung Per Tumpukan / Lokasi" only lists stacks with a positive ERP
+ * snapshot OR a positive reconciled physical stock (null counts as 0).
+ * Stacks that already hold a counted quantity stay visible so every value
+ * that feeds the item difference on submit remains reviewable.
+ */
+function isStackCountable(stack: {
+  erpQty: number | null;
+  calculatedPhysical: number | null;
+  actualQty: number | null;
+}): boolean {
+  return (
+    (stack.erpQty ?? 0) > 0 ||
+    (stack.calculatedPhysical ?? 0) > 0 ||
+    stack.actualQty !== null
+  );
+}
+
+function parseCalculationRows(
+  value: Prisma.JsonValue | null,
+): StockOpnameCalculationRow[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: StockOpnameCalculationRow[] = [];
+  for (const r of value) {
+    if (r && typeof r === 'object' && !Array.isArray(r)) {
+      if (typeof r.expression === 'string') {
+        rows.push({ expression: r.expression, result: Number(r.result) });
+      }
+    }
+  }
+  return rows;
+}
 
 @Injectable()
 export class StockOpnameService {
@@ -217,13 +256,15 @@ export class StockOpnameService {
         erpStock: item.erpStock,
         realtimeStock: item.realtimeStock,
         difference: item.difference,
-        stacks: item.stacks.map((st) => ({
+        stacks: item.stacks.filter(isStackCountable).map((st) => ({
           uuid: st.uuid,
           locationId: st.locationId,
           locationName: st.locationName,
           erpQty: st.erpQty,
+          calculatedPhysical: st.calculatedPhysical,
           actualQty: st.actualQty,
           variance: st.variance,
+          calculationRows: parseCalculationRows(st.calculationRows),
         })),
       })),
     };
@@ -237,9 +278,23 @@ export class StockOpnameService {
     createdById: number,
     notes?: string,
   ) {
-    // 1. Fetch current reconciliation details for all products (to get ERP stock and Realtime stock snapshots)
-    const reconList =
-      await this.reconciliationService.getReconciliationList(warehouseId);
+    // 1. Fetch current reconciliation details for all products (to get ERP stock and Realtime stock snapshots),
+    //    plus per-location calculatedPhysical so it can be snapshotted on each stack
+    const [reconList, locationReconMap, warehouseLocations] = await Promise.all(
+      [
+        this.reconciliationService.getReconciliationList(warehouseId),
+        this.reconciliationService.getLocationCalculatedPhysicalMap(
+          warehouseId,
+        ),
+        this.prisma.location.findMany({
+          where: { warehouseId },
+          select: { id: true, displayName: true },
+        }),
+      ],
+    );
+    const locationNames = new Map(
+      warehouseLocations.map((l) => [l.id, l.displayName]),
+    );
 
     // 2. Fetch all products current quants per location in this warehouse
     const products = await this.prisma.inventory.findMany({
@@ -302,6 +357,15 @@ export class StockOpnameService {
           locMap.set(loc.id, current);
         }
 
+        // Locations with reconciled physical stock but no ERP quant still need a stack to be counted
+        const reconByLocation = locationReconMap.get(prod.id);
+        for (const [locationId, calculatedPhysical] of reconByLocation ?? []) {
+          const name = locationNames.get(locationId);
+          if (calculatedPhysical > 0 && !locMap.has(locationId) && name) {
+            locMap.set(locationId, { name, qty: 0 });
+          }
+        }
+
         // Create StockOpnameStack snapshots
         for (const [locationId, locData] of locMap.entries()) {
           await tx.stockOpnameStack.create({
@@ -310,6 +374,8 @@ export class StockOpnameService {
               locationId,
               locationName: locData.name,
               erpQty: locData.qty,
+              calculatedPhysical:
+                reconByLocation?.get(locationId) ?? locData.qty,
             },
           });
         }
@@ -325,11 +391,7 @@ export class StockOpnameService {
   async updateStockOpname(
     warehouseId: number,
     uuid: string,
-    body: {
-      notes?: string;
-      stacks?: Array<{ uuid: string; actualQty: number | null }>;
-      attachmentPaths?: string[];
-    },
+    body: UpdateStockOpnameInput,
   ) {
     const op = await this.prisma.stockOpname.findFirst({
       where: { uuid, warehouseId },
@@ -357,21 +419,46 @@ export class StockOpnameService {
       // 2. Update actual quantities and calculate stack variances
       if (body.stacks && body.stacks.length > 0) {
         for (const st of body.stacks) {
-          const dbStack = await tx.stockOpnameStack.findUnique({
-            where: { uuid: st.uuid },
+          const dbStack = await tx.stockOpnameStack.findFirst({
+            where: { uuid: st.uuid, item: { stockOpnameId: op.id } },
           });
 
           if (!dbStack) continue;
 
+          // Calculator rows are re-evaluated here: the server, not the client total, decides actualQty
+          let actualQty = st.actualQty;
+          let calculationRows: Prisma.InputJsonValue | typeof Prisma.DbNull =
+            Prisma.DbNull;
+          const expressions = (st.calculationRows ?? []).filter(
+            (e) => e.trim() !== '',
+          );
+          if (expressions.length > 0) {
+            const calc = evaluateQuantityCalculation(expressions);
+            if (calc.hasError || calc.total === null) {
+              throw new BadRequestException(
+                `Perhitungan kuantum pada lokasi ${dbStack.locationName} tidak valid.`,
+              );
+            }
+            actualQty = calc.total;
+            calculationRows = expressions.map((expression, i) => {
+              const row = calc.rows[i];
+              return {
+                expression: expression.trim(),
+                result: row.status === 'ok' ? row.value : 0,
+              };
+            });
+          }
+
           // If actualQty is null/empty, variance is null
           const variance =
-            st.actualQty !== null ? st.actualQty - dbStack.erpQty : null;
+            actualQty !== null ? actualQty - dbStack.erpQty : null;
 
           await tx.stockOpnameStack.update({
             where: { id: dbStack.id },
             data: {
-              actualQty: st.actualQty,
+              actualQty,
               variance,
+              calculationRows,
             },
           });
         }
@@ -402,6 +489,38 @@ export class StockOpnameService {
         include: { attachments: true },
       });
     });
+  }
+
+  /**
+   * Delete a draft Stock Opname. Completed opnames are final and cannot be deleted.
+   */
+  async deleteStockOpname(warehouseId: number, uuid: string) {
+    const op = await this.prisma.stockOpname.findFirst({
+      where: { uuid, warehouseId },
+    });
+
+    if (!op) {
+      throw new NotFoundException('Stock Opname tidak ditemukan.');
+    }
+
+    if (op.status !== 'DRAFT') {
+      throw new BadRequestException(
+        'Hanya draf Stock Opname yang dapat dihapus.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Unlink attachments instead of letting the FK cascade delete their records
+      await tx.fileAttachment.updateMany({
+        where: { stockOpnameId: op.id },
+        data: { stockOpnameId: null },
+      });
+
+      // Items and stacks are removed via onDelete: Cascade
+      await tx.stockOpname.delete({ where: { id: op.id } });
+    });
+
+    return { uuid: op.uuid, opnameNumber: op.opnameNumber };
   }
 
   /**

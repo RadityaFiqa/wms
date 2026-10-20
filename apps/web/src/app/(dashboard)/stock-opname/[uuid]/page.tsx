@@ -1,11 +1,23 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStockOpnameDetail } from "@/hooks/useStockOpname";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import {
+  QuantityCalculatorRows,
+  summarizeCalculationRows,
+} from "@/components/QuantityCalculatorRows";
+import { formatQuantity, formatSignedQuantity } from "@/lib/quantity";
+import {
+  QUANTITY_PRECISION,
+  roundQuantity,
+  type StockOpnameCalculationRow,
+  type UpdateStockOpnameInput,
+} from "@bulog-wms/schema";
+import {
+  Calculator,
   Clipboard,
   ChevronLeft,
   Calendar,
@@ -20,7 +32,33 @@ import {
   Download,
   Info,
   Layers,
+  Trash2,
 } from "lucide-react";
+import { useAuthStore } from "@/store/auth";
+
+// Rows to show for a stack: saved calculator rows, or the legacy total as a single row
+function initialCalculationRows(stack: {
+  actualQty: number | null;
+  calculationRows?: StockOpnameCalculationRow[] | null;
+}): string[] {
+  if (stack.calculationRows && stack.calculationRows.length > 0) {
+    return stack.calculationRows.map((r) => r.expression);
+  }
+  if (stack.actualQty !== null) {
+    const str = String(stack.actualQty);
+    // Avoid exponent notation (e.g. 1e-7), which the expression parser rejects
+    return [/e/i.test(str) ? stack.actualQty.toFixed(QUANTITY_PRECISION) : str];
+  }
+  return [""];
+}
+
+function varianceClass(value: number): string {
+  return value < 0
+    ? "text-red-650"
+    : value > 0
+      ? "text-emerald-650"
+      : "text-slate-500";
+}
 
 export default function StockOpnameDetailPage() {
   const params = useParams();
@@ -33,36 +71,70 @@ export default function StockOpnameDetailPage() {
     error,
     updateDraft,
     submitOpname,
+    deleteOpname,
     downloadCountingSheet,
     downloadResultPdf,
   } = useStockOpnameDetail(uuid);
+  const { hasPermission } = useAuthStore();
+  const canDelete = hasPermission("delete", "StockOpname");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [notes, setNotes] = useState("");
-  const [actualCounts, setActualCounts] = useState<Record<string, number | "">>(
-    {},
-  );
+  // Calculator rows per stack uuid; the physical count is their total
+  const [calcRows, setCalcRows] = useState<Record<string, string[]>>({});
   const [attachmentPaths, setAttachmentPaths] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedProducts, setExpandedProducts] = useState<
     Record<string, boolean>
   >({});
+  const [expandedCalculators, setExpandedCalculators] = useState<
+    Record<string, boolean>
+  >({});
+  // Rows as loaded, to leave legacy counts untouched when the user did not edit them
+  const loadedRowsRef = useRef<Record<string, string[]>>({});
+  const legacyStacksRef = useRef<Record<string, number | null>>({});
 
   // Sync state with loaded data
   useEffect(() => {
     if (detailData) {
       setNotes(detailData.notes || "");
 
-      const counts: Record<string, number | ""> = {};
+      const rows: Record<string, string[]> = {};
+      const legacy: Record<string, number | null> = {};
       for (const item of detailData.items) {
         for (const stack of item.stacks) {
-          counts[stack.uuid] = stack.actualQty !== null ? stack.actualQty : "";
+          rows[stack.uuid] = initialCalculationRows(stack);
+          if (!stack.calculationRows?.length) {
+            legacy[stack.uuid] = stack.actualQty;
+          }
         }
       }
-      setActualCounts(counts);
+      loadedRowsRef.current = rows;
+      legacyStacksRef.current = legacy;
+      setCalcRows(rows);
       setAttachmentPaths(detailData.attachments.map((a: any) => a.filePath));
     }
   }, [detailData]);
+
+  const handleRowsChange = useCallback((stackUuid: string, rows: string[]) => {
+    setCalcRows((prev) => ({ ...prev, [stackUuid]: rows }));
+  }, []);
+
+  const toggleCalculator = useCallback((stackUuid: string) => {
+    setExpandedCalculators((prev) => ({
+      ...prev,
+      [stackUuid]: !prev[stackUuid],
+    }));
+  }, []);
+
+  const hasInvalidExpression = useMemo(
+    () =>
+      Object.values(calcRows).some(
+        (rows) => summarizeCalculationRows(rows).hasError,
+      ),
+    [calcRows],
+  );
 
   if (isLoading) {
     return (
@@ -122,23 +194,24 @@ export default function StockOpnameDetailPage() {
     }));
   };
 
-  const handleInputChange = (stackUuid: string, val: string) => {
-    if (!isDraft) return;
-    const num = val === "" ? "" : Number(val);
-    if (num !== "" && isNaN(num)) return;
-    setActualCounts((prev) => ({
-      ...prev,
-      [stackUuid]: num,
-    }));
-  };
-
-  const buildSavePayload = () => {
-    const stacksPayload = Object.entries(actualCounts).map(
-      ([stackUuid, val]) => ({
+  const buildSavePayload = (): UpdateStockOpnameInput => {
+    const stacksPayload = Object.entries(calcRows).map(([stackUuid, rows]) => {
+      // Legacy count (no saved rows) the user did not touch: send it back as-is
+      if (
+        stackUuid in legacyStacksRef.current &&
+        rows === loadedRowsRef.current[stackUuid]
+      ) {
+        return {
+          uuid: stackUuid,
+          actualQty: legacyStacksRef.current[stackUuid],
+        };
+      }
+      return {
         uuid: stackUuid,
-        actualQty: val === "" ? null : val,
-      }),
-    );
+        actualQty: summarizeCalculationRows(rows).total,
+        calculationRows: rows.filter((r) => r.trim() !== ""),
+      };
+    });
     return {
       notes,
       stacks: stacksPayload,
@@ -147,6 +220,7 @@ export default function StockOpnameDetailPage() {
   };
 
   const handleSaveDraft = async () => {
+    if (hasInvalidExpression) return;
     setIsSaving(true);
     const toastId = toast.loading("Menyimpan draf perhitungan...");
     try {
@@ -162,6 +236,7 @@ export default function StockOpnameDetailPage() {
   };
 
   const handleSubmitOpname = async () => {
+    if (hasInvalidExpression) return;
     // Save first, then submit
     setIsSubmitting(true);
     const toastId = toast.loading(
@@ -180,6 +255,24 @@ export default function StockOpnameDetailPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteOpname = async () => {
+    if (
+      !confirm(
+        `Hapus draf Stock Opname ${detailData.opnameNumber}? Seluruh hasil hitung pada draf ini akan ikut terhapus.`,
+      )
+    )
+      return;
+    setIsDeleting(true);
+    try {
+      await deleteOpname();
+      toast.success(`Draf ${detailData.opnameNumber} berhasil dihapus.`);
+      router.push("/stock-opname");
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || "Gagal menghapus Stock Opname.");
+      setIsDeleting(false);
     }
   };
 
@@ -270,10 +363,21 @@ export default function StockOpnameDetailPage() {
 
           {isDraft && (
             <>
+              {canDelete && (
+                <button
+                  onClick={handleDeleteOpname}
+                  disabled={isSaving || isSubmitting || isDeleting}
+                  className="flex items-center justify-center bg-white border border-red-200 text-red-600 hover:bg-red-50/50 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="h-4.5 w-4.5 mr-2" />
+                  {isDeleting ? "Menghapus..." : "Hapus Draf"}
+                </button>
+              )}
+
               <button
                 onClick={handleSaveDraft}
-                disabled={isSaving || isSubmitting}
-                className="flex items-center justify-center bg-white border border-blue-200 text-blue-600 hover:bg-blue-50/50 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm"
+                disabled={isSaving || isSubmitting || hasInvalidExpression}
+                className="flex items-center justify-center bg-white border border-blue-200 text-blue-600 hover:bg-blue-50/50 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-4.5 w-4.5 mr-2" />
                 {isSaving ? "Menyimpan..." : "Simpan Draf"}
@@ -281,8 +385,8 @@ export default function StockOpnameDetailPage() {
 
               <button
                 onClick={handleSubmitOpname}
-                disabled={isSaving || isSubmitting}
-                className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-emerald-500/10 transition cursor-pointer text-sm"
+                disabled={isSaving || isSubmitting || hasInvalidExpression}
+                className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-emerald-500/10 transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="h-4.5 w-4.5 mr-2" />
                 {isSubmitting ? "Memproses..." : "Selesaikan Opname"}
@@ -297,11 +401,20 @@ export default function StockOpnameDetailPage() {
           <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
             <span className="font-bold">Panduan Counting:</span> Klik pada baris
-            produk di tabel untuk menampilkan rincian tumpukan/lokasi. Masukkan
-            kuantitas aktual yang Anda hitung. Kolom input yang dibiarkan kosong
-            akan diabaikan dan tidak dimasukkan ke dalam perhitungan
-            selisih/varian.
+            produk di tabel untuk menampilkan rincian tumpukan/lokasi. Buka
+            &quot;Perhitungan Kuantum Fisik&quot; untuk memasukkan hasil hitung,
+            bisa berupa ekspresi seperti 20x2x5 atau (10+5)x2 dalam beberapa
+            baris. Lokasi tanpa baris terisi akan diabaikan dan tidak
+            dimasukkan ke dalam perhitungan selisih/varian.
           </div>
+        </div>
+      )}
+
+      {isDraft && hasInvalidExpression && (
+        <div className="bg-red-50 dark:bg-red-950/10 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex items-start gap-3.5 text-xs font-semibold text-red-700 dark:text-red-400">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          Masih ada ekspresi perhitungan yang tidak valid. Perbaiki terlebih
+          dahulu sebelum menyimpan atau menyelesaikan Stock Opname.
         </div>
       )}
 
@@ -339,18 +452,24 @@ export default function StockOpnameDetailPage() {
                 let actualSum = 0;
                 let hasActualVal = false;
                 for (const stack of item.stacks) {
-                  const val = actualCounts[stack.uuid];
-                  if (val !== undefined && val !== "") {
-                    actualSum += Number(val);
+                  const rows = calcRows[stack.uuid];
+                  const val = isDraft
+                    ? rows
+                      ? summarizeCalculationRows(rows).total
+                      : null
+                    : stack.actualQty;
+                  if (val !== null) {
+                    actualSum += val;
                     hasActualVal = true;
                   }
                 }
+                actualSum = roundQuantity(actualSum);
 
                 // If completed, use completed difference, otherwise calculate dynamically
                 const diff = !isDraft
                   ? item.difference
                   : hasActualVal
-                    ? actualSum - item.erpStock
+                    ? roundQuantity(actualSum - item.erpStock)
                     : null;
 
                 return (
@@ -436,103 +555,124 @@ export default function StockOpnameDetailPage() {
                             </div>
 
                             <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {item.stacks.length === 0 && (
+                                <p className="py-2.5 text-xs italic text-slate-400">
+                                  Tidak ada lokasi dengan Snapshot ERP atau
+                                  Stok Rekonsiliasi lebih dari 0.
+                                </p>
+                              )}
                               {item.stacks.map((stack: any) => {
-                                const inputVal = actualCounts[stack.uuid];
-                                const stackVar =
-                                  inputVal !== undefined && inputVal !== ""
-                                    ? Number(inputVal) - stack.erpQty
-                                    : null;
+                                const rows = calcRows[stack.uuid] ?? [""];
+                                const summary = summarizeCalculationRows(rows);
+                                const physicalQty: number | null = isDraft
+                                  ? summary.total
+                                  : stack.actualQty;
+                                const stackVar: number | null = isDraft
+                                  ? physicalQty !== null
+                                    ? roundQuantity(physicalQty - stack.erpQty)
+                                    : null
+                                  : stack.variance;
+                                const isCalcOpen =
+                                  !!expandedCalculators[stack.uuid];
 
                                 return (
                                   <div
                                     key={stack.uuid}
-                                    className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs sm:text-sm"
+                                    className="py-3 space-y-2.5 text-xs sm:text-sm"
                                   >
-                                    <div className="space-y-0.5">
-                                      <div className="font-bold text-slate-800 dark:text-slate-200">
-                                        {stack.locationName}
-                                      </div>
-                                      <div className="text-[11px] text-slate-400">
-                                        Qty Snapshot ERP:{" "}
-                                        <strong className="font-bold text-slate-600 dark:text-slate-400">
-                                          {stack.erpQty.toLocaleString("id-ID")}{" "}
-                                          {item.productUom}
-                                        </strong>
-                                      </div>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                      {stack.locationName}
                                     </div>
 
-                                    <div className="flex items-center gap-4">
-                                      {/* Input */}
-                                      <div className="flex items-center gap-2">
-                                        <label className="text-xs text-slate-400 font-medium">
-                                          Aktual:
-                                        </label>
-                                        <input
-                                          type="text"
-                                          disabled={!isDraft}
-                                          value={
-                                            isDraft
-                                              ? inputVal
-                                              : stack.actualQty !== null
-                                                ? stack.actualQty
-                                                : ""
-                                          }
-                                          onChange={(e) =>
-                                            handleInputChange(
-                                              stack.uuid,
-                                              e.target.value,
-                                            )
-                                          }
-                                          placeholder="Belum dihitung"
-                                          className="w-28 bg-slate-50 dark:bg-slate-800 border border-slate-250 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-right text-xs focus:outline-none focus:border-blue-500 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
-                                        />
-                                        <span className="text-xs text-slate-450">
+                                    <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
+                                      <div>
+                                        <dt className="text-slate-400">
+                                          Snapshot ERP
+                                        </dt>
+                                        <dd className="font-bold text-slate-600 dark:text-slate-400">
+                                          {formatQuantity(stack.erpQty)}{" "}
                                           {item.productUom}
-                                        </span>
+                                        </dd>
                                       </div>
-
-                                      {/* Variance at stack level */}
-                                      <div className="w-16 text-right font-black">
-                                        {isDraft ? (
-                                          stackVar !== null ? (
+                                      <div>
+                                        <dt className="text-slate-400">
+                                          Stok Rekonsiliasi
+                                        </dt>
+                                        <dd className="font-bold text-slate-600 dark:text-slate-400">
+                                          {stack.calculatedPhysical !== null &&
+                                          stack.calculatedPhysical !== undefined
+                                            ? `${formatQuantity(stack.calculatedPhysical)} ${item.productUom ?? ""}`
+                                            : "-"}
+                                        </dd>
+                                      </div>
+                                      <div>
+                                        <dt className="text-slate-400">
+                                          Hasil Hitung Fisik
+                                        </dt>
+                                        <dd className="font-black text-slate-800 dark:text-slate-200">
+                                          {physicalQty !== null ? (
+                                            `${formatQuantity(physicalQty)} ${item.productUom ?? ""}`
+                                          ) : (
+                                            <span className="font-normal italic text-slate-400">
+                                              Belum dihitung
+                                            </span>
+                                          )}
+                                        </dd>
+                                      </div>
+                                      <div>
+                                        <dt className="text-slate-400">
+                                          Selisih (vs ERP)
+                                        </dt>
+                                        <dd className="font-black">
+                                          {stackVar !== null ? (
                                             <span
-                                              className={
-                                                stackVar < 0
-                                                  ? "text-red-650"
-                                                  : stackVar > 0
-                                                    ? "text-emerald-650"
-                                                    : "text-slate-500"
-                                              }
+                                              className={varianceClass(stackVar)}
                                             >
-                                              {stackVar > 0
-                                                ? `+${stackVar}`
-                                                : stackVar}
+                                              {formatSignedQuantity(stackVar)}
                                             </span>
                                           ) : (
                                             <span className="text-slate-300">
                                               -
                                             </span>
-                                          )
-                                        ) : stack.variance !== null ? (
-                                          <span
-                                            className={
-                                              stack.variance < 0
-                                                ? "text-red-650"
-                                                : stack.variance > 0
-                                                  ? "text-emerald-650"
-                                                  : "text-slate-500"
-                                            }
-                                          >
-                                            {stack.variance > 0
-                                              ? `+${stack.variance}`
-                                              : stack.variance}
-                                          </span>
+                                          )}
+                                        </dd>
+                                      </div>
+                                    </dl>
+
+                                    <div className="rounded-lg border border-slate-150 dark:border-slate-800">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          toggleCalculator(stack.uuid)
+                                        }
+                                        aria-expanded={isCalcOpen}
+                                        className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg transition cursor-pointer"
+                                      >
+                                        {isCalcOpen ? (
+                                          <ChevronDown className="h-4 w-4 shrink-0" />
                                         ) : (
-                                          <span className="text-slate-300">
-                                            -
+                                          <ChevronRight className="h-4 w-4 shrink-0" />
+                                        )}
+                                        <Calculator className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                        Perhitungan Kuantum Fisik
+                                        {summary.hasError && (
+                                          <span className="ml-auto inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                                            <AlertTriangle className="h-3.5 w-3.5" />
+                                            Ekspresi tidak valid
                                           </span>
                                         )}
-                                      </div>
+                                      </button>
+                                      {isCalcOpen && (
+                                        <div className="px-3 pb-3 pt-1">
+                                          <QuantityCalculatorRows
+                                            rowsKey={stack.uuid}
+                                            rows={rows}
+                                            onChange={handleRowsChange}
+                                            uom={item.productUom}
+                                            disabled={!isDraft}
+                                          />
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 );

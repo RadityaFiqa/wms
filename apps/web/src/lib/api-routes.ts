@@ -159,6 +159,7 @@ export const API_ROUTES = {
     detail: (uuid: string) => `/stock-opname/${uuid}`,
     create: "/stock-opname",
     update: (uuid: string) => `/stock-opname/${uuid}`,
+    delete: (uuid: string) => `/stock-opname/${uuid}`,
     submit: (uuid: string) => `/stock-opname/${uuid}/submit`,
     countingSheet: (uuid: string) => `/stock-opname/${uuid}/counting-sheet/pdf`,
     exportPdf: (uuid: string) => `/stock-opname/${uuid}/export/pdf`,

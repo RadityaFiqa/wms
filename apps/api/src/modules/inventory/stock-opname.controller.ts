@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Param,
   Body,
   Query,
@@ -20,6 +21,11 @@ import { CheckPolicies } from '../casl/policies.decorator';
 import { AuditLogInterceptor } from '../audit-log/audit-log.interceptor';
 import { AuditLogAction } from '../audit-log/audit-log.decorator';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
+import { ZodValidationPipe } from '@/core/pipes/zod-validation.pipe';
+import {
+  UpdateStockOpnameSchema,
+  type UpdateStockOpnameInput,
+} from '@bulog-wms/schema';
 
 @Controller('stock-opname')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
@@ -89,12 +95,8 @@ export class StockOpnameController {
   @AuditLogAction('STOCK_OPNAME_UPDATE_DRAFT')
   async update(
     @Param('uuid') uuid: string,
-    @Body()
-    body: {
-      notes?: string;
-      stacks?: Array<{ uuid: string; actualQty: number | null }>;
-      attachmentPaths?: string[];
-    },
+    @Body(new ZodValidationPipe(UpdateStockOpnameSchema))
+    body: UpdateStockOpnameInput,
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId();
     if (!warehouseId) {
@@ -103,6 +105,19 @@ export class StockOpnameController {
       );
     }
     return this.service.updateStockOpname(warehouseId, uuid, body);
+  }
+
+  @Delete(':uuid')
+  @CheckPolicies((ability) => ability.can('delete', 'StockOpname'))
+  @AuditLogAction('STOCK_OPNAME_DELETE')
+  async remove(@Param('uuid') uuid: string) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    return this.service.deleteStockOpname(warehouseId, uuid);
   }
 
   @Post(':uuid/submit')
