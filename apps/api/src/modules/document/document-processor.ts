@@ -8,6 +8,7 @@ import PizZip = require('pizzip');
 import Docxtemplater = require('docxtemplater');
 import * as fs from 'fs';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as crypto from 'crypto';
@@ -42,10 +43,17 @@ export class DocumentProcessor extends WorkerHost {
     // Write DOCX buffer to temp file
     fs.writeFileSync(tempDocxPath, docxBuffer);
 
-    // Get LibreOffice path (defaulting to standard Windows installation)
+    // Get LibreOffice path (defaulting to standard installation per platform)
     const sofficePath =
       process.env.LIBREOFFICE_PATH ||
-      'C:\\Program Files\\LibreOffice\\program\\soffice.exe';
+      (process.platform === 'win32'
+        ? 'C:\\Program Files\\LibreOffice\\program\\soffice.exe'
+        : 'soffice');
+
+    // Isolated user profile per conversion: soffice refuses to run concurrently
+    // on a shared profile (it silently hands off to the running instance).
+    const profileDir = path.join(tempDir, `lo-profile-${uniqueId}`);
+    const profileUrl = pathToFileURL(profileDir).href;
 
     try {
       this.logger.log(
@@ -53,8 +61,8 @@ export class DocumentProcessor extends WorkerHost {
       );
 
       // Execute soffice conversion
-      const cmd = `"${sofficePath}" --headless --convert-to pdf --outdir "${tempDir}" "${tempDocxPath}"`;
-      await execAsync(cmd);
+      const cmd = `"${sofficePath}" "-env:UserInstallation=${profileUrl}" --headless --norestore --convert-to pdf --outdir "${tempDir}" "${tempDocxPath}"`;
+      await execAsync(cmd, { timeout: 120_000 });
 
       if (!fs.existsSync(tempPdfPath)) {
         throw new Error('LibreOffice did not generate the PDF file.');
@@ -71,6 +79,7 @@ export class DocumentProcessor extends WorkerHost {
       try {
         if (fs.existsSync(tempDocxPath)) fs.unlinkSync(tempDocxPath);
         if (fs.existsSync(tempPdfPath)) fs.unlinkSync(tempPdfPath);
+        fs.rmSync(profileDir, { recursive: true, force: true });
       } catch (e) {
         this.logger.warn(`Failed to clean up temp files: ${e}`);
       }

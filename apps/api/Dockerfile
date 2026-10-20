@@ -36,6 +36,18 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# LibreOffice headless for DOCX -> PDF conversion (document generation).
+# Fonts: Liberation (metric-compatible with Arial/Times New Roman/Courier New),
+# Carlito (Calibri), DejaVu as fallback.
+RUN apk add --no-cache \
+      libreoffice-writer \
+      fontconfig \
+      font-liberation \
+      font-carlito \
+      font-dejavu \
+    && fc-cache -f
+ENV LIBREOFFICE_PATH=/usr/bin/soffice
+
 # Copy the completely self-contained pruned application
 COPY --from=deploy /app/pruned ./
 
