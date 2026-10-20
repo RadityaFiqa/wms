@@ -491,6 +491,8 @@ model StockOpnameStack {
   calculatedPhysical Float?
   /// Calculator rows ({ expression, result }[]) that produced actualQty
   calculationRows   Json?
+  /// Free-text note for the tumpukan, kept on its first SKU
+  note              String?
   location          Location        @relation(fields: [locationId], references: [id])
   item              StockOpnameItem @relation(fields: [stockOpnameItemId], references: [id], onDelete: Cascade)
 

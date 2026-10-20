@@ -271,6 +271,33 @@ export function usePublicStackCardDates(warehouseUuid?: string, locationName?: s
   };
 }
 
+export interface StackCardOpnameCalculation {
+  opnameUuid: string;
+  opnameNumber: string;
+  completionDate: string | null;
+  uom: string | null;
+  calculations: { expression: string; result: number }[];
+  total: number;
+  note: string | null;
+}
+
+/** Calculation and note of a tumpukan from its latest completed Stock Opname. */
+export function usePublicStackCardOpname(locationName?: string) {
+  const { data, error, isLoading } = useSWR(
+    locationName
+      ? `${API_ROUTES.stackCards.publicStockOpname}?locationName=${encodeURIComponent(locationName)}`
+      : null,
+    (url: string) => api.get(url).then((res) => res.data),
+  );
+
+  return {
+    // The API answers null (empty body) when no completed opname counted the tumpukan
+    opname: (data || null) as StackCardOpnameCalculation | null,
+    error,
+    isLoading,
+  };
+}
+
 export function usePublicStackCardLocations(warehouseUuid?: string, locationName?: string) {
   const searchParams = new URLSearchParams();
   if (warehouseUuid) searchParams.append("warehouseUuid", warehouseUuid);

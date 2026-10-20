@@ -15,6 +15,7 @@ import {
 import { Prisma } from '@prisma/client';
 import {
   evaluateQuantityCalculation,
+  roundQuantity,
   type StockOpnameCalculationRow,
   type UpdateStockOpnameInput,
 } from '@bulog-wms/schema';
@@ -153,15 +154,15 @@ export class StockOpnameService {
       }),
     ]);
 
-    // Format output with total products and total variance
+    // Format output with the number of tumpukan (distinct countable locations)
     const formattedItems = items.map((op) => {
-      const totalProducts = op.items.length;
-      let totalVariance = 0;
+      const locations = new Set<string>();
       for (const item of op.items) {
-        if (item.difference !== null) {
-          totalVariance += item.difference;
+        for (const st of item.stacks.filter(isStackCountable)) {
+          locations.add(st.locationName);
         }
       }
+      const totalStacks = locations.size;
 
       return {
         uuid: op.uuid,
@@ -172,8 +173,7 @@ export class StockOpnameService {
         updatedAt: op.updatedAt,
         completionDate: op.completionDate,
         createdBy: op.createdBy.name,
-        totalProducts,
-        totalVariance,
+        totalStacks,
         attachments: op.attachments.map((a) => ({
           uuid: a.uuid,
           fileName: a.fileName,
@@ -265,6 +265,7 @@ export class StockOpnameService {
           actualQty: st.actualQty,
           variance: st.variance,
           calculationRows: parseCalculationRows(st.calculationRows),
+          note: st.note,
         })),
       })),
     };
@@ -459,6 +460,9 @@ export class StockOpnameService {
               actualQty,
               variance,
               calculationRows,
+              ...(st.note !== undefined && {
+                note: st.note?.trim() || null,
+              }),
             },
           });
         }
@@ -582,133 +586,12 @@ export class StockOpnameService {
   }
 
   /**
-   * Generate Counting Sheet PDF.
-   */
-  async generateCountingSheetPdf(
-    warehouseId: number,
-    uuid: string,
-  ): Promise<Buffer> {
-    const op = await this.prisma.stockOpname.findFirst({
-      where: { uuid, warehouseId },
-      include: {
-        warehouse: true,
-        createdBy: true,
-        items: {
-          include: { stacks: true },
-          orderBy: { productName: 'asc' },
-        },
-      },
-    });
-
-    if (!op) {
-      throw new NotFoundException('Stock Opname tidak ditemukan.');
-    }
-
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 20, size: 'A4' });
-      const buffers: Buffer[] = [];
-
-      doc.on('data', (chunk) => buffers.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', (err) => reject(err));
-
-      const drawHeader = () => {
-        doc
-          .fillColor('#1e293b')
-          .fontSize(12)
-          .font('Helvetica-Bold')
-          .text('LEMBAR PERHITUNGAN FISIK (COUNTING SHEET)', 20, 20, {
-            align: 'center',
-            width: 555,
-          });
-        doc
-          .fontSize(8)
-          .font('Helvetica')
-          .fillColor('#64748b')
-          .text(
-            `No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Tanggal Draf: ${op.createdAt.toLocaleDateString('id-ID')}`,
-            20,
-            36,
-            { align: 'center', width: 555 },
-          );
-
-        doc.moveTo(20, 52).lineTo(575, 52).lineWidth(0.5).stroke('#475569');
-
-        // Table Header
-        doc.fillColor('#475569').fontSize(7.5).font('Helvetica-Bold');
-        doc.text('Produk (Nama & SKU)', 25, 60, { width: 230 });
-        doc.text('Lokasi / Stack', 265, 60, { width: 140 });
-        doc.text('Qty Sistem (ERP)', 415, 60, { width: 70, align: 'right' });
-        doc.text('Perhitungan Aktual', 495, 60, { width: 75, align: 'center' });
-        doc.font('Helvetica');
-
-        doc.moveTo(20, 72).lineTo(575, 72).lineWidth(0.5).stroke('#475569');
-        return 76;
-      };
-
-      let currentY = drawHeader();
-
-      for (const item of op.items) {
-        const rowHeight = Math.max(14, item.stacks.length * 15);
-        if (currentY + rowHeight > 800) {
-          doc.addPage();
-          currentY = drawHeader();
-        }
-
-        // Draw product info
-        doc.fillColor('#1e293b').fontSize(7).font('Helvetica-Bold');
-        doc.text(`${item.productName}`, 25, currentY + 3, {
-          width: 230,
-          ellipsis: true,
-        });
-        doc.fillColor('#64748b').fontSize(6).font('Helvetica');
-        doc.text(
-          `SKU: ${item.productSku} | UOM: ${item.productUom || 'Unit'}`,
-          25,
-          currentY + 12,
-          { width: 230 },
-        );
-
-        // Draw stacks
-        let stackY = currentY;
-        for (let i = 0; i < item.stacks.length; i++) {
-          const st = item.stacks[i];
-          doc.fillColor('#334155').fontSize(7).font('Helvetica');
-          doc.text(st.locationName, 265, stackY + 3, {
-            width: 140,
-            ellipsis: true,
-          });
-          doc.text(st.erpQty.toLocaleString('id-ID'), 415, stackY + 3, {
-            width: 70,
-            align: 'right',
-          });
-
-          // Draw blank box/field for actual counting input
-          doc
-            .rect(500, stackY + 1, 60, 11)
-            .lineWidth(0.4)
-            .stroke('#cbd5e1');
-
-          stackY += 15;
-        }
-
-        doc
-          .moveTo(20, currentY + rowHeight)
-          .lineTo(575, currentY + rowHeight)
-          .lineWidth(0.2)
-          .stroke('#e2e8f0');
-        currentY += rowHeight;
-      }
-
-      doc.end();
-    });
-  }
-
-  /**
    * Generate "Lembar Perhitungan Fisik" PDF, grouped by location area
    * (the part before "/", e.g. "GBB 01/C04.1.2" -> "GBB 01"), one area per page.
-   * Saved calculator rows and totals are printed; uncounted stacks are left blank
-   * so the sheet can be filled in by hand.
+   * A tumpukan is counted once for all its SKUs: each saved calculator row is
+   * printed on its own line with its result, and the difference against the
+   * tumpukan's total ERP stock is shown when it is non-zero.
+   * Uncounted stacks are left blank so the sheet can be filled in by hand.
    */
   async generatePhysicalCountSheetPdf(
     warehouseId: number,
@@ -731,8 +614,10 @@ export class StockOpnameService {
       productSku: string;
       productUom: string;
       locationName: string;
-      expressions: string[];
+      erpQty: number;
+      calculations: StockOpnameCalculationRow[];
       actualQty: number | null;
+      note: string | null;
     };
 
     // Same location visibility as "Hitung Per Tumpukan / Lokasi"
@@ -749,10 +634,12 @@ export class StockOpnameService {
           productSku: item.productSku,
           productUom: item.productUom || 'Unit',
           locationName: st.locationName,
-          expressions: (parseCalculationRows(st.calculationRows) ?? []).map(
-            (r) => r.expression,
+          erpQty: st.erpQty,
+          calculations: (parseCalculationRows(st.calculationRows) ?? []).filter(
+            (r) => r.expression.trim() !== '' && Number.isFinite(r.result),
           ),
           actualQty: st.actualQty,
+          note: st.note?.trim() || null,
         });
         groups.set(area, rows);
       }
@@ -781,16 +668,22 @@ export class StockOpnameService {
 
       const PAGE_BOTTOM = 800;
       const PAD = 4;
+      const LINE_H = 10;
+      const RESULT_W = 50;
+      const TEXT = '#000000';
       const cols = {
-        komoditas: { x: 20, w: 170 },
-        tumpukan: { x: 190, w: 110 },
-        hitungan: { x: 300, w: 195 },
-        total: { x: 495, w: 80 },
+        komoditas: { x: 20, w: 110 },
+        tumpukan: { x: 130, w: 70 },
+        erp: { x: 200, w: 55 },
+        hitungan: { x: 255, w: 140 },
+        total: { x: 395, w: 50 },
+        selisih: { x: 445, w: 50 },
+        note: { x: 495, w: 80 },
       };
 
       const drawHeader = (area: string, continued: boolean) => {
         doc
-          .fillColor('#1e293b')
+          .fillColor(TEXT)
           .fontSize(12)
           .font('Helvetica-Bold')
           .text('LEMBAR PERHITUNGAN FISIK', 20, 20, {
@@ -800,7 +693,7 @@ export class StockOpnameService {
         doc
           .fontSize(8)
           .font('Helvetica')
-          .fillColor('#64748b')
+          .fillColor(TEXT)
           .text(
             `No. Opname: ${op.opnameNumber}  |  Gudang: ${op.warehouse.name}  |  Tanggal: ${op.createdAt.toLocaleDateString('id-ID')}`,
             20,
@@ -808,7 +701,7 @@ export class StockOpnameService {
             { align: 'center', width: 555 },
           );
         doc
-          .fillColor('#1e293b')
+          .fillColor(TEXT)
           .fontSize(10)
           .font('Helvetica-Bold')
           .text(`Lokasi: ${area}${continued ? ' (lanjutan)' : ''}`, 20, 54, {
@@ -818,12 +711,16 @@ export class StockOpnameService {
         // Table header
         const top = 70;
         doc.rect(20, top, 555, 16).fill('#f1f5f9');
-        doc.fillColor('#475569').fontSize(7.5).font('Helvetica-Bold');
+        doc.fillColor(TEXT).fontSize(7.5).font('Helvetica-Bold');
         doc.text('Komoditas', cols.komoditas.x + PAD, top + 5, {
           width: cols.komoditas.w - PAD * 2,
         });
         doc.text('Tumpukan', cols.tumpukan.x + PAD, top + 5, {
           width: cols.tumpukan.w - PAD * 2,
+        });
+        doc.text('Stok ERP', cols.erp.x + PAD, top + 5, {
+          width: cols.erp.w - PAD * 2,
+          align: 'right',
         });
         doc.text('Hitungan Perkalian', cols.hitungan.x + PAD, top + 5, {
           width: cols.hitungan.w - PAD * 2,
@@ -832,12 +729,19 @@ export class StockOpnameService {
           width: cols.total.w - PAD * 2,
           align: 'right',
         });
+        doc.text('Selisih', cols.selisih.x + PAD, top + 5, {
+          width: cols.selisih.w - PAD * 2,
+          align: 'right',
+        });
+        doc.text('Note', cols.note.x + PAD, top + 5, {
+          width: cols.note.w - PAD * 2,
+        });
         doc.rect(20, top, 555, 16).lineWidth(0.5).stroke('#94a3b8');
         return top + 16;
       };
 
       const drawSignatures = (y: number) => {
-        doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica-Bold');
+        doc.fillColor(TEXT).fontSize(7.5).font('Helvetica-Bold');
         doc.text('Petugas Penghitung,', 50, y, { width: 150, align: 'center' });
         doc.text('Kepala Gudang / Supervisor,', 375, y, {
           width: 150,
@@ -857,7 +761,7 @@ export class StockOpnameService {
       if (areas.length === 0) {
         drawHeader('-', false);
         doc
-          .fillColor('#64748b')
+          .fillColor(TEXT)
           .fontSize(8)
           .font('Helvetica-Oblique')
           .text('Tidak ada lokasi untuk dihitung.', 20, 96, {
@@ -870,68 +774,186 @@ export class StockOpnameService {
         if (areaIndex > 0) doc.addPage();
         let y = drawHeader(area, false);
 
-        for (const row of groups.get(area)!) {
-          const hitunganText = row.expressions.join('  +  ');
-          doc.fontSize(7.5).font('Helvetica');
-          const komoditasH =
-            doc.heightOfString(row.productName, {
-              width: cols.komoditas.w - PAD * 2,
-            }) + 10;
-          const hitunganH = hitunganText
-            ? doc.heightOfString(hitunganText, {
-                width: cols.hitungan.w - PAD * 2,
-              })
-            : 0;
-          // Uncounted rows get extra room for handwriting
-          const rowH = Math.max(
-            hitunganText ? 20 : 26,
-            komoditasH + PAD * 2,
-            hitunganH + PAD * 2,
-          );
+        const exprW = cols.hitungan.w - PAD * 2 - RESULT_W;
+        const formatExpression = (expr: string) =>
+          expr.replace(/\s*[*xX]\s*/g, ' x ').trim();
 
-          if (y + rowH > PAGE_BOTTOM) {
+        // Rows are sorted by location, so SKUs in the same stack are adjacent.
+        // A tumpukan is counted once for all its SKUs, so Tumpukan, Hitungan,
+        // Total and Selisih are merged cells; Komoditas and Stok ERP stay per SKU.
+        const stacks: SheetRow[][] = [];
+        for (const row of groups.get(area)!) {
+          const last = stacks[stacks.length - 1];
+          if (last && last[0].locationName === row.locationName) {
+            last.push(row);
+          } else {
+            stacks.push([row]);
+          }
+        }
+
+        const drawCell = (
+          col: { x: number; w: number },
+          top: number,
+          h: number,
+        ) => {
+          doc
+            .lineWidth(0.4)
+            .strokeColor('#cbd5e1')
+            .rect(col.x, top, col.w, h)
+            .stroke();
+        };
+
+        for (const stackRows of stacks) {
+          const locationName = stackRows[0].locationName;
+          const calculations = stackRows.flatMap((r) => r.calculations);
+          const counted = stackRows.filter((r) => r.actualQty !== null);
+          const actualQty = counted.length
+            ? roundQuantity(
+                counted.reduce((sum, r) => sum + (r.actualQty ?? 0), 0),
+              )
+            : null;
+          const erpTotal = stackRows.reduce((sum, r) => sum + r.erpQty, 0);
+          const variance =
+            actualQty !== null ? roundQuantity(actualQty - erpTotal) : null;
+          const note = Array.from(
+            new Set(stackRows.map((r) => r.note).filter((n) => !!n)),
+          ).join('; ');
+
+          // Measure
+          doc.fontSize(7.5).font('Helvetica-Bold');
+          const subHeights = stackRows.map(
+            (r) =>
+              doc.heightOfString(r.productName, {
+                width: cols.komoditas.w - PAD * 2,
+              }) +
+              10 +
+              PAD * 2,
+          );
+          doc.font('Helvetica');
+          const tumpukanH = doc.heightOfString(locationName, {
+            width: cols.tumpukan.w - PAD * 2,
+          });
+          doc.fontSize(7);
+          const lineHeights = calculations.map((c) =>
+            Math.max(
+              LINE_H,
+              doc.heightOfString(formatExpression(c.expression), {
+                width: exprW,
+              }) + 2,
+            ),
+          );
+          const hitunganH = lineHeights.reduce((a, b) => a + b, 0);
+          const noteH = note
+            ? doc.heightOfString(note, { width: cols.note.w - PAD * 2 })
+            : 0;
+          // Uncounted stacks get extra room for handwriting
+          const stackH = Math.max(
+            subHeights.reduce((a, b) => a + b, 0),
+            calculations.length ? 20 : 26,
+            hitunganH + PAD * 2,
+            tumpukanH + PAD * 2,
+            noteH + PAD * 2,
+          );
+          // The last SKU row absorbs the extra height of the merged cells
+          subHeights[subHeights.length - 1] +=
+            stackH - subHeights.reduce((a, b) => a + b, 0);
+
+          if (y + stackH > PAGE_BOTTOM) {
             doc.addPage();
             y = drawHeader(area, true);
           }
 
-          doc.fillColor('#1e293b').fontSize(7.5).font('Helvetica-Bold');
-          doc.text(row.productName, cols.komoditas.x + PAD, y + PAD, {
-            width: cols.komoditas.w - PAD * 2,
-          });
-          doc.fillColor('#64748b').fontSize(6).font('Helvetica');
-          doc.text(
-            `${row.productSku} | ${row.productUom}`,
-            cols.komoditas.x + PAD,
-            doc.y + 1,
-            { width: cols.komoditas.w - PAD * 2 },
-          );
+          // Per SKU: Komoditas and Stok ERP
+          let subY = y;
+          stackRows.forEach((row, i) => {
+            doc.fillColor(TEXT).fontSize(7.5).font('Helvetica-Bold');
+            doc.text(row.productName, cols.komoditas.x + PAD, subY + PAD, {
+              width: cols.komoditas.w - PAD * 2,
+            });
+            doc.fillColor(TEXT).fontSize(6).font('Helvetica');
+            doc.text(
+              `${row.productSku} | ${row.productUom}`,
+              cols.komoditas.x + PAD,
+              doc.y + 1,
+              { width: cols.komoditas.w - PAD * 2 },
+            );
 
-          doc.fillColor('#334155').fontSize(7.5).font('Helvetica');
-          doc.text(row.locationName, cols.tumpukan.x + PAD, y + PAD, {
+            doc.fillColor(TEXT).fontSize(7.5).font('Helvetica');
+            doc.text(formatQty(row.erpQty), cols.erp.x + PAD, subY + PAD, {
+              width: cols.erp.w - PAD * 2,
+              align: 'right',
+            });
+
+            drawCell(cols.komoditas, subY, subHeights[i]);
+            drawCell(cols.erp, subY, subHeights[i]);
+            subY += subHeights[i];
+          });
+
+          // Merged: Tumpukan
+          doc.fillColor(TEXT).fontSize(7.5).font('Helvetica');
+          doc.text(locationName, cols.tumpukan.x + PAD, y + PAD, {
             width: cols.tumpukan.w - PAD * 2,
           });
 
-          if (hitunganText) {
-            doc.text(hitunganText, cols.hitungan.x + PAD, y + PAD, {
-              width: cols.hitungan.w - PAD * 2,
+          // Merged: one line per calculator row; the sum is in the Total column
+          let lineY = y + PAD;
+          doc.fontSize(7);
+          calculations.forEach((c, i) => {
+            doc.text(
+              formatExpression(c.expression),
+              cols.hitungan.x + PAD,
+              lineY,
+              { width: exprW },
+            );
+            doc.text(
+              `= ${formatQty(c.result)}`,
+              cols.hitungan.x + PAD + exprW,
+              lineY,
+              { width: RESULT_W, align: 'right' },
+            );
+            lineY += lineHeights[i];
+          });
+
+          // Merged: Total and Selisih (vs total ERP of the tumpukan)
+          doc.fontSize(7.5).font('Helvetica-Bold');
+          if (actualQty !== null) {
+            doc.text(formatQty(actualQty), cols.total.x + PAD, y + PAD, {
+              width: cols.total.w - PAD * 2,
+              align: 'right',
             });
           }
-
-          if (row.actualQty !== null) {
-            doc.font('Helvetica-Bold').text(
-              formatQty(row.actualQty),
-              cols.total.x + PAD,
-              y + PAD,
-              { width: cols.total.w - PAD * 2, align: 'right' },
-            );
+          if (variance !== null && variance !== 0) {
+            doc
+              .fillColor(variance > 0 ? '#047857' : '#b91c1c')
+              .text(
+                `${variance > 0 ? '+' : ''}${formatQty(variance)}`,
+                cols.selisih.x + PAD,
+                y + PAD,
+                { width: cols.selisih.w - PAD * 2, align: 'right' },
+              );
           }
 
-          // Cell borders
-          doc.lineWidth(0.4).strokeColor('#cbd5e1');
-          for (const c of Object.values(cols)) {
-            doc.rect(c.x, y, c.w, rowH).stroke();
+          // Merged: Note
+          if (note) {
+            doc
+              .fillColor(TEXT)
+              .fontSize(7)
+              .font('Helvetica')
+              .text(note, cols.note.x + PAD, y + PAD, {
+                width: cols.note.w - PAD * 2,
+              });
           }
-          y += rowH;
+
+          for (const c of [
+            cols.tumpukan,
+            cols.hitungan,
+            cols.total,
+            cols.selisih,
+            cols.note,
+          ]) {
+            drawCell(c, y, stackH);
+          }
+          y += stackH;
         }
 
         if (y + 80 > PAGE_BOTTOM) {
@@ -966,7 +988,9 @@ export class StockOpnameService {
     }
 
     if (op.status === 'DRAFT') {
-      return this.generateCountingSheetPdf(warehouseId, uuid);
+      throw new BadRequestException(
+        'Laporan hasil hanya tersedia untuk Stock Opname yang sudah selesai.',
+      );
     }
 
     return new Promise((resolve, reject) => {

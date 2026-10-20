@@ -6,6 +6,7 @@ import { z } from "zod";
 
 export const QUANTITY_EXPRESSION_MAX_LENGTH = 200;
 export const QUANTITY_CALCULATION_MAX_ROWS = 50;
+export const STOCK_OPNAME_NOTE_MAX_LENGTH = 500;
 /** Decimal places kept for row results and totals. */
 export const QUANTITY_PRECISION = 3;
 const MAX_NESTING_DEPTH = 32;
@@ -233,6 +234,12 @@ export const UpdateStockOpnameStackSchema = z.object({
   calculationRows: z
     .array(QuantityExpressionSchema)
     .max(QUANTITY_CALCULATION_MAX_ROWS, `Maksimal ${QUANTITY_CALCULATION_MAX_ROWS} baris perhitungan`)
+    .optional(),
+  /** Note for the tumpukan; omitted leaves the saved note unchanged. */
+  note: z
+    .string()
+    .max(STOCK_OPNAME_NOTE_MAX_LENGTH, `Catatan maksimal ${STOCK_OPNAME_NOTE_MAX_LENGTH} karakter`)
+    .nullable()
     .optional(),
 });
 export type UpdateStockOpnameStackInput = z.infer<typeof UpdateStockOpnameStackSchema>;

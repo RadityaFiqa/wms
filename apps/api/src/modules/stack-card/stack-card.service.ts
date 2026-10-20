@@ -201,7 +201,9 @@ export class StackCardService {
           orderBy: [{ location: { displayName: 'asc' } }, { id: 'asc' }],
           include: {
             inventory: true,
-            location: true,
+            location: {
+              include: { warehouse: { select: { name: true } } },
+            },
           },
         }),
         this.prisma.quant.count({ where }),
@@ -248,6 +250,7 @@ export class StackCardService {
           keterangan: null,
           isPublished: true,
           dataSource: 'REAL_STOCK',
+          warehouse: { name: q.location?.warehouse?.name || '' },
         };
       });
 
@@ -588,6 +591,83 @@ export class StackCardService {
     });
 
     return locations.map((l) => l.locationName);
+  }
+
+  /**
+   * Calculator rows and note of a tumpukan from the most recent completed
+   * Stock Opname that has a non-empty calculation for it, or null if none.
+   */
+  async getLatestOpnameCalculation(warehouseId: number, locationName: string) {
+    const stacks = await this.prisma.stockOpnameStack.findMany({
+      where: {
+        locationName,
+        item: { stockOpname: { warehouseId, status: 'COMPLETED' } },
+      },
+      select: {
+        actualQty: true,
+        calculationRows: true,
+        note: true,
+        item: {
+          select: {
+            productUom: true,
+            stockOpname: {
+              select: {
+                id: true,
+                uuid: true,
+                opnameNumber: true,
+                completionDate: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [
+        { item: { stockOpname: { completionDate: 'desc' } } },
+        { id: 'asc' },
+      ],
+    });
+
+    const parseRows = (value: unknown) =>
+      Array.isArray(value)
+        ? value.flatMap((r) =>
+            r &&
+            typeof r === 'object' &&
+            typeof (r as any).expression === 'string' &&
+            (r as any).expression.trim() !== ''
+              ? [
+                  {
+                    expression: (r as any).expression as string,
+                    result: Number((r as any).result) || 0,
+                  },
+                ]
+              : [],
+          )
+        : [];
+
+    // Stacks are ordered newest opname first; use the first one with rows
+    const latest = stacks.find((st) => parseRows(st.calculationRows).length);
+    if (!latest) return null;
+
+    const opname = latest.item.stockOpname;
+    const sameOpname = stacks.filter(
+      (st) => st.item.stockOpname.id === opname.id,
+    );
+    const counted = sameOpname.filter((st) => st.actualQty !== null);
+    const notes = Array.from(
+      new Set(
+        sameOpname.map((st) => st.note?.trim()).filter((n): n is string => !!n),
+      ),
+    );
+
+    return {
+      opnameUuid: opname.uuid,
+      opnameNumber: opname.opnameNumber,
+      completionDate: opname.completionDate,
+      uom: latest.item.productUom,
+      calculations: sameOpname.flatMap((st) => parseRows(st.calculationRows)),
+      total: counted.reduce((sum, st) => sum + (st.actualQty ?? 0), 0),
+      note: notes.length ? notes.join('; ') : null,
+    };
   }
 
   async updateKartuTumpukanSource(

@@ -148,6 +148,7 @@ export const API_ROUTES = {
     publicList: "/public-stack-cards",
     publicSnapshotDates: "/public-stack-cards/snapshot-dates",
     publicLocations: "/public-stack-cards/locations",
+    publicStockOpname: "/public-stack-cards/stock-opname",
     publicWarehouses: "/public-stack-cards/warehouses",
   },
   reconciliation: {
@@ -161,7 +162,6 @@ export const API_ROUTES = {
     update: (uuid: string) => `/stock-opname/${uuid}`,
     delete: (uuid: string) => `/stock-opname/${uuid}`,
     submit: (uuid: string) => `/stock-opname/${uuid}/submit`,
-    countingSheet: (uuid: string) => `/stock-opname/${uuid}/counting-sheet/pdf`,
     physicalCountSheet: (uuid: string) =>
       `/stock-opname/${uuid}/physical-count-sheet/pdf`,
     exportPdf: (uuid: string) => `/stock-opname/${uuid}/export/pdf`,

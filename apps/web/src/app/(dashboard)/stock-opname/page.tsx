@@ -43,13 +43,13 @@ export default function StockOpnameListPage() {
     createStockOpname,
     deleteStockOpname,
   } = useStockOpname({
-      search,
-      status,
-      startDate,
-      endDate,
-      page,
-      limit,
-    });
+    search,
+    status,
+    startDate,
+    endDate,
+    page,
+    limit,
+  });
 
   const handleCreate = async () => {
     if (!activeWarehouse) {
@@ -192,15 +192,12 @@ export default function StockOpnameListPage() {
           <table className="w-full text-left border-collapse table-layout-fixed">
             <thead className="bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
               <tr className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[20%] font-mono">No. Opname</th>
-                <th className="px-6 py-4 w-[15%]">Gudang</th>
-                <th className="px-6 py-4 w-[18%]">Tanggal Dibuat</th>
-                <th className="px-6 py-4 w-[12%] text-center">Produk</th>
-                <th className="px-6 py-4 w-[13%] text-right font-semibold text-amber-700 dark:text-amber-400">
-                  Selisih Var
-                </th>
-                <th className="px-6 py-4 w-[10%] text-center">Status</th>
-                <th className="px-6 py-4 w-[12%] text-center">Aksi</th>
+                <th className="px-6 py-4 w-[22%] font-mono">No. Opname</th>
+                <th className="px-6 py-4 w-[18%]">Gudang</th>
+                <th className="px-6 py-4 w-[20%]">Tanggal Dibuat</th>
+                <th className="px-6 py-4 w-[14%] text-center">Tumpukan</th>
+                <th className="px-6 py-4 w-[12%] text-center">Status</th>
+                <th className="px-6 py-4 w-[14%] text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -219,9 +216,6 @@ export default function StockOpnameListPage() {
                     <td className="px-6 py-4 text-center">
                       <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-8 mx-auto"></div>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-12 ml-auto"></div>
-                    </td>
                     <td className="px-6 py-4 text-center">
                       <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-12 mx-auto"></div>
                     </td>
@@ -233,7 +227,7 @@ export default function StockOpnameListPage() {
               ) : !stockOpnameData || stockOpnameData.items.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="px-6 py-16 text-center text-slate-400 font-medium"
                   >
                     Tidak ada sesi Stock Opname ditemukan. Silakan klik tombol
@@ -268,29 +262,8 @@ export default function StockOpnameListPage() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-200 dark:border-slate-700">
-                        {op.totalProducts} item
+                        {op.totalStacks} tumpukan
                       </span>
-                    </td>
-                    <td
-                      className={`px-6 py-4 text-right font-extrabold ${
-                        op.totalVariance < 0
-                          ? "text-red-600 dark:text-red-400"
-                          : op.totalVariance > 0
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-slate-600 dark:text-slate-300"
-                      }`}
-                    >
-                      {op.status === "COMPLETED" ? (
-                        <span>
-                          {op.totalVariance > 0
-                            ? `+${op.totalVariance}`
-                            : op.totalVariance}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 font-normal italic text-xs">
-                          Counting...
-                        </span>
-                      )}
                     </td>
                     <td className="px-6 py-4 text-center">
                       {op.status === "COMPLETED" ? (

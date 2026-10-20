@@ -9,6 +9,8 @@ import {
   usePublicStackCards,
   usePublicStackCardDates,
   usePublicStackCardLocations,
+  usePublicStackCardOpname,
+  type StackCardOpnameCalculation,
 } from "@/hooks/useStackCard";
 import { useTheme } from "../theme-provider";
 import {
@@ -28,7 +30,39 @@ import {
   Moon,
   Sun,
   Search,
+  Calculator,
+  StickyNote,
 } from "lucide-react";
+
+// Print formatters follow the official Kartu Tumpukan sheet: dd/mm/yyyy dates
+// and "1,744" style numbers
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+function parseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function formatPrintDate(value: string | null | undefined): string {
+  const date = parseDate(value);
+  if (!date) return value || "";
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function formatPrintDateTime(value: string | null | undefined): string {
+  const date = parseDate(value);
+  if (!date) return value || "";
+  return `${formatPrintDate(value)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function formatPrintNumber(value: number | null | undefined): string {
+  return (value ?? 0).toLocaleString("en-US", { maximumFractionDigits: 3 });
+}
+
+function formatOpnameQty(value: number): string {
+  return value.toLocaleString("id-ID", { maximumFractionDigits: 3 });
+}
 
 // Main Page wrapper with Suspense to handle useSearchParams in Next.js static builds
 export default function KartuTumpukanPublicPage() {
@@ -37,9 +71,24 @@ export default function KartuTumpukanPublicPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-500">
           <div className="text-center">
-            <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             <p className="font-semibold text-sm">Memuat aplikasi...</p>
           </div>
@@ -72,10 +121,8 @@ function KartuTumpukanContent() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // Fetch available dates for the selected location (unauthenticated)
-  const { dates: publishedDates, isLoading: datesLoading } = usePublicStackCardDates(
-    undefined,
-    locationParam || undefined
-  );
+  const { dates: publishedDates, isLoading: datesLoading } =
+    usePublicStackCardDates(undefined, locationParam || undefined);
 
   // Set default date when publishedDates load
   useEffect(() => {
@@ -88,12 +135,29 @@ function KartuTumpukanContent() {
   }, [publishedDates, locationParam]);
 
   // Fetch stack cards data strictly for this location
-  const { stackCardData, isLoading: dataLoading } = usePublicStackCards(undefined, {
+  const { stackCardData, isLoading: dataLoading } = usePublicStackCards(
+    undefined,
+    {
+      locationName: locationParam,
+      snapshotDate: selectedDate,
+      search: search,
+      page,
+      limit,
+    },
+  );
+
+  // Latest completed Stock Opname calculation for this tumpukan (screen only)
+  const { opname, isLoading: opnameLoading } = usePublicStackCardOpname(
+    locationParam || undefined,
+  );
+
+  // Every row of the location for the printed sheet, independent of the
+  // on-screen search and pagination
+  const { stackCardData: printData } = usePublicStackCards(undefined, {
     locationName: locationParam,
     snapshotDate: selectedDate,
-    search: search,
-    page,
-    limit,
+    page: 1,
+    limit: 1000,
   });
 
   // Handle Print Action
@@ -107,7 +171,7 @@ function KartuTumpukanContent() {
     try {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return dateStr;
-      
+
       const options: Intl.DateTimeFormatOptions = {
         day: "2-digit",
         month: "long",
@@ -124,7 +188,7 @@ function KartuTumpukanContent() {
     try {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return dateStr;
-      
+
       return date.toLocaleString("id-ID", {
         day: "2-digit",
         month: "long",
@@ -167,7 +231,14 @@ function KartuTumpukanContent() {
 
   // Selection Screen: If location query param is missing
   if (!locationParam) {
-    return <LocationSelectionScreen theme={theme} toggleTheme={toggleTheme} token={token} user={user} />;
+    return (
+      <LocationSelectionScreen
+        theme={theme}
+        toggleTheme={toggleTheme}
+        token={token}
+        user={user}
+      />
+    );
   }
 
   const stackCards = stackCardData?.data || [];
@@ -194,7 +265,9 @@ function KartuTumpukanContent() {
     }
 
     if (typeof aVal === "string") {
-      return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      return sortOrder === "asc"
+        ? aVal.localeCompare(bVal)
+        : bVal.localeCompare(aVal);
     }
     if (typeof aVal === "number") {
       return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
@@ -203,13 +276,16 @@ function KartuTumpukanContent() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-200 kartu-tumpukan-page">
       {/* Public Header Navbar (Hidden on Print) */}
       <header className="h-16 flex items-center justify-between px-6 md:px-12 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 shadow-xs print:hidden">
         <div className="flex items-center">
           <WarehouseIcon className="h-6 w-6 text-blue-600 mr-2.5" />
           <span className="text-lg font-black tracking-tight text-slate-800 dark:text-slate-100 uppercase">
-            BULOG <span className="text-blue-600 text-xs font-bold font-sans lowercase">WMS</span>
+            BULOG{" "}
+            <span className="text-blue-600 text-xs font-bold font-sans lowercase">
+              WMS
+            </span>
           </span>
           <span className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-3" />
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -223,7 +299,11 @@ function KartuTumpukanContent() {
             className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
             title="Ubah tema"
           >
-            {theme === "dark" ? <Sun className="h-4.5 w-4.5 text-amber-500" /> : <Moon className="h-4.5 w-4.5" />}
+            {theme === "dark" ? (
+              <Sun className="h-4.5 w-4.5 text-amber-500" />
+            ) : (
+              <Moon className="h-4.5 w-4.5" />
+            )}
           </button>
 
           {token ? (
@@ -247,17 +327,18 @@ function KartuTumpukanContent() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-6 md:p-10 space-y-6 print:p-0 print:max-w-none">
-        
+      <main className="flex-1 max-w-7xl mx-auto w-full p-6 md:p-10 space-y-6 print:hidden">
         {/* Simple Header Section (Optimized for Screen & Print) */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between border-b border-slate-200 dark:border-slate-800 pb-5 gap-4 print:border-slate-300">
           <div>
             <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 print:hidden">
-              <Link href="/kartu-tumpukan" className="hover:text-blue-600">Pilih Lokasi</Link>
+              <Link href="/kartu-tumpukan" className="hover:text-blue-600">
+                Pilih Lokasi
+              </Link>
               <span>/</span>
               <span className="text-blue-600">Kartu Tumpukan</span>
             </div>
-            
+
             <div className="flex items-center space-x-3">
               <div className="p-2.5 bg-blue-600 text-white rounded-lg print:hidden">
                 <MapPin className="h-6 w-6" />
@@ -288,7 +369,10 @@ function KartuTumpukanContent() {
             {selectedDate && (
               <span className="text-xs font-bold text-slate-500 dark:text-slate-450 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg flex items-center">
                 <Calendar className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
-                Terakhir diperbarui pada: <strong className="ml-1 text-slate-800 dark:text-slate-200">{formatDateTime(selectedDate)}</strong>
+                Terakhir diperbarui pada:{" "}
+                <strong className="ml-1 text-slate-800 dark:text-slate-200">
+                  {formatDateTime(selectedDate)}
+                </strong>
               </span>
             )}
           </div>
@@ -306,7 +390,10 @@ function KartuTumpukanContent() {
                 TOTAL KUANTITAS
               </span>
               <strong className="text-2xl font-black text-slate-850 dark:text-slate-100 print:text-xl">
-                {formatNumber(summary.totalQuantity)} <span className="text-xs font-semibold text-slate-450 dark:text-slate-500">{stackCards[0]?.uom || "Pack"}</span>
+                {formatNumber(summary.totalQuantity)}{" "}
+                <span className="text-xs font-semibold text-slate-450 dark:text-slate-500">
+                  {stackCards[0]?.uom || "Pack"}
+                </span>
               </strong>
             </div>
           </div>
@@ -321,7 +408,10 @@ function KartuTumpukanContent() {
                 TOTAL KUANTUM
               </span>
               <strong className="text-2xl font-black text-slate-850 dark:text-slate-100 print:text-xl">
-                {formatNumber(summary.totalQuantum)} <span className="text-xs font-semibold text-slate-450 dark:text-slate-550">Kg</span>
+                {formatNumber(summary.totalQuantum)}{" "}
+                <span className="text-xs font-semibold text-slate-450 dark:text-slate-550">
+                  Kg
+                </span>
               </strong>
             </div>
           </div>
@@ -351,29 +441,67 @@ function KartuTumpukanContent() {
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider print:bg-slate-100 print:border-slate-300">
                   <th className="py-3 px-4 text-center w-12">No</th>
-                  <th className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent max-w-[450px] min-w-[250px]" onClick={() => handleSort("productName")}>
-                    Produk {sortField === "productName" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent max-w-[450px] min-w-[250px]"
+                    onClick={() => handleSort("productName")}
+                  >
+                    Produk{" "}
+                    {sortField === "productName" &&
+                      (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("sku")}>
-                    SKU {sortField === "sku" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("sku")}
+                  >
+                    SKU{" "}
+                    {sortField === "sku" && (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("lot")}>
-                    Lot {sortField === "lot" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("lot")}
+                  >
+                    Lot{" "}
+                    {sortField === "lot" && (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("shelfLife")}>
-                    Umur Simpan (Bulan) {sortField === "shelfLife" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("shelfLife")}
+                  >
+                    Umur Simpan (Bulan){" "}
+                    {sortField === "shelfLife" &&
+                      (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("expiredDate")}>
-                    Expired Date / Best Before {sortField === "expiredDate" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("expiredDate")}
+                  >
+                    Expired Date / Best Before{" "}
+                    {sortField === "expiredDate" &&
+                      (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("placementDate")}>
-                    Tanggal Penempatan {sortField === "placementDate" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("placementDate")}
+                  >
+                    Tanggal Penempatan{" "}
+                    {sortField === "placementDate" &&
+                      (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 text-right cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("quantity")}>
-                    Kuantitas {sortField === "quantity" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 text-right cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("quantity")}
+                  >
+                    Kuantitas{" "}
+                    {sortField === "quantity" &&
+                      (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
-                  <th className="py-3 px-4 text-right cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent" onClick={() => handleSort("quantum")}>
-                    Kuantum {sortField === "quantum" && (sortOrder === "asc" ? "▲" : "▼")}
+                  <th
+                    className="py-3 px-4 text-right cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 print:hover:bg-transparent"
+                    onClick={() => handleSort("quantum")}
+                  >
+                    Kuantum{" "}
+                    {sortField === "quantum" &&
+                      (sortOrder === "asc" ? "▲" : "▼")}
                   </th>
                   <th className="py-3 px-4">UoM</th>
                   <th className="py-3 px-4 text-center">Spraying</th>
@@ -385,17 +513,38 @@ function KartuTumpukanContent() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
                 {dataLoading ? (
                   <tr>
-                    <td colSpan={14} className="py-10 text-center text-xs font-semibold text-slate-400">
-                      <svg className="animate-spin h-5 w-5 text-blue-600 mx-auto mb-2" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <td
+                      colSpan={14}
+                      className="py-10 text-center text-xs font-semibold text-slate-400"
+                    >
+                      <svg
+                        className="animate-spin h-5 w-5 text-blue-600 mx-auto mb-2"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       Memuat data kartu tumpukan...
                     </td>
                   </tr>
                 ) : sortedStackCards.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className="py-10 text-center text-xs font-semibold text-slate-400">
+                    <td
+                      colSpan={14}
+                      className="py-10 text-center text-xs font-semibold text-slate-400"
+                    >
                       <Info className="h-6 w-6 text-slate-350 dark:text-slate-650 mx-auto mb-2" />
                       Tidak ada data tumpukan untuk lokasi dan tanggal terpilih.
                     </td>
@@ -408,20 +557,33 @@ function KartuTumpukanContent() {
                         key={row.uuid}
                         className="text-slate-700 dark:text-slate-355 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 print:hover:bg-transparent print:text-[10px]"
                       >
-                        <td className="py-3 px-4 text-center font-bold text-slate-400">{numberIndex}</td>
-                        <td className="py-3 px-4 font-bold text-slate-850 dark:text-slate-100 max-w-[450px] min-w-[250px] break-words whitespace-normal" title={row.productName}>
+                        <td className="py-3 px-4 text-center font-bold text-slate-400">
+                          {numberIndex}
+                        </td>
+                        <td
+                          className="py-3 px-4 font-bold text-slate-850 dark:text-slate-100 max-w-[450px] min-w-[250px] break-words whitespace-normal"
+                          title={row.productName}
+                        >
                           {row.productName}
                         </td>
-                        <td className="py-3 px-4 font-mono text-slate-500">{row.sku}</td>
+                        <td className="py-3 px-4 font-mono text-slate-500">
+                          {row.sku}
+                        </td>
                         <td className="py-3 px-4 font-semibold">{row.lot}</td>
                         <td className="py-3 px-4 text-center font-semibold">
-                          {row.shelfLife !== null && row.shelfLife !== undefined ? row.shelfLife : "-"}
+                          {row.shelfLife !== null && row.shelfLife !== undefined
+                            ? row.shelfLife
+                            : "-"}
                         </td>
                         <td className="py-3 px-4 font-semibold">
                           {row.expiredDate ? formatDate(row.expiredDate) : "-"}
                         </td>
                         <td className="py-3 px-4 font-semibold">
-                          {row.placement ? row.placement : (row.placementDate ? formatDate(row.placementDate) : "-")}
+                          {row.placement
+                            ? row.placement
+                            : row.placementDate
+                              ? formatDate(row.placementDate)
+                              : "-"}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-850 dark:text-slate-100">
                           {formatNumber(row.quantity)}
@@ -429,11 +591,22 @@ function KartuTumpukanContent() {
                         <td className="py-3 px-4 text-right font-bold text-slate-850 dark:text-slate-100">
                           {formatNumber(row.quantum)}
                         </td>
-                        <td className="py-3 px-4 text-slate-500 font-semibold">{row.uom}</td>
-                        <td className="py-3 px-4 text-center font-semibold">{renderTreatmentDate(row.spraying)}</td>
-                        <td className="py-3 px-4 text-center font-semibold">{renderTreatmentDate(row.fumigasi)}</td>
-                        <td className="py-3 px-4 text-center font-semibold">{renderTreatmentDate(row.fogging)}</td>
-                        <td className="py-3 px-4 italic text-slate-400 max-w-xs truncate" title={row.keterangan || ""}>
+                        <td className="py-3 px-4 text-slate-500 font-semibold">
+                          {row.uom}
+                        </td>
+                        <td className="py-3 px-4 text-center font-semibold">
+                          {renderTreatmentDate(row.spraying)}
+                        </td>
+                        <td className="py-3 px-4 text-center font-semibold">
+                          {renderTreatmentDate(row.fumigasi)}
+                        </td>
+                        <td className="py-3 px-4 text-center font-semibold">
+                          {renderTreatmentDate(row.fogging)}
+                        </td>
+                        <td
+                          className="py-3 px-4 italic text-slate-400 max-w-xs truncate"
+                          title={row.keterangan || ""}
+                        >
                           {row.keterangan || "-"}
                         </td>
                       </tr>
@@ -448,11 +621,19 @@ function KartuTumpukanContent() {
           {sortedStackCards.length > 0 && (
             <div className="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 px-5 py-3.5 flex items-center justify-between print:hidden">
               <span className="text-xs font-semibold text-slate-500">
-                Menampilkan <span className="text-slate-800 dark:text-slate-250">{(page - 1) * limit + 1}</span> -{" "}
+                Menampilkan{" "}
+                <span className="text-slate-800 dark:text-slate-250">
+                  {(page - 1) * limit + 1}
+                </span>{" "}
+                -{" "}
                 <span className="text-slate-800 dark:text-slate-250">
                   {Math.min(page * limit, totalItems)}
                 </span>{" "}
-                dari <span className="text-slate-800 dark:text-slate-250">{totalItems}</span> data
+                dari{" "}
+                <span className="text-slate-800 dark:text-slate-250">
+                  {totalItems}
+                </span>{" "}
+                data
               </span>
 
               <div className="flex items-center space-x-2">
@@ -494,70 +675,294 @@ function KartuTumpukanContent() {
             </div>
           )}
         </div>
+
+        <OpnameCalculationCard opname={opname} isLoading={opnameLoading} />
       </main>
+
+      <PrintSheet
+        rows={printData?.data || []}
+        summary={printData?.summary}
+        warehouseName={resolvedWarehouseName}
+        perDate={selectedDate}
+        printedBy={user?.name}
+      />
 
       {/* Print-specific style tag */}
       <style jsx global>{`
         @media print {
           @page {
             size: A4 landscape;
-            margin: 10mm 15mm;
+            margin: 10mm;
           }
-          body {
+          /* Beat the global dark-theme !important backgrounds */
+          html body,
+          html.dark body,
+          html body .kartu-tumpukan-page,
+          html.dark body .kartu-tumpukan-page {
             background-color: white !important;
             color: black !important;
-            font-size: 10px !important;
+            transition: none !important;
           }
-          header, .print\:hidden, button, input, select {
-            display: none !important;
+          .kartu-tumpukan-print {
+            font-family: Calibri, Carlito, Arial, sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
-          main {
-            padding: 0 !important;
-            margin: 0 !important;
-            width: 100% !important;
-            max-width: none !important;
+          .kartu-tumpukan-print thead {
+            display: table-header-group;
           }
-          table {
-            border: 1px solid #cbd5e1 !important;
-            width: 100% !important;
-            border-collapse: collapse !important;
-            font-size: 9px !important;
-          }
-          thead {
-            display: table-header-group !important;
-          }
-          tr {
-            page-break-inside: avoid !important;
-            page-break-after: auto !important;
-          }
-          th, td {
-            border: 1px solid #cbd5e1 !important;
-            padding: 4px 6px !important;
-            color: black !important;
-            word-break: break-word !important;
-          }
-          th {
-            background-color: #f1f5f9 !important;
-            font-weight: bold !important;
-          }
-          
-          /* Column widths proportional */
-          th:nth-child(1), td:nth-child(1) { width: 3% !important; text-align: center !important; } /* No */
-          th:nth-child(2), td:nth-child(2) { width: 22% !important; } /* Produk */
-          th:nth-child(3), td:nth-child(3) { width: 10% !important; } /* SKU */
-          th:nth-child(4), td:nth-child(4) { width: 12% !important; } /* Lot */
-          th:nth-child(5), td:nth-child(5) { width: 6% !important; text-align: center !important; } /* Umur Simpan */
-          th:nth-child(6), td:nth-child(6) { width: 9% !important; } /* Expired Date */
-          th:nth-child(7), td:nth-child(7) { width: 9% !important; } /* Tanggal Penempatan */
-          th:nth-child(8), td:nth-child(8) { width: 6% !important; text-align: right !important; } /* Kuantitas */
-          th:nth-child(9), td:nth-child(9) { width: 6% !important; text-align: right !important; } /* Kuantum */
-          th:nth-child(10), td:nth-child(10) { width: 5% !important; } /* UoM */
-          th:nth-child(11), td:nth-child(11) { width: 6% !important; text-align: center !important; } /* Spraying */
-          th:nth-child(12), td:nth-child(12) { width: 6% !important; text-align: center !important; } /* Fumigasi */
-          th:nth-child(13), td:nth-child(13) { width: 6% !important; text-align: center !important; } /* Fogging */
-          th:nth-child(14), td:nth-child(14) { width: 12% !important; } /* Keterangan */
         }
       `}</style>
+    </div>
+  );
+}
+
+// Sub-component: latest completed Stock Opname calculation for the tumpukan
+function OpnameCalculationCard({
+  opname,
+  isLoading,
+}: {
+  opname: StackCardOpnameCalculation | null;
+  isLoading: boolean;
+}) {
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <Calculator className="h-4.5 w-4.5 text-blue-600 shrink-0" />
+          Perhitungan Stock Opname Terakhir
+        </h2>
+        {opname && (
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {opname.opnameNumber}
+            {opname.completionDate &&
+              ` · Selesai ${new Date(opname.completionDate).toLocaleDateString(
+                "id-ID",
+                {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                },
+              )}`}
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <p className="px-5 py-6 text-xs font-semibold text-slate-400">
+          Memuat perhitungan stock opname...
+        </p>
+      ) : !opname ? (
+        <p className="px-5 py-6 text-xs font-semibold text-slate-400">
+          Belum ada stock opname selesai dengan perhitungan untuk tumpukan ini.
+        </p>
+      ) : (
+        <div className="p-5 space-y-4">
+          <div className="max-w-md">
+            <table className="w-full text-xs">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {opname.calculations.map((c, i) => (
+                  <tr key={i}>
+                    <td className="py-1.5 font-mono text-slate-700 dark:text-slate-300">
+                      {c.expression.replace(/\s*[*xX]\s*/g, " x ").trim()}
+                    </td>
+                    <td className="py-1.5 text-right font-semibold text-slate-700 dark:text-slate-300">
+                      = {formatOpnameQty(c.result)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-slate-200 dark:border-slate-700">
+                  <td className="py-2 font-bold text-slate-800 dark:text-slate-100">
+                    Total Hitung Fisik
+                  </td>
+                  <td className="py-2 text-right font-black text-slate-800 dark:text-slate-100">
+                    {formatOpnameQty(opname.total)}{" "}
+                    <span className="text-slate-400 font-semibold">
+                      {opname.uom}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-start gap-2 text-xs">
+            <StickyNote className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+              {opname.note || (
+                <span className="italic text-slate-400">
+                  Tidak ada catatan tumpukan.
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sub-component: printed Kartu Tumpukan, laid out like the official sheet.
+// Kanwil, city and signer are not stored yet, so they are left as dotted
+// blanks to fill in by hand.
+interface PrintSheetProps {
+  rows: any[];
+  summary?: { totalQuantity: number; totalQuantum: number };
+  warehouseName: string;
+  perDate: string;
+  printedBy?: string;
+}
+
+const PRINT_COLUMNS = [
+  3.5, 16.3, 6.6, 7.6, 4.6, 6.9, 6.8, 4.8, 6.3, 6.3, 4.2, 6.9, 7.1, 4.9, 7.2,
+];
+
+function PrintSheet({
+  rows,
+  summary,
+  warehouseName,
+  perDate,
+  printedBy,
+}: PrintSheetProps) {
+  const sheetDate = parseDate(perDate) ?? new Date();
+  const sheetDateIso = sheetDate.toISOString();
+  const totalQuantity =
+    summary?.totalQuantity ??
+    rows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+  const totalQuantum =
+    summary?.totalQuantum ?? rows.reduce((sum, r) => sum + (r.quantum || 0), 0);
+  const dots = "..............................";
+
+  const th =
+    "border border-black px-1 py-0.5 font-normal text-center align-middle";
+  const td = "border border-black px-1 py-0.5 align-middle";
+
+  return (
+    <div className="hidden print:block kartu-tumpukan-print text-black">
+      <div className="text-center font-bold leading-snug text-[13px] uppercase mb-4">
+        <div>Kartu Tumpukan</div>
+        <div>Kantor Wilayah {dots}</div>
+        <div>{warehouseName || dots}</div>
+        <div>Per Tanggal {formatPrintDate(sheetDateIso)}</div>
+      </div>
+
+      <table className="w-full border-collapse table-fixed text-[11px] leading-tight">
+        <colgroup>
+          {PRINT_COLUMNS.map((w, i) => (
+            <col key={i} style={{ width: `${w}%` }} />
+          ))}
+        </colgroup>
+        <thead className="bg-[#bfc4c9]">
+          <tr>
+            <th rowSpan={2} className={th}>
+              No
+            </th>
+            <th rowSpan={2} className={th}>
+              Produk
+            </th>
+            <th rowSpan={2} className={th}>
+              SKU
+            </th>
+            <th rowSpan={2} className={th}>
+              Lot
+            </th>
+            <th rowSpan={2} className={th}>
+              Umur Simpan
+            </th>
+            <th rowSpan={2} className={th}>
+              Expired Date/Best
+            </th>
+            <th rowSpan={2} className={th}>
+              Tanggal Penempatan
+            </th>
+            <th rowSpan={2} className={th}>
+              Lokasi
+            </th>
+            <th colSpan={3} className={th}>
+              Persediaan Fisik
+            </th>
+            <th colSpan={3} className={th}>
+              Tanggal Perawatan
+            </th>
+            <th rowSpan={2} className={th}>
+              Keterangan
+            </th>
+          </tr>
+          <tr>
+            <th className={th}>Kuantitas</th>
+            <th className={th}>Kuantum</th>
+            <th className={th}>UoM</th>
+            <th className={th}>Spraying</th>
+            <th className={th}>Fumigasi</th>
+            <th className={th}>Fogging</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={row.uuid} className="break-inside-avoid">
+              <td className={`${td} text-right`}>{index + 1}</td>
+              <td className={`${td} break-words`}>{row.productName}</td>
+              <td className={`${td} break-all`}>{row.sku}</td>
+              <td className={`${td} break-all`}>{row.lot}</td>
+              <td className={td}>{row.shelfLife ?? ""}</td>
+              <td className={td}>{formatPrintDate(row.expiredDate)}</td>
+              <td className={td}>
+                {row.placementDate
+                  ? formatPrintDateTime(row.placementDate)
+                  : row.placement || ""}
+              </td>
+              <td className={`${td} break-all`}>{row.locationName}</td>
+              <td className={`${td} text-right`}>
+                {formatPrintNumber(row.quantity)}
+              </td>
+              <td className={`${td} text-right`}>
+                {formatPrintNumber(row.quantum)}
+              </td>
+              <td className={td}>{row.uom}</td>
+              <td className={td}>{formatPrintDate(row.spraying)}</td>
+              <td className={td}>{formatPrintDate(row.fumigasi)}</td>
+              <td className={td}>{formatPrintDate(row.fogging)}</td>
+              <td className={`${td} break-words`}>{row.keterangan || ""}</td>
+            </tr>
+          ))}
+          <tr className="break-inside-avoid">
+            <td className={td}></td>
+            <td colSpan={7} className={`${td} text-center`}>
+              JUMLAH
+            </td>
+            <td className={`${td} text-right`}>
+              {formatPrintNumber(totalQuantity)}
+            </td>
+            <td className={`${td} text-right`}>
+              {formatPrintNumber(totalQuantum)}
+            </td>
+            <td className={td}></td>
+            <td className={td}></td>
+            <td className={td}></td>
+            <td className={td}></td>
+            <td className={td}></td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Signature block: right side starts where "Spraying" starts */}
+      <div className="flex items-end mt-6 text-[11px] break-inside-avoid">
+        <div className="flex-1">Dicetak Oleh : {printedBy || dots}</div>
+        <div className="w-[29%] leading-snug">
+          <div>
+            {dots},{" "}
+            {sheetDate.toLocaleDateString("id-ID", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            })}
+          </div>
+          <div className="uppercase">{warehouseName || dots}</div>
+          <div className="h-16" />
+          <div className="underline">( {dots} )</div>
+          <div>Kepala</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -570,16 +975,23 @@ interface LocationSelectionScreenProps {
   user: any;
 }
 
-function LocationSelectionScreen({ theme, toggleTheme, token, user }: LocationSelectionScreenProps) {
+function LocationSelectionScreen({
+  theme,
+  toggleTheme,
+  token,
+  user,
+}: LocationSelectionScreenProps) {
   const router = useRouter();
-  const [selectedWarehouseUuid, setSelectedWarehouseUuid] = useState<string>("");
+  const [selectedWarehouseUuid, setSelectedWarehouseUuid] =
+    useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Get active warehouses list
   const { warehouses, isLoading: warehousesLoading } = usePublicWarehouses();
 
   // Load locations for the selected warehouse
-  const { locations, isLoading: locationsLoading } = usePublicStackCardLocations(selectedWarehouseUuid);
+  const { locations, isLoading: locationsLoading } =
+    usePublicStackCardLocations(selectedWarehouseUuid);
 
   // Set default warehouse
   useEffect(() => {
@@ -594,7 +1006,7 @@ function LocationSelectionScreen({ theme, toggleTheme, token, user }: LocationSe
 
   // Filter locations based on input query
   const filteredLocations = locations.filter((loc) =>
-    loc.toLowerCase().includes(searchQuery.toLowerCase())
+    loc.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -603,7 +1015,10 @@ function LocationSelectionScreen({ theme, toggleTheme, token, user }: LocationSe
         <div className="flex items-center">
           <WarehouseIcon className="h-6 w-6 text-blue-600 mr-2.5" />
           <span className="text-lg font-black tracking-tight text-slate-800 dark:text-slate-100 uppercase">
-            BULOG <span className="text-blue-600 text-xs font-bold font-sans lowercase">WMS</span>
+            BULOG{" "}
+            <span className="text-blue-600 text-xs font-bold font-sans lowercase">
+              WMS
+            </span>
           </span>
           <span className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-3" />
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -616,7 +1031,11 @@ function LocationSelectionScreen({ theme, toggleTheme, token, user }: LocationSe
             onClick={toggleTheme}
             className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
           >
-            {theme === "dark" ? <Sun className="h-4.5 w-4.5 text-amber-500" /> : <Moon className="h-4.5 w-4.5" />}
+            {theme === "dark" ? (
+              <Sun className="h-4.5 w-4.5 text-amber-500" />
+            ) : (
+              <Moon className="h-4.5 w-4.5" />
+            )}
           </button>
 
           {token ? (
@@ -646,7 +1065,8 @@ function LocationSelectionScreen({ theme, toggleTheme, token, user }: LocationSe
               Pilih Lokasi Kartu Tumpukan
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-450">
-              Silakan pilih gudang dan lokasi tumpukan untuk menampilkan laporan kartu tumpukan.
+              Silakan pilih gudang dan lokasi tumpukan untuk menampilkan laporan
+              kartu tumpukan.
             </p>
           </div>
 
@@ -699,13 +1119,28 @@ function LocationSelectionScreen({ theme, toggleTheme, token, user }: LocationSe
               <span className="block text-xs font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">
                 Daftar Lokasi Terbit ({filteredLocations.length})
               </span>
-              
+
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl max-h-[240px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/80 bg-slate-50/30 dark:bg-slate-900/50">
                 {locationsLoading ? (
                   <div className="p-8 text-center text-xs text-slate-400 font-semibold">
-                    <svg className="animate-spin h-5 w-5 text-blue-600 mx-auto mb-2" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg
+                      className="animate-spin h-5 w-5 text-blue-600 mx-auto mb-2"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     Memuat daftar lokasi...
                   </div>

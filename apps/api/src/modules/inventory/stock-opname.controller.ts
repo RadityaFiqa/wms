@@ -133,30 +133,6 @@ export class StockOpnameController {
     return this.service.submitStockOpname(warehouseId, uuid);
   }
 
-  @Get(':uuid/counting-sheet/pdf')
-  @CheckPolicies((ability) => ability.can('read', 'StockOpname'))
-  async exportCountingSheet(@Param('uuid') uuid: string, @Res() res: any) {
-    const warehouseId = this.warehouseContext.getWarehouseId();
-    if (!warehouseId) {
-      throw new BadRequestException(
-        'Warehouse context (header x-warehouse-id) diperlukan.',
-      );
-    }
-
-    const pdfBuffer = await this.service.generateCountingSheetPdf(
-      warehouseId,
-      uuid,
-    );
-
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename=counting-sheet-${uuid}-${Date.now()}.pdf`,
-      'Content-Length': pdfBuffer.length,
-    });
-
-    res.end(pdfBuffer);
-  }
-
   @Get(':uuid/physical-count-sheet/pdf')
   @CheckPolicies((ability) => ability.can('read', 'StockOpname'))
   async exportPhysicalCountSheet(

@@ -119,6 +119,27 @@ export class StackCardPublicController {
     return this.service.getSnapshotDates(resolvedWarehouseId, true); // onlyPublished = true
   }
 
+  @Get('stock-opname')
+  async getLatestOpnameCalculation(
+    @Query('locationName') locationName?: string,
+    @Query('warehouseUuid') warehouseUuid?: string,
+  ) {
+    if (!locationName) {
+      throw new BadRequestException('Parameter locationName wajib diisi.');
+    }
+    const resolvedWarehouseId = await this.getWarehouseId(
+      warehouseUuid,
+      locationName,
+    );
+    if (!resolvedWarehouseId) {
+      return null;
+    }
+    return this.service.getLatestOpnameCalculation(
+      resolvedWarehouseId,
+      locationName,
+    );
+  }
+
   @Get('locations')
   async getLocations(
     @Query('warehouseUuid') warehouseUuid?: string,
