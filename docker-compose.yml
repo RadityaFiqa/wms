@@ -49,8 +49,7 @@ services:
       - SMTP_PASS=${SMTP_PASS:-gjrg nudt haqr mygw}
       - SMTP_SECURE=${SMTP_SECURE:-true}
       - SMTP_FROM=${SMTP_FROM:-"Bulog WMS" <[EMAIL_ADDRESS]'}
-      - FRONTEND_URL=${FRONTEND_URL:-"http://localhost:3001"}
-      - PORT=${PORT:-3002}
+      - FRONTEND_URL=${FRONTEND_URL:-"http://localhost:3001"}      - PORT=${PORT:-3002}
       - LIBREOFFICE_PATH=${LIBREOFFICE_PATH:-/usr/bin/soffice}
     ports:
       - "${PORT:-3002}:${PORT:-3002}"

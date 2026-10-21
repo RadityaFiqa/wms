@@ -14,7 +14,8 @@ async function bootstrap() {
 
   // Configure CORS to allow cookies to be transmitted between frontend and backend
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3001',
+    // Reflect the request origin to allow all origins (wildcard '*' is not allowed with credentials)
+    origin: true,
     credentials: true,
   });
 
