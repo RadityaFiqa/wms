@@ -19,6 +19,8 @@ WORKDIR /app
 COPY --from=deps /app ./
 COPY . .
 
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm turbo run build --filter=@bulog-wms/web
 

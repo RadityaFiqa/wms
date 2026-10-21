@@ -80,11 +80,13 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3002/api}
     container_name: wms-web
     depends_on:
       - api
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-"http://localhost:3002/api"}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3002/api}
       - PORT=${PORT:-3001}
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
