@@ -9,6 +9,7 @@ import { OdooClient } from '@/modules/odoo/odoo-client';
 import { OdooSessionManager } from '@/modules/odoo/odoo-session.manager';
 import { WarehouseContextService } from '@/core/warehouse-context/warehouse-context.service';
 import { getLocalStartOfDay, getLocalEndOfDay } from '@/core/utils/date';
+import { readStockPickingWithFallback } from '@/modules/odoo/odoo-picking.specification';
 
 @Injectable()
 export class ErpDocumentReferenceService {
@@ -282,46 +283,23 @@ export class ErpDocumentReferenceService {
           `[SYNC-JOB] Fetching PO documents: offset=${offset}, limit=${limit}`,
         );
 
-        const poRes = await this.safeOdooCall(
-          warehouseId,
-          'stock.picking',
-          'web_search_read',
-          [],
-          {
-            domain,
-            specification: {
-              id: {},
-              name: {},
-              state: {},
-              picking_type_code: {},
-              partner_id: { fields: { display_name: {} } },
-              purchase_id: { fields: { display_name: {} } },
-              origin: {},
-              ref_fax: {},
-              location_id: { fields: { display_name: {} } },
-              location_dest_id: { fields: { display_name: {} } },
-              scheduled_date: {},
-              date_done: {},
-              driver: {},
-              plat_number: {},
-              move_ids_without_package: {
-                fields: {
-                  id: {},
-                  product_id: { fields: { display_name: {} } },
-                  product_uom: { fields: { display_name: {} } },
-                  analytic_account_id: { fields: { display_name: {} } },
-                  quantity: {},
-                  product_qty: {},
-                  sh_sec_qty: {},
-                  sh_sec_uom_id: { fields: { display_name: {} } },
-                },
+        const poRes = await readStockPickingWithFallback(
+          (specification) =>
+            this.safeOdooCall(
+              warehouseId,
+              'stock.picking',
+              'web_search_read',
+              [],
+              {
+                domain,
+                specification,
+                offset,
+                limit,
+                order: 'scheduled_date asc',
+                count_limit: 999_999,
               },
-            },
-            offset,
-            limit,
-            order: 'scheduled_date asc',
-            count_limit: 999_999,
-          },
+            ),
+          (err) => this.logWmsFieldFallback(err),
         );
 
         const records = poRes?.records || [];
@@ -387,41 +365,16 @@ export class ErpDocumentReferenceService {
           this.logger.log(
             `[SYNC-JOB] Refreshing active document ID=${doc.id}, Number=${doc.documentNumber} from Odoo...`,
           );
-          const res = await this.safeOdooCall(
-            warehouseId,
-            'stock.picking',
-            'web_read',
-            [[doc.id]],
-            {
-              specification: {
-                id: {},
-                name: {},
-                state: {},
-                picking_type_code: {},
-                partner_id: { fields: { display_name: {} } },
-                purchase_id: { fields: { display_name: {} } },
-                origin: {},
-                ref_fax: {},
-                location_id: { fields: { display_name: {} } },
-                location_dest_id: { fields: { display_name: {} } },
-                scheduled_date: {},
-                date_done: {},
-                driver: {},
-                plat_number: {},
-                move_ids_without_package: {
-                  fields: {
-                    id: {},
-                    product_id: { fields: { display_name: {} } },
-                    product_uom: { fields: { display_name: {} } },
-                    analytic_account_id: { fields: { display_name: {} } },
-                    quantity: {},
-                    product_qty: {},
-                    sh_sec_qty: {},
-                    sh_sec_uom_id: { fields: { display_name: {} } },
-                  },
-                },
-              },
-            },
+          const res = await readStockPickingWithFallback(
+            (specification) =>
+              this.safeOdooCall(
+                warehouseId,
+                'stock.picking',
+                'web_read',
+                [[doc.id]],
+                { specification },
+              ),
+            (err) => this.logWmsFieldFallback(err),
           );
 
           if (res && Array.isArray(res) && res.length > 0) {
@@ -1124,48 +1077,23 @@ export class ErpDocumentReferenceService {
     }
 
     // 4. Fetch the specific document detail using web_read
-    const specification = {
-      id: {},
-      name: {},
-      state: {},
-      picking_type_code: {},
-      partner_id: { fields: { display_name: {} } },
-      purchase_id: { fields: { display_name: {} } },
-      origin: {},
-      ref_fax: {},
-      location_id: { fields: { display_name: {} } },
-      location_dest_id: { fields: { display_name: {} } },
-      scheduled_date: {},
-      date_done: {},
-      driver: {},
-      plat_number: {},
-      move_ids_without_package: {
-        fields: {
-          id: {}, // Fetch Odoo move ID
-          product_id: { fields: { display_name: {} } },
-          product_uom: { fields: { display_name: {} } },
-          analytic_account_id: { fields: { display_name: {} } },
-          quantity: {},
-          product_qty: {},
-          sh_sec_qty: {},
-          sh_sec_uom_id: { fields: { display_name: {} } },
-        },
-      },
-    };
-
     let record: any;
     try {
       this.logger.log(
         `[FORCE-SYNC] Fetching document id=${doc.id} from Odoo...`,
       );
-      const res = await this.safeOdooCall(
-        warehouseId,
-        'stock.picking',
-        'web_read',
-        [[doc.id]],
-        {
-          specification,
-        },
+      const res = await readStockPickingWithFallback(
+        (specification) =>
+          this.safeOdooCall(
+            warehouseId,
+            'stock.picking',
+            'web_read',
+            [[doc.id]],
+            {
+              specification,
+            },
+          ),
+        (err) => this.logWmsFieldFallback(err),
       );
 
       if (!res || !Array.isArray(res) || res.length === 0) {
@@ -1217,18 +1145,58 @@ export class ErpDocumentReferenceService {
     const purchaseName = this.getRelationalName(record.purchase_id);
     const origin = record.origin || null;
     const ref_fax = record.ref_fax || null;
-    const sourceLocationName = this.getRelationalName(record.location_id);
-    const destinationLocationName = this.getRelationalName(
-      record.location_dest_id,
+    const rawItems = record.move_ids_without_package || [];
+
+    // Real stack movements come from the WMS picking/putaway (move lines), not the picking header
+    const wmsLinesByProduct = this.collectWmsOperationLines(
+      record,
+      pickingTypeCode,
     );
+    const moveLinesData = rawItems.flatMap((item: any) =>
+      (
+        wmsLinesByProduct.get(this.getRelationalId(item.product_id) || 0) ||
+        this.resolveEffectiveMoveLines(item, pickingTypeCode)
+      ).map((line: any) => ({
+        erpMoveLineId: Number(line.id),
+        documentReferenceId: erpId,
+        documentReferenceItemId: Number(item.id),
+        inventoryId:
+          this.getRelationalId(line.product_id) ||
+          this.getRelationalId(item.product_id) ||
+          0,
+        pickingName:
+          line.wmsOperationName || this.getRelationalName(line.picking_id),
+        sourceLocationId: this.getRelationalId(line.location_id),
+        sourceLocationName: this.getRelationalName(line.location_id),
+        destinationLocationId: this.getRelationalId(line.location_dest_id),
+        destinationLocationName: this.getRelationalName(line.location_dest_id),
+        lotName: this.getRelationalName(line.lot_id),
+        quantity: Number(line.quantity) || 0.0,
+        date: line.date ? new Date(line.date) : null,
+      })),
+    );
+
+    const joinUniqueNames = (names: (string | null)[]) =>
+      Array.from(new Set(names.filter(Boolean))).join(', ') || null;
+    const pickedSourceNames = joinUniqueNames(
+      moveLinesData.map((l: any) => l.sourceLocationName),
+    );
+    const pickedDestinationNames = joinUniqueNames(
+      moveLinesData.map((l: any) => l.destinationLocationName),
+    );
+
+    const sourceLocationName =
+      (pickingTypeCode === 'outgoing' && pickedSourceNames) ||
+      this.getRelationalName(record.location_id);
+    const destinationLocationName =
+      (pickingTypeCode === 'incoming' && pickedDestinationNames) ||
+      this.getRelationalName(record.location_dest_id);
     const scheduledDate = record.scheduled_date
       ? new Date(record.scheduled_date)
       : null;
     const dateDone = record.date_done ? new Date(record.date_done) : null;
     const driver = record.driver || null;
     const plateNumber = record.plat_number || null;
-
-    const rawItems = record.move_ids_without_package || [];
 
     // Pre-calculate sums
     const totalItems = rawItems.length;
@@ -1354,7 +1322,85 @@ export class ErpDocumentReferenceService {
       });
     }
 
+    // Move lines are derived data: replace them on every sync
+    await tx.documentReferenceMoveLine.deleteMany({
+      where: { documentReferenceId: docRef.id },
+    });
+    if (moveLinesData.length > 0) {
+      await tx.documentReferenceMoveLine.createMany({ data: moveLinesData });
+    }
+
     return docRef;
+  }
+
+  private logWmsFieldFallback(err: any) {
+    this.logger.warn(
+      `[SYNC-JOB] Odoo rejected WMS picking/putaway fields, retrying without them: ${err.message}`,
+    );
+  }
+
+  /**
+   * Collects done move lines of the WMS operations linked to a stock.picking,
+   * grouped by product: picking_ids (vit.picking) for outgoing, putaway_ids for incoming.
+   * These hold the real stack the goods were picked from / put away to.
+   */
+  private collectWmsOperationLines(
+    record: any,
+    pickingTypeCode: string,
+  ): Map<number, any[]> {
+    const operations =
+      pickingTypeCode === 'outgoing'
+        ? record.picking_ids
+        : pickingTypeCode === 'incoming'
+          ? record.putaway_ids
+          : null;
+
+    const linesByProduct = new Map<number, any[]>();
+    if (!Array.isArray(operations)) return linesByProduct;
+
+    for (const operation of operations) {
+      if (operation?.state === 'cancel') continue;
+      for (const move of operation?.move_ids || []) {
+        if (move?.state !== 'done') continue;
+        for (const line of move.move_line_ids || []) {
+          const productId =
+            this.getRelationalId(line.product_id) ||
+            this.getRelationalId(move.product_id);
+          if (!productId) continue;
+          const lines = linesByProduct.get(productId) || [];
+          lines.push({ ...line, wmsOperationName: operation.name || null });
+          linesByProduct.set(productId, lines);
+        }
+      }
+    }
+
+    return linesByProduct;
+  }
+
+  /**
+   * Resolves the move lines that reflect the real stack movement of a document move.
+   * With multi-step routes (WMS Picking), an outgoing move is fed by a Pick move (move_orig_ids)
+   * and an incoming move feeds a Storage move (move_dest_ids); their done move lines carry
+   * the actual stack location & lot. Falls back to the move's own lines.
+   */
+  private resolveEffectiveMoveLines(move: any, pickingTypeCode: string): any[] {
+    const chainKey =
+      pickingTypeCode === 'outgoing'
+        ? 'move_orig_ids'
+        : pickingTypeCode === 'incoming'
+          ? 'move_dest_ids'
+          : null;
+
+    if (chainKey && Array.isArray(move?.[chainKey])) {
+      const chainedLines = move[chainKey]
+        .filter((chained: any) => chained?.state === 'done')
+        .flatMap((chained: any) =>
+          this.resolveEffectiveMoveLines(chained, pickingTypeCode),
+        );
+      if (chainedLines.length > 0) return chainedLines;
+    }
+
+    return Array.isArray(move?.move_line_ids) ? move.move_line_ids : [];
   }
 
   async findUniquePartners(warehouseId: number): Promise<string[]> {

@@ -4,6 +4,11 @@ import { PrismaService } from '@/core/prisma/prisma.service';
 import { OdooClient } from '@/modules/odoo/odoo-client';
 import { OdooSessionManager } from '@/modules/odoo/odoo-session.manager';
 import { WarehouseContextService } from '@/core/warehouse-context/warehouse-context.service';
+import {
+  readStockPickingWithFallback,
+  STOCK_PICKING_BASE_SPECIFICATION,
+  STOCK_PICKING_SPECIFICATION,
+} from '@/modules/odoo/odoo-picking.specification';
 
 describe('ErpDocumentReferenceService - getPendingPickups', () => {
   let service: ErpDocumentReferenceService;
@@ -234,5 +239,375 @@ describe('ErpDocumentReferenceService - getPendingPickups', () => {
     expect(doc.pickedQuantityPrimary).toBe(300);
     expect(doc.remainingQuantityPrimary).toBe(700);
     expect(doc.gateOperations[0].quantity).toBe(300);
+  });
+
+  describe('upsertDocumentRecord - WMS picking move lines', () => {
+    const loc = (id: number, name: string) => ({ id, display_name: name });
+    const line = (
+      id: number,
+      src: any,
+      dest: any,
+      lot: string,
+      qty: number,
+      picking: string,
+    ) => ({
+      id,
+      picking_id: { id: id * 10, display_name: picking },
+      product_id: { id: 101, display_name: 'Beras' },
+      location_id: src,
+      location_dest_id: dest,
+      lot_id: { id: id * 100, display_name: lot },
+      quantity: qty,
+      date: '2026-10-20 03:00:00',
+    });
+
+    const buildTx = () => ({
+      documentReference: {
+        upsert: jest
+          .fn()
+          .mockImplementation((args) =>
+            Promise.resolve({ id: args.where.id, ...args.create }),
+          ),
+      },
+      documentReferenceItem: {
+        upsert: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({}),
+      },
+      documentReferenceMoveLine: {
+        deleteMany: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({}),
+      },
+    });
+
+    it('uses the chained Pick move lines for outgoing documents', async () => {
+      const tx = buildTx();
+      const record = {
+        id: 900,
+        name: 'WH/OUT/0001',
+        state: 'done',
+        picking_type_code: 'outgoing',
+        location_id: loc(5, 'WH/Output'),
+        location_dest_id: loc(9, 'Partners/Customers'),
+        move_ids_without_package: [
+          {
+            id: 7001,
+            product_id: { id: 101, display_name: 'Beras' },
+            quantity: 100,
+            product_qty: 100,
+            move_line_ids: [
+              line(
+                1,
+                loc(5, 'WH/Output'),
+                loc(9, 'Partners/Customers'),
+                'OUT-LOT',
+                100,
+                'WH/OUT/0001',
+              ),
+            ],
+            move_orig_ids: [
+              {
+                id: 6001,
+                state: 'done',
+                move_line_ids: [
+                  line(
+                    2,
+                    loc(21, 'WH/Stock/Tumpukan A'),
+                    loc(5, 'WH/Output'),
+                    'STACK-A',
+                    60,
+                    'WH/PICK/0001',
+                  ),
+                  line(
+                    3,
+                    loc(22, 'WH/Stock/Tumpukan B'),
+                    loc(5, 'WH/Output'),
+                    'STACK-B',
+                    40,
+                    'WH/PICK/0001',
+                  ),
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      await service.upsertDocumentRecord(tx, record, 1);
+
+      const created =
+        tx.documentReferenceMoveLine.createMany.mock.calls[0][0].data;
+      expect(created).toHaveLength(2);
+      expect(created[0]).toMatchObject({
+        erpMoveLineId: 2,
+        documentReferenceId: 900,
+        documentReferenceItemId: 7001,
+        sourceLocationId: 21,
+        lotName: 'STACK-A',
+        pickingName: 'WH/PICK/0001',
+        quantity: 60,
+      });
+      const header = tx.documentReference.upsert.mock.calls[0][0].create;
+      expect(header.sourceLocationName).toBe(
+        'WH/Stock/Tumpukan A, WH/Stock/Tumpukan B',
+      );
+      expect(header.destinationLocationName).toBe('Partners/Customers');
+    });
+
+    it('falls back to own move lines when the chained move is not done', async () => {
+      const tx = buildTx();
+      const record = {
+        id: 901,
+        name: 'WH/OUT/0002',
+        state: 'done',
+        picking_type_code: 'outgoing',
+        location_id: loc(21, 'WH/Stock/Tumpukan A'),
+        location_dest_id: loc(9, 'Partners/Customers'),
+        move_ids_without_package: [
+          {
+            id: 7002,
+            product_id: { id: 101, display_name: 'Beras' },
+            quantity: 10,
+            product_qty: 10,
+            move_line_ids: [
+              line(
+                4,
+                loc(21, 'WH/Stock/Tumpukan A'),
+                loc(9, 'Partners/Customers'),
+                'STACK-A',
+                10,
+                'WH/OUT/0002',
+              ),
+            ],
+            move_orig_ids: [{ id: 6002, state: 'assigned', move_line_ids: [] }],
+          },
+        ],
+      };
+
+      await service.upsertDocumentRecord(tx, record, 1);
+
+      const created =
+        tx.documentReferenceMoveLine.createMany.mock.calls[0][0].data;
+      expect(created).toHaveLength(1);
+      expect(created[0]).toMatchObject({
+        erpMoveLineId: 4,
+        sourceLocationId: 21,
+      });
+    });
+  });
+
+  describe('upsertDocumentRecord - WMS picking_ids / putaway_ids', () => {
+    const loc = (id: number, name: string) => ({ id, display_name: name });
+    const product = { id: 101, display_name: 'Beras' };
+    const line = (
+      id: number,
+      src: any,
+      dest: any,
+      lot: string,
+      qty: number,
+    ) => ({
+      id,
+      picking_id: { id: 8436220, display_name: 'WH/OUT/0001' },
+      product_id: product,
+      location_id: src,
+      location_dest_id: dest,
+      lot_id: { id: id * 100, display_name: lot },
+      quantity: qty,
+      date: '2026-10-20 03:00:00',
+    });
+    const buildTx = () => ({
+      documentReference: {
+        upsert: jest
+          .fn()
+          .mockImplementation((args) =>
+            Promise.resolve({ id: args.where.id, ...args.create }),
+          ),
+      },
+      documentReferenceItem: {
+        upsert: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({}),
+      },
+      documentReferenceMoveLine: {
+        deleteMany: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({}),
+      },
+    });
+    const docItem = (id: number, ownLine: any) => ({
+      id,
+      product_id: product,
+      quantity: 100,
+      product_qty: 100,
+      move_line_ids: [ownLine],
+    });
+
+    it('uses done vit.picking move lines (picking_ids) for outgoing documents', async () => {
+      const tx = buildTx();
+      await service.upsertDocumentRecord(
+        tx,
+        {
+          id: 910,
+          name: 'WH/OUT/0001',
+          state: 'done',
+          picking_type_code: 'outgoing',
+          location_id: loc(5, 'WH/Output'),
+          location_dest_id: loc(9, 'Partners/Customers'),
+          move_ids_without_package: [
+            docItem(
+              7101,
+              line(
+                1,
+                loc(5, 'WH/Output'),
+                loc(9, 'Partners/Customers'),
+                'X',
+                100,
+              ),
+            ),
+          ],
+          picking_ids: [
+            {
+              id: 566240,
+              name: 'PICK/0001',
+              state: 'done',
+              move_ids: [
+                {
+                  id: 11451894,
+                  state: 'done',
+                  product_id: product,
+                  move_line_ids: [
+                    line(
+                      2,
+                      loc(618205, 'WH/Stock/Tumpukan 1'),
+                      loc(5, 'WH/Output'),
+                      'STACK-1',
+                      70,
+                    ),
+                    line(
+                      3,
+                      loc(542119, 'WH/Stock/Tumpukan 2'),
+                      loc(5, 'WH/Output'),
+                      'STACK-2',
+                      30,
+                    ),
+                  ],
+                },
+                {
+                  id: 11451895,
+                  state: 'cancel',
+                  product_id: product,
+                  move_line_ids: [
+                    line(4, loc(1, 'x'), loc(5, 'WH/Output'), 'Z', 99),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        1,
+      );
+
+      const created =
+        tx.documentReferenceMoveLine.createMany.mock.calls[0][0].data;
+      expect(
+        created.map((l: any) => [
+          l.erpMoveLineId,
+          l.sourceLocationId,
+          l.lotName,
+          l.quantity,
+          l.pickingName,
+        ]),
+      ).toEqual([
+        [2, 618205, 'STACK-1', 70, 'PICK/0001'],
+        [3, 542119, 'STACK-2', 30, 'PICK/0001'],
+      ]);
+      expect(
+        tx.documentReference.upsert.mock.calls[0][0].create.sourceLocationName,
+      ).toBe('WH/Stock/Tumpukan 1, WH/Stock/Tumpukan 2');
+    });
+
+    it('uses done putaway move lines (putaway_ids) for incoming documents', async () => {
+      const tx = buildTx();
+      await service.upsertDocumentRecord(
+        tx,
+        {
+          id: 911,
+          name: 'WH/IN/0001',
+          state: 'done',
+          picking_type_code: 'incoming',
+          location_id: loc(8, 'Partners/Vendors'),
+          location_dest_id: loc(6, 'WH/Input'),
+          move_ids_without_package: [
+            docItem(
+              7102,
+              line(5, loc(8, 'Partners/Vendors'), loc(6, 'WH/Input'), 'X', 100),
+            ),
+          ],
+          putaway_ids: [
+            {
+              id: 777,
+              name: 'PUT/0001',
+              state: 'done',
+              move_ids: [
+                {
+                  id: 888,
+                  state: 'done',
+                  product_id: product,
+                  move_line_ids: [
+                    line(
+                      6,
+                      loc(6, 'WH/Input'),
+                      loc(837950, 'WH/Stock/Tumpukan 5'),
+                      'STACK-5',
+                      100,
+                    ),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        1,
+      );
+
+      const created =
+        tx.documentReferenceMoveLine.createMany.mock.calls[0][0].data;
+      expect(created).toHaveLength(1);
+      expect(created[0]).toMatchObject({
+        destinationLocationId: 837950,
+        lotName: 'STACK-5',
+        pickingName: 'PUT/0001',
+      });
+      expect(
+        tx.documentReference.upsert.mock.calls[0][0].create
+          .destinationLocationName,
+      ).toBe('WH/Stock/Tumpukan 5');
+    });
+  });
+
+  describe('readStockPickingWithFallback', () => {
+    it('retries with the base specification when Odoo rejects a WMS field', async () => {
+      const read = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "Odoo RPC Error: Invalid field 'putaway_ids' on model 'stock.picking'",
+          ),
+        )
+        .mockResolvedValueOnce(['ok']);
+      const onFallback = jest.fn();
+
+      await expect(
+        readStockPickingWithFallback(read, onFallback),
+      ).resolves.toEqual(['ok']);
+      expect(read.mock.calls[0][0]).toBe(STOCK_PICKING_SPECIFICATION);
+      expect(read.mock.calls[1][0]).toBe(STOCK_PICKING_BASE_SPECIFICATION);
+      expect(onFallback).toHaveBeenCalled();
+    });
+
+    it('rethrows other Odoo errors', async () => {
+      const read = jest.fn().mockRejectedValue(new Error('Session expired'));
+      await expect(readStockPickingWithFallback(read)).rejects.toThrow(
+        'Session expired',
+      );
+      expect(read).toHaveBeenCalledTimes(1);
+    });
   });
 });

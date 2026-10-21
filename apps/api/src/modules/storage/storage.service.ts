@@ -58,33 +58,42 @@ export class StorageService implements OnModuleInit {
         this.logger.log(
           `Bucket "${this.bucketName}" not found. Creating it...`,
         );
-        await this.s3Client.send(
-          new CreateBucketCommand({ Bucket: this.bucketName }),
-        );
-        this.logger.log(`Bucket "${this.bucketName}" created successfully.`);
+        try {
+          await this.s3Client.send(
+            new CreateBucketCommand({ Bucket: this.bucketName }),
+          );
+          this.logger.log(`Bucket "${this.bucketName}" created successfully.`);
 
-        // Apply public read policy so browser can load images directly
-        const policy = {
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Sid: 'PublicRead',
-              Effect: 'Allow',
-              Principal: '*',
-              Action: ['s3:GetObject'],
-              Resource: [`arn:aws:s3:::${this.bucketName}/*`],
-            },
-          ],
-        };
-        await this.s3Client.send(
-          new PutBucketPolicyCommand({
-            Bucket: this.bucketName,
-            Policy: JSON.stringify(policy),
-          }),
-        );
-        this.logger.log(
-          `Public read policy applied to bucket "${this.bucketName}".`,
-        );
+          // Apply public read policy so browser can load images directly
+          const policy = {
+            Version: '2012-10-17',
+            Statement: [
+              {
+                Sid: 'PublicRead',
+                Effect: 'Allow',
+                Principal: '*',
+                Action: ['s3:GetObject'],
+                Resource: [`arn:aws:s3:::${this.bucketName}/*`],
+              },
+            ],
+          };
+          await this.s3Client.send(
+            new PutBucketPolicyCommand({
+              Bucket: this.bucketName,
+              Policy: JSON.stringify(policy),
+            }),
+          );
+          this.logger.log(
+            `Public read policy applied to bucket "${this.bucketName}".`,
+          );
+        } catch (createErr: any) {
+          // Don't crash the app when the storage endpoint is unreachable/misrouted
+          // (e.g. a reverse proxy answering plain-text "404 page not found").
+          this.logger.error(
+            `Failed to create bucket "${this.bucketName}". Check that MINIO_PUBLIC_URL points to the MinIO S3 API: ${createErr.message}`,
+            createErr.stack,
+          );
+        }
       } else {
         this.logger.error(
           `Error checking/creating bucket: ${err.message}`,

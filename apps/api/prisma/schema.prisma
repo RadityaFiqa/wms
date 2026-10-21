@@ -387,6 +387,7 @@ model DocumentReference {
   updatedAt               DateTime                         @updatedAt @db.Timestamptz(3)
   warehouse               Warehouse                        @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   items                   DocumentReferenceItem[]
+  moveLines               DocumentReferenceMoveLine[]
   gateOperations          GateOperation[]
   gateOperationLinks      GateOperationDocumentReference[]
   operationProducts       GateOperationProduct[]
@@ -414,6 +415,33 @@ model DocumentReferenceItem {
   documentReference   DocumentReference       @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
 
   @@index([documentReferenceId])
+}
+
+// Effective Odoo stock.move.line per document item. For multi-step routes (WMS Picking)
+// these come from the chained Pick/Storage picking, so locations & lot reflect the real stack.
+model DocumentReferenceMoveLine {
+  id                      Int               @id @default(autoincrement())
+  uuid                    String            @unique @default(uuid())
+  erpMoveLineId           Int
+  documentReferenceId     Int
+  documentReferenceItemId Int
+  inventoryId             Int
+  pickingName             String?
+  sourceLocationId        Int?
+  sourceLocationName      String?
+  destinationLocationId   Int?
+  destinationLocationName String?
+  lotName                 String?
+  quantity                Float
+  date                    DateTime?         @db.Timestamptz(3)
+  createdAt               DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime          @updatedAt @db.Timestamptz(3)
+  documentReference       DocumentReference @relation(fields: [documentReferenceId], references: [id], onDelete: Cascade)
+
+  @@index([documentReferenceId])
+  @@index([inventoryId])
+  @@index([sourceLocationId])
+  @@index([destinationLocationId])
 }
 
 model OdooSyncLog {

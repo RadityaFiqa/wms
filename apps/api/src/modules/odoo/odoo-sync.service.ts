@@ -11,6 +11,7 @@ import { OdooClient } from './odoo-client';
 import { OdooSessionManager } from './odoo-session.manager';
 import { ErpDocumentReferenceService } from '../erp-document-reference/erp-document-reference.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { readStockPickingWithFallback } from '@/modules/odoo/odoo-picking.specification';
 
 @Injectable()
 export class OdooSyncService {
@@ -337,46 +338,23 @@ export class OdooSyncService {
       this.logger.log(
         `[UNIFIED-SYNC-JOB] Fetching stock.picking: offset=${docOffset}, limit=${docLimit}`,
       );
-      const poRes = await this.safeOdooCall(
-        warehouseId,
-        'stock.picking',
-        'web_search_read',
-        [],
-        {
-          domain: [],
-          specification: {
-            id: {},
-            name: {},
-            state: {},
-            picking_type_code: {},
-            partner_id: { fields: { display_name: {} } },
-            purchase_id: { fields: { display_name: {} } },
-            origin: {},
-            ref_fax: {},
-            location_id: { fields: { display_name: {} } },
-            location_dest_id: { fields: { display_name: {} } },
-            scheduled_date: {},
-            date_done: {},
-            driver: {},
-            plat_number: {},
-            move_ids_without_package: {
-              fields: {
-                id: {},
-                product_id: { fields: { display_name: {} } },
-                product_uom: { fields: { display_name: {} } },
-                analytic_account_id: { fields: { display_name: {} } },
-                quantity: {},
-                product_qty: {},
-                sh_sec_qty: {},
-                sh_sec_uom_id: { fields: { display_name: {} } },
-              },
+      const poRes = await readStockPickingWithFallback(
+        (specification) =>
+          this.safeOdooCall(
+            warehouseId,
+            'stock.picking',
+            'web_search_read',
+            [],
+            {
+              domain: [],
+              specification,
+              offset: docOffset,
+              limit: docLimit,
+              order: 'id asc',
+              count_limit: 999_999,
             },
-          },
-          offset: docOffset,
-          limit: docLimit,
-          order: 'id asc',
-          count_limit: 999_999,
-        },
+          ),
+        (err) => this.logWmsFieldFallback(err),
       );
 
       const records = poRes?.records || [];
@@ -409,41 +387,16 @@ export class OdooSyncService {
     );
     const allActiveFetchedDocRecords: any[] = [];
     for (const doc of activeDocuments) {
-      const res = await this.safeOdooCall(
-        warehouseId,
-        'stock.picking',
-        'web_read',
-        [[doc.id]],
-        {
-          specification: {
-            id: {},
-            name: {},
-            state: {},
-            picking_type_code: {},
-            partner_id: { fields: { display_name: {} } },
-            purchase_id: { fields: { display_name: {} } },
-            origin: {},
-            ref_fax: {},
-            location_id: { fields: { display_name: {} } },
-            location_dest_id: { fields: { display_name: {} } },
-            scheduled_date: {},
-            date_done: {},
-            driver: {},
-            plat_number: {},
-            move_ids_without_package: {
-              fields: {
-                id: {},
-                product_id: { fields: { display_name: {} } },
-                product_uom: { fields: { display_name: {} } },
-                analytic_account_id: { fields: { display_name: {} } },
-                quantity: {},
-                product_qty: {},
-                sh_sec_qty: {},
-                sh_sec_uom_id: { fields: { display_name: {} } },
-              },
-            },
-          },
-        },
+      const res = await readStockPickingWithFallback(
+        (specification) =>
+          this.safeOdooCall(
+            warehouseId,
+            'stock.picking',
+            'web_read',
+            [[doc.id]],
+            { specification },
+          ),
+        (err) => this.logWmsFieldFallback(err),
       );
       if (res && Array.isArray(res) && res.length > 0) {
         allActiveFetchedDocRecords.push(res[0]);
@@ -455,6 +408,12 @@ export class OdooSyncService {
       allActiveFetchedDocRecords,
       docOffset,
     };
+  }
+
+  private logWmsFieldFallback(err: any) {
+    this.logger.warn(
+      `[UNIFIED-SYNC-JOB] Odoo rejected WMS picking/putaway fields, retrying without them: ${err.message}`,
+    );
   }
 
   /**

@@ -343,8 +343,14 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         },
       };
 
-      const resA = (service as any).resolveProductDocRefAndPartner(prodA, gateOp);
-      const resB = (service as any).resolveProductDocRefAndPartner(prodB, gateOp);
+      const resA = (service as any).resolveProductDocRefAndPartner(
+        prodA,
+        gateOp,
+      );
+      const resB = (service as any).resolveProductDocRefAndPartner(
+        prodB,
+        gateOp,
+      );
 
       expect(resA.partnerName).toBe('PT Sumber Pangan');
       expect(resA.documentNumber).toBe('DOC-ALFA');
@@ -502,6 +508,178 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
       expect(tx2).toBeDefined();
       expect(tx2.partnerName).toBe('CV Partner Makmur');
       expect(tx2.documentNumber).toBe('DOC-PARTNER-B');
+    });
+  });
+
+  describe('allocateIndependentDocItem - WMS picking locations', () => {
+    const doc = {
+      documentNumber: 'WH/OUT/0001',
+      pickingTypeCode: 'outgoing',
+      state: 'done',
+      moveLines: [
+        {
+          documentReferenceItemId: 7001,
+          inventoryId: 101,
+          sourceLocationId: 21,
+          destinationLocationId: 5,
+          lotName: 'STACK-A',
+          pickingName: 'WH/PICK/0001',
+          quantity: 60,
+        },
+        {
+          documentReferenceItemId: 7001,
+          inventoryId: 101,
+          sourceLocationId: 22,
+          destinationLocationId: 5,
+          lotName: 'STACK-B',
+          pickingName: 'WH/PICK/0001',
+          quantity: 40,
+        },
+        {
+          documentReferenceItemId: 9999,
+          inventoryId: 202,
+          sourceLocationId: 21,
+          destinationLocationId: 5,
+          lotName: 'OTHER',
+          pickingName: 'WH/PICK/0002',
+          quantity: 5,
+        },
+      ],
+    };
+
+    it('splits the ERP quantity across the picked stack locations', () => {
+      const fallback = jest.fn().mockReturnValue(1);
+      const result = (service as any).allocateIndependentDocItem(
+        doc,
+        { id: 7001, inventoryId: 101, productQty: 100 },
+        new Set([21, 22]),
+        fallback,
+      );
+
+      expect(fallback).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        {
+          locationId: 21,
+          qty: 60,
+          stack: 'STACK-A',
+          referenceDocument: 'WH/OUT/0001 (WH/PICK/0001)',
+        },
+        {
+          locationId: 22,
+          qty: 40,
+          stack: 'STACK-B',
+          referenceDocument: 'WH/OUT/0001 (WH/PICK/0001)',
+        },
+      ]);
+    });
+
+    it('keeps the ERP item quantity as total when picked quantities differ', () => {
+      const result = (service as any).allocateIndependentDocItem(
+        doc,
+        { id: 7001, inventoryId: 101, productQty: 50 },
+        new Set([21, 22]),
+        () => 1,
+      );
+
+      expect(result.map((r: any) => r.qty)).toEqual([30, 20]);
+    });
+
+    it('falls back to the heuristic location when no move line maps to a warehouse location', () => {
+      const result = (service as any).allocateIndependentDocItem(
+        doc,
+        { id: 7001, inventoryId: 101, productQty: 100 },
+        new Set([99]),
+        () => 99,
+      );
+
+      expect(result).toEqual([
+        {
+          locationId: 99,
+          qty: 100,
+          stack: '-',
+          referenceDocument: 'WH/OUT/0001',
+        },
+      ]);
+    });
+  });
+
+  describe('allocateGateProduct - document move lines win over gate location', () => {
+    const docRef = {
+      documentNumber: 'WH/OUT/0002',
+      pickingTypeCode: 'outgoing',
+      state: 'done',
+      moveLines: [
+        {
+          documentReferenceItemId: 1,
+          inventoryId: 101,
+          sourceLocationId: 21,
+          destinationLocationId: 5,
+          lotName: 'STACK-A',
+          pickingName: 'PICK/0009',
+          quantity: 75,
+        },
+        {
+          documentReferenceItemId: 1,
+          inventoryId: 101,
+          sourceLocationId: 22,
+          destinationLocationId: 5,
+          lotName: 'STACK-B',
+          pickingName: 'PICK/0009',
+          quantity: 25,
+        },
+      ],
+    };
+    const opProd = { inventoryId: 101, quantity: 40, locationId: 30 };
+
+    it('splits the gate quantity over the picked stacks of a done document', () => {
+      const result = (service as any).allocateGateProduct(
+        opProd,
+        docRef,
+        new Set([21, 22, 30]),
+      );
+      expect(result).toEqual([
+        {
+          locationId: 21,
+          qty: 30,
+          stack: 'STACK-A',
+          referenceDocument: 'WH/OUT/0002 (PICK/0009)',
+        },
+        {
+          locationId: 22,
+          qty: 10,
+          stack: 'STACK-B',
+          referenceDocument: 'WH/OUT/0002 (PICK/0009)',
+        },
+      ]);
+    });
+
+    it('keeps the gate location when the document is not done', () => {
+      const result = (service as any).allocateGateProduct(
+        opProd,
+        { ...docRef, state: 'assigned' },
+        new Set([21, 22, 30]),
+      );
+      expect(result).toEqual([
+        { locationId: 30, qty: 40, stack: null, referenceDocument: null },
+      ]);
+    });
+
+    it('keeps the gate location when there is no document', () => {
+      expect(
+        (service as any).allocateGateProduct(opProd, null, new Set([30])),
+      ).toEqual([
+        { locationId: 30, qty: 40, stack: null, referenceDocument: null },
+      ]);
+    });
+
+    it('returns nothing when there is neither a move line nor a gate location', () => {
+      expect(
+        (service as any).allocateGateProduct(
+          { ...opProd, locationId: null },
+          null,
+          new Set([30]),
+        ),
+      ).toEqual([]);
     });
   });
 });

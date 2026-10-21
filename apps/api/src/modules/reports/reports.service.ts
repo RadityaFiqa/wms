@@ -13,6 +13,28 @@ import {
 } from '@/core/utils/date';
 import { Cron } from '@nestjs/schedule';
 
+type MoveLineDocument = {
+  documentNumber: string;
+  pickingTypeCode: string;
+  state: string;
+  moveLines?: {
+    documentReferenceItemId: number;
+    inventoryId: number;
+    sourceLocationId: number | null;
+    destinationLocationId: number | null;
+    lotName: string | null;
+    pickingName: string | null;
+    quantity: number;
+  }[];
+};
+
+type MoveLineAllocation = {
+  locationId: number;
+  qty: number;
+  stack: string;
+  referenceDocument: string;
+};
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -131,9 +153,21 @@ export class ReportsService {
         ],
       },
       include: {
-        products: true,
+        products: {
+          include: {
+            documentReference: { include: { moveLines: true } },
+          },
+        },
+        documentReference: { include: { moveLines: true } },
+        documentReferences: {
+          include: {
+            documentReference: { include: { moveLines: true } },
+          },
+        },
       },
     });
+
+    const locationIds = new Set(locations.map((l) => l.id));
 
     // Fetch all active pending/unreconciled gate operations in the system
     const allPendingOps = await this.prisma.gateOperation.findMany({
@@ -143,13 +177,13 @@ export class ReportsService {
       include: {
         products: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
-        documentReference: true,
+        documentReference: { include: { moveLines: true } },
         documentReferences: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
       },
@@ -186,6 +220,7 @@ export class ReportsService {
         },
         include: {
           items: true,
+          moveLines: true,
         },
       });
 
@@ -231,6 +266,7 @@ export class ReportsService {
       },
       include: {
         items: true,
+        moveLines: true,
         operationProducts: {
           where: {
             gateOperation: {
@@ -278,10 +314,10 @@ export class ReportsService {
           locations: new Map<number, number>(),
         };
         current.total += gp.quantity;
-        if (gp.locationId) {
+        for (const alloc of this.allocateGateProduct(gp, doc, locationIds)) {
           current.locations.set(
-            gp.locationId,
-            (current.locations.get(gp.locationId) || 0) + gp.quantity,
+            alloc.locationId,
+            (current.locations.get(alloc.locationId) || 0) + alloc.qty,
           );
         }
         docGateProductsMap.set(gp.inventoryId, current);
@@ -367,12 +403,23 @@ export class ReportsService {
       uniqueKeys.add(`${q.locationId}_${q.inventoryId}`);
     }
 
-    for (const op of yesterdayOps) {
-      for (const p of op.products) {
-        if (p.locationId) {
-          uniqueKeys.add(`${p.locationId}_${p.inventoryId}`);
-        }
-      }
+    // Yesterday's gate movements at their real stack (document move lines win over the gate location)
+    const yesterdayGateMovements = yesterdayOps.flatMap((op) =>
+      op.products.flatMap((p) =>
+        this.allocateGateProduct(
+          p,
+          this.resolveProductDocRefAndPartner(p, op).docRef,
+          locationIds,
+        ).map((alloc) => ({
+          cardType: op.cardType,
+          inventoryId: p.inventoryId,
+          ...alloc,
+        })),
+      ),
+    );
+
+    for (const m of yesterdayGateMovements) {
+      uniqueKeys.add(`${m.locationId}_${m.inventoryId}`);
     }
 
     for (const snap of prevSnaps) {
@@ -387,6 +434,7 @@ export class ReportsService {
 
     for (const doc of yesterdayIndependentDocs) {
       const whLocs = locations.filter((l) => l.warehouseId === doc.warehouseId);
+      const whLocIds = new Set(whLocs.map((l) => l.id));
       const fallbackLocId = whLocs[0]?.id;
 
       for (const item of doc.items) {
@@ -410,25 +458,34 @@ export class ReportsService {
         const productQuants = currentQuants.filter(
           (q) => q.inventoryId === prodId,
         );
-        const mappedLocId = this.getBestMismatchLocation(
-          whLocs,
-          mismatchMap,
-          productQuants,
-          fallbackLocId,
-        );
-
-        const currentMismatch = mismatchMap.get(mappedLocId) || 0;
-        const qty = item.productQty;
-        const movementQty = doc.pickingTypeCode === 'incoming' ? qty : -qty;
-        mismatchMap.set(mappedLocId, currentMismatch - movementQty);
-
-        yesterdayIndependentMovementsMapped.push({
+        const allocations = this.allocateIndependentDocItem(
           doc,
           item,
-          locationId: mappedLocId,
-        });
+          whLocIds,
+          () =>
+            this.getBestMismatchLocation(
+              whLocs,
+              mismatchMap,
+              productQuants,
+              fallbackLocId,
+            ),
+        );
 
-        uniqueKeys.add(`${mappedLocId}_${prodId}`);
+        for (const alloc of allocations) {
+          const currentMismatch = mismatchMap.get(alloc.locationId) || 0;
+          const movementQty =
+            doc.pickingTypeCode === 'incoming' ? alloc.qty : -alloc.qty;
+          mismatchMap.set(alloc.locationId, currentMismatch - movementQty);
+
+          yesterdayIndependentMovementsMapped.push({
+            doc,
+            item,
+            locationId: alloc.locationId,
+            qty: alloc.qty,
+          });
+
+          uniqueKeys.add(`${alloc.locationId}_${prodId}`);
+        }
       }
     }
 
@@ -494,26 +551,23 @@ export class ReportsService {
       let totalIn = 0;
       let totalOut = 0;
 
-      for (const op of yesterdayOps) {
-        const isOut = op.cardType === 'OUT';
-        const matchingProducts = op.products.filter(
-          (p) => p.locationId === locationId && p.inventoryId === inventoryId,
-        );
-        for (const matchingProduct of matchingProducts) {
-          if (isOut) {
-            totalOut += matchingProduct.quantity;
-          } else {
-            totalIn += matchingProduct.quantity;
-          }
+      for (const m of yesterdayGateMovements) {
+        if (m.locationId !== locationId || m.inventoryId !== inventoryId) {
+          continue;
+        }
+        if (m.cardType === 'OUT') {
+          totalOut += m.qty;
+        } else {
+          totalIn += m.qty;
         }
       }
 
       for (const m of yesterdayIndependentMovementsMapped) {
         if (m.locationId === locationId && m.item.inventoryId === inventoryId) {
           if (m.doc.pickingTypeCode === 'incoming') {
-            totalIn += m.item.productQty;
+            totalIn += m.qty;
           } else if (m.doc.pickingTypeCode === 'outgoing') {
-            totalOut += m.item.productQty;
+            totalOut += m.qty;
           }
         }
       }
@@ -636,6 +690,12 @@ export class ReportsService {
     const todayStr = formatDateInTimezone(new Date(), timezone);
     const today = getLocalEndOfDay(todayStr, timezone);
 
+    // Warehouse locations (move line stacks are only used when they map to one of these)
+    const dbLocations = await this.prisma.location.findMany({
+      where: { warehouseId },
+    });
+    const dbLocationIds = new Set(dbLocations.map((l) => l.id));
+
     // 1. Fetch pending and verified Gate Operations from start date until TODAY
     const gateOps = await this.prisma.gateOperation.findMany({
       where: {
@@ -673,13 +733,13 @@ export class ReportsService {
         products: {
           include: {
             quant: true,
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
-        documentReference: true,
+        documentReference: { include: { moveLines: true } },
         documentReferences: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
       },
@@ -694,13 +754,13 @@ export class ReportsService {
       include: {
         products: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
-        documentReference: true,
+        documentReference: { include: { moveLines: true } },
         documentReferences: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
       },
@@ -746,6 +806,7 @@ export class ReportsService {
       },
       include: {
         items: true,
+        moveLines: true,
         operationProducts: {
           where: {
             gateOperation: {
@@ -802,6 +863,7 @@ export class ReportsService {
         },
         include: {
           items: true,
+          moveLines: true,
         },
       });
 
@@ -840,10 +902,10 @@ export class ReportsService {
           locations: new Map<number, number>(),
         };
         current.total += gp.quantity;
-        if (gp.locationId) {
+        for (const alloc of this.allocateGateProduct(gp, doc, dbLocationIds)) {
           current.locations.set(
-            gp.locationId,
-            (current.locations.get(gp.locationId) || 0) + gp.quantity,
+            alloc.locationId,
+            (current.locations.get(alloc.locationId) || 0) + alloc.qty,
           );
         }
         docGateProductsMap.set(gp.inventoryId, current);
@@ -951,10 +1013,7 @@ export class ReportsService {
         },
       });
 
-    // 5. Fetch all locations in the warehouse to map IDs to UUIDs and display names
-    const dbLocations = await this.prisma.location.findMany({
-      where: { warehouseId },
-    });
+    // 5. Map location IDs to UUIDs and display names
     const locationsMap = new Map<number, (typeof dbLocations)[number]>(
       dbLocations.map((l) => [l.id, l]),
     );
@@ -974,8 +1033,13 @@ export class ReportsService {
           (p) => p.inventoryId === prod.id,
         );
         for (const opProd of matchingProducts) {
-          if (opProd.locationId) {
-            activeLocationIds.add(opProd.locationId);
+          const { docRef } = this.resolveProductDocRefAndPartner(opProd, op);
+          for (const alloc of this.allocateGateProduct(
+            opProd,
+            docRef,
+            dbLocationIds,
+          )) {
+            activeLocationIds.add(alloc.locationId);
           }
         }
       }
@@ -1022,28 +1086,31 @@ export class ReportsService {
         const item = doc.items.find((i) => i.inventoryId === prod.id);
         if (!item) continue;
 
-        const mappedLocId = this.getBestMismatchLocation(
-          dbLocations,
-          mismatchMap,
-          productQuants,
-          fallbackLocId,
-        );
-
-        // Update mismatch for the mapped location
-        const currentMismatch = mismatchMap.get(mappedLocId) || 0;
-        const qty = item.productQty;
-        const movementQty = doc.pickingTypeCode === 'incoming' ? qty : -qty;
-        mismatchMap.set(mappedLocId, currentMismatch - movementQty);
-
-        mappedIndependentDocs.push({
+        const allocations = this.allocateIndependentDocItem(
           doc,
           item,
-          locationId: mappedLocId,
-          qty,
-        });
+          dbLocationIds,
+          () =>
+            this.getBestMismatchLocation(
+              dbLocations,
+              mismatchMap,
+              productQuants,
+              fallbackLocId,
+            ),
+        );
 
-        // Add mapped location to activeLocationIds
-        activeLocationIds.add(mappedLocId);
+        for (const alloc of allocations) {
+          // Update mismatch for the mapped location
+          const currentMismatch = mismatchMap.get(alloc.locationId) || 0;
+          const movementQty =
+            doc.pickingTypeCode === 'incoming' ? alloc.qty : -alloc.qty;
+          mismatchMap.set(alloc.locationId, currentMismatch - movementQty);
+
+          mappedIndependentDocs.push({ doc, item, ...alloc });
+
+          // Add mapped location to activeLocationIds
+          activeLocationIds.add(alloc.locationId);
+        }
       }
 
       // Get current physical stock for this product at each location in this warehouse
@@ -1104,30 +1171,37 @@ export class ReportsService {
           (p) => p.inventoryId === prod.id,
         );
         for (const opProd of matchingProducts) {
-          if (!opProd.locationId) continue;
-
           const {
+            docRef,
             partnerName: resolvedPartner,
             documentNumber: resolvedDocNumber,
           } = this.resolveProductDocRefAndPartner(opProd, op);
 
-          rawTransactionsList.push({
-            txUuid: `${op.uuid}_${opProd.uuid || opProd.id}`,
-            opNumber: op.opNumber,
-            driverName: op.driverName,
-            licensePlate: op.licensePlate,
-            clientPartner: resolvedPartner,
-            cardType: op.cardType,
-            quantity: opProd.quantity,
-            referenceDocument: resolvedDocNumber,
-            status: op.status,
-            effectiveDate:
-              op.cardType === 'OUT'
-                ? op.createdAt
-                : op.verifiedAt || op.createdAt,
-            stack: opProd.quant?.lotName || '-',
-            type: 'GATE_OPERATION',
-            locationId: opProd.locationId,
+          // Real stack from the document's move lines when available, else the gate location
+          const allocations = this.allocateGateProduct(
+            opProd,
+            docRef,
+            dbLocationIds,
+          );
+          allocations.forEach((alloc, index) => {
+            rawTransactionsList.push({
+              txUuid: `${op.uuid}_${opProd.uuid || opProd.id}_${index}`,
+              opNumber: op.opNumber,
+              driverName: op.driverName,
+              licensePlate: op.licensePlate,
+              clientPartner: resolvedPartner,
+              cardType: op.cardType,
+              quantity: alloc.qty,
+              referenceDocument: alloc.referenceDocument || resolvedDocNumber,
+              status: op.status,
+              effectiveDate:
+                op.cardType === 'OUT'
+                  ? op.createdAt
+                  : op.verifiedAt || op.createdAt,
+              stack: alloc.stack || opProd.quant?.lotName || '-',
+              type: 'GATE_OPERATION',
+              locationId: alloc.locationId,
+            });
           });
         }
       }
@@ -1136,17 +1210,17 @@ export class ReportsService {
       for (const m of mappedIndependentDocs) {
         const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
         rawTransactionsList.push({
-          txUuid: m.doc.uuid,
+          txUuid: `${m.doc.uuid}_${m.locationId}_${m.stack}`,
           opNumber: m.doc.documentNumber,
           driverName: m.doc.driver || '-',
           licensePlate: m.doc.plateNumber || '-',
           clientPartner: m.doc.partnerName || m.doc.purchaseName || '-',
           cardType: m.doc.pickingTypeCode === 'incoming' ? 'IN' : 'OUT',
           quantity: m.qty,
-          referenceDocument: m.doc.documentNumber,
+          referenceDocument: m.referenceDocument,
           status: m.doc.state.toUpperCase(), // 'DONE'
           effectiveDate: docDate,
-          stack: '-',
+          stack: m.stack,
           type: 'ERP_DOCUMENT',
           locationId: m.locationId,
         });
@@ -1485,6 +1559,7 @@ export class ReportsService {
     const dbLocations = await this.prisma.location.findMany({
       where: { warehouseId },
     });
+    const dbLocationIds = new Set(dbLocations.map((l) => l.id));
 
     const timezone = this.warehouseContext.getTimezone();
     const start = getLocalStartOfDay(query.date, timezone);
@@ -1530,6 +1605,11 @@ export class ReportsService {
         },
         include: {
           items: {
+            where: {
+              inventoryId: inventory.id,
+            },
+          },
+          moveLines: {
             where: {
               inventoryId: inventory.id,
             },
@@ -1602,13 +1682,13 @@ export class ReportsService {
             inventoryId: inventory.id,
           },
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
-        documentReference: true,
+        documentReference: { include: { moveLines: true } },
         documentReferences: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
       },
@@ -1683,6 +1763,11 @@ export class ReportsService {
             inventoryId: inventory.id,
           },
         },
+        moveLines: {
+          where: {
+            inventoryId: inventory.id,
+          },
+        },
         operationProducts: {
           where: {
             inventoryId: inventory.id,
@@ -1731,10 +1816,10 @@ export class ReportsService {
 
       for (const gp of docProducts) {
         sumGateQty += gp.quantity;
-        if (gp.locationId) {
+        for (const alloc of this.allocateGateProduct(gp, doc, dbLocationIds)) {
           locQties.set(
-            gp.locationId,
-            (locQties.get(gp.locationId) || 0) + gp.quantity,
+            alloc.locationId,
+            (locQties.get(alloc.locationId) || 0) + alloc.qty,
           );
         }
       }
@@ -1862,13 +1947,13 @@ export class ReportsService {
           },
           include: {
             quant: true,
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
-        documentReference: true,
+        documentReference: { include: { moveLines: true } },
         documentReferences: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
       },
@@ -1891,13 +1976,13 @@ export class ReportsService {
             inventoryId: inventory.id,
           },
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
-        documentReference: true,
+        documentReference: { include: { moveLines: true } },
         documentReferences: {
           include: {
-            documentReference: true,
+            documentReference: { include: { moveLines: true } },
           },
         },
       },
@@ -1932,8 +2017,13 @@ export class ReportsService {
         (p) => p.inventoryId === inventory.id,
       );
       for (const opProd of matchingProducts) {
-        if (opProd.locationId) {
-          activeLocationIds.add(opProd.locationId);
+        const { docRef } = this.resolveProductDocRefAndPartner(opProd, op);
+        for (const alloc of this.allocateGateProduct(
+          opProd,
+          docRef,
+          dbLocationIds,
+        )) {
+          activeLocationIds.add(alloc.locationId);
         }
       }
     }
@@ -1976,28 +2066,31 @@ export class ReportsService {
       const item = doc.items.find((i) => i.inventoryId === inventory.id);
       if (!item) continue;
 
-      const mappedLocId = this.getBestMismatchLocation(
-        dbLocations,
-        mismatchMap,
-        quants,
-        fallbackLocId,
-      );
-
-      // Update mismatch for the mapped location
-      const currentMismatch = mismatchMap.get(mappedLocId) || 0;
-      const qty = item.productQty;
-      const movementQty = doc.pickingTypeCode === 'incoming' ? qty : -qty;
-      mismatchMap.set(mappedLocId, currentMismatch - movementQty);
-
-      mappedIndependentDocs.push({
+      const allocations = this.allocateIndependentDocItem(
         doc,
         item,
-        locationId: mappedLocId,
-        qty,
-      });
+        dbLocationIds,
+        () =>
+          this.getBestMismatchLocation(
+            dbLocations,
+            mismatchMap,
+            quants,
+            fallbackLocId,
+          ),
+      );
 
-      // Add mapped location to activeLocationIds
-      activeLocationIds.add(mappedLocId);
+      for (const alloc of allocations) {
+        // Update mismatch for the mapped location
+        const currentMismatch = mismatchMap.get(alloc.locationId) || 0;
+        const movementQty =
+          doc.pickingTypeCode === 'incoming' ? alloc.qty : -alloc.qty;
+        mismatchMap.set(alloc.locationId, currentMismatch - movementQty);
+
+        mappedIndependentDocs.push({ doc, item, ...alloc });
+
+        // Add mapped location to activeLocationIds
+        activeLocationIds.add(alloc.locationId);
+      }
     }
 
     // Collect all raw transactions into a list
@@ -2026,30 +2119,37 @@ export class ReportsService {
         (p) => p.inventoryId === inventory.id,
       );
       for (const opProd of matchingProducts) {
-        if (!opProd.locationId) continue;
-
         const {
+          docRef,
           partnerName: resolvedPartner,
           documentNumber: resolvedDocNumber,
         } = this.resolveProductDocRefAndPartner(opProd, op);
 
-        rawTransactionsList.push({
-          txUuid: `${op.uuid}_${opProd.uuid || opProd.id}`,
-          opNumber: op.opNumber,
-          driverName: op.driverName,
-          licensePlate: op.licensePlate,
-          clientPartner: resolvedPartner,
-          cardType: op.cardType,
-          quantity: opProd.quantity,
-          referenceDocument: resolvedDocNumber,
-          status: op.status,
-          effectiveDate:
-            op.cardType === 'OUT'
-              ? op.createdAt
-              : op.verifiedAt || op.createdAt,
-          stack: opProd.quant?.lotName || '-',
-          type: 'GATE_OPERATION',
-          locationId: opProd.locationId,
+        // Real stack from the document's move lines when available, else the gate location
+        const allocations = this.allocateGateProduct(
+          opProd,
+          docRef,
+          dbLocationIds,
+        );
+        allocations.forEach((alloc, index) => {
+          rawTransactionsList.push({
+            txUuid: `${op.uuid}_${opProd.uuid || opProd.id}_${index}`,
+            opNumber: op.opNumber,
+            driverName: op.driverName,
+            licensePlate: op.licensePlate,
+            clientPartner: resolvedPartner,
+            cardType: op.cardType,
+            quantity: alloc.qty,
+            referenceDocument: alloc.referenceDocument || resolvedDocNumber,
+            status: op.status,
+            effectiveDate:
+              op.cardType === 'OUT'
+                ? op.createdAt
+                : op.verifiedAt || op.createdAt,
+            stack: alloc.stack || opProd.quant?.lotName || '-',
+            type: 'GATE_OPERATION',
+            locationId: alloc.locationId,
+          });
         });
       }
     }
@@ -2058,17 +2158,17 @@ export class ReportsService {
     for (const m of mappedIndependentDocs) {
       const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
       rawTransactionsList.push({
-        txUuid: m.doc.uuid,
+        txUuid: `${m.doc.uuid}_${m.locationId}_${m.stack}`,
         opNumber: m.doc.documentNumber,
         driverName: m.doc.driver || '-',
         licensePlate: m.doc.plateNumber || '-',
         clientPartner: m.doc.partnerName || m.doc.purchaseName || '-',
         cardType: m.doc.pickingTypeCode === 'incoming' ? 'IN' : 'OUT',
         quantity: m.qty,
-        referenceDocument: m.doc.documentNumber,
+        referenceDocument: m.referenceDocument,
         status: m.doc.state.toUpperCase(), // 'DONE'
         effectiveDate: docDate,
-        stack: '-',
+        stack: m.stack,
         type: 'ERP_DOCUMENT',
         locationId: m.locationId,
       });
@@ -2319,6 +2419,141 @@ export class ReportsService {
     }
 
     return mismatchMap;
+  }
+
+  /**
+   * Splits a quantity over the real stack locations recorded in a done ERP document's
+   * move lines (WMS picking/putaway). The given quantity stays the total; it is split by
+   * the picked quantities. Returns [] when no move line maps to a known warehouse location
+   * (e.g. documents synced before move lines existed).
+   */
+  private getMoveLineAllocations(
+    doc: MoveLineDocument | null | undefined,
+    match: { inventoryId: number; itemId?: number },
+    qty: number,
+    validLocationIds: Set<number>,
+  ): MoveLineAllocation[] {
+    if (!doc || doc.state !== 'done' || !doc.moveLines?.length) return [];
+
+    const isIncoming = doc.pickingTypeCode === 'incoming';
+    const grouped = new Map<
+      string,
+      { locationId: number; qty: number; stack: string; pickings: Set<string> }
+    >();
+
+    for (const line of doc.moveLines) {
+      if (line.quantity <= 0 || line.inventoryId !== match.inventoryId) {
+        continue;
+      }
+      if (
+        match.itemId !== undefined &&
+        line.documentReferenceItemId !== match.itemId
+      ) {
+        continue;
+      }
+      const locationId = isIncoming
+        ? line.destinationLocationId
+        : line.sourceLocationId;
+      if (!locationId || !validLocationIds.has(locationId)) continue;
+
+      const stack = line.lotName || '-';
+      const key = `${locationId}_${stack}`;
+      const current = grouped.get(key) || {
+        locationId,
+        qty: 0,
+        stack,
+        pickings: new Set<string>(),
+      };
+      current.qty += line.quantity;
+      if (line.pickingName && line.pickingName !== doc.documentNumber) {
+        current.pickings.add(line.pickingName);
+      }
+      grouped.set(key, current);
+    }
+
+    const allocations = Array.from(grouped.values());
+    const totalPickedQty = allocations.reduce((sum, a) => sum + a.qty, 0);
+    if (totalPickedQty <= 0) return [];
+
+    const scale =
+      Math.abs(totalPickedQty - qty) < 1e-6 ? 1 : qty / totalPickedQty;
+
+    return allocations.map((a) => ({
+      locationId: a.locationId,
+      qty: a.qty * scale,
+      stack: a.stack,
+      referenceDocument:
+        a.pickings.size > 0
+          ? `${doc.documentNumber} (${Array.from(a.pickings).join(', ')})`
+          : doc.documentNumber,
+    }));
+  }
+
+  /**
+   * Allocates an independent ERP document item to the real stack locations recorded in
+   * its move lines, falling back to a single heuristic location when there are none.
+   */
+  private allocateIndependentDocItem(
+    doc: MoveLineDocument,
+    item: { id: number; inventoryId: number; productQty: number },
+    validLocationIds: Set<number>,
+    getFallbackLocationId: () => number,
+  ): MoveLineAllocation[] {
+    const allocations = this.getMoveLineAllocations(
+      doc,
+      { inventoryId: item.inventoryId, itemId: item.id },
+      item.productQty,
+      validLocationIds,
+    );
+    if (allocations.length > 0) return allocations;
+
+    return [
+      {
+        locationId: getFallbackLocationId(),
+        qty: item.productQty,
+        stack: '-',
+        referenceDocument: doc.documentNumber,
+      },
+    ];
+  }
+
+  /**
+   * Locations of a gate operation product. When its ERP document is done and has move
+   * lines, the real stack from the WMS picking/putaway wins over the location picked at the gate.
+   * stack / referenceDocument are null when the gate location is used.
+   */
+  private allocateGateProduct(
+    opProd: {
+      inventoryId: number;
+      quantity: number;
+      locationId: number | null;
+    },
+    docRef: MoveLineDocument | null | undefined,
+    validLocationIds: Set<number>,
+  ): {
+    locationId: number;
+    qty: number;
+    stack: string | null;
+    referenceDocument: string | null;
+  }[] {
+    const allocations = this.getMoveLineAllocations(
+      docRef,
+      { inventoryId: opProd.inventoryId },
+      opProd.quantity,
+      validLocationIds,
+    );
+    if (allocations.length > 0) return allocations;
+
+    return opProd.locationId
+      ? [
+          {
+            locationId: opProd.locationId,
+            qty: opProd.quantity,
+            stack: null,
+            referenceDocument: null,
+          },
+        ]
+      : [];
   }
 
   private getBestMismatchLocation(
