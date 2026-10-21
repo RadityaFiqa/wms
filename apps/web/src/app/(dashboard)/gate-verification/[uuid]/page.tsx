@@ -46,6 +46,7 @@ import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
 
 import { DocumentReferenceSelector } from "@/components/DocumentReferenceSelector";
 import { DocumentReferenceHistoryDrawer } from "@/components/DocumentReferenceHistoryDrawer";
+import { GateAllocationSummary } from "@/components/GateAllocationSummary";
 
 const getProductDetails = (item: any) => {
   if (!item) return { sku: "-", name: "-", uom: "-" };
@@ -97,17 +98,21 @@ export default function GateVerificationDetailPage() {
   const currentIndex = items.findIndex((item: any) => item.uuid === uuid);
   const hasMultipleItems = items.length > 1;
 
-  const previousUuid = hasMultipleItems && currentIndex !== -1
-    ? items[(currentIndex - 1 + items.length) % items.length].uuid
-    : null;
+  const previousUuid =
+    hasMultipleItems && currentIndex !== -1
+      ? items[(currentIndex - 1 + items.length) % items.length].uuid
+      : null;
 
-  const nextUuid = hasMultipleItems && currentIndex !== -1
-    ? items[(currentIndex + 1) % items.length].uuid
-    : null;
+  const nextUuid =
+    hasMultipleItems && currentIndex !== -1
+      ? items[(currentIndex + 1) % items.length].uuid
+      : null;
 
   const navigateTo = (targetUuid: string) => {
     const queryStr = searchParams.toString();
-    router.push(`/gate-verification/${targetUuid}${queryStr ? `?${queryStr}` : ""}`);
+    router.push(
+      `/gate-verification/${targetUuid}${queryStr ? `?${queryStr}` : ""}`,
+    );
   };
 
   const handleBack = () => {
@@ -144,7 +149,9 @@ export default function GateVerificationDetailPage() {
     const nextVerifyUuid = getNextGateVerificationUuid();
     const queryStr = searchParams.toString();
     if (nextVerifyUuid) {
-      router.push(`/gate-verification/${nextVerifyUuid}${queryStr ? `?${queryStr}` : ""}`);
+      router.push(
+        `/gate-verification/${nextVerifyUuid}${queryStr ? `?${queryStr}` : ""}`,
+      );
     } else {
       router.push(`/gate-verification${queryStr ? `?${queryStr}` : ""}`);
     }
@@ -159,7 +166,9 @@ export default function GateVerificationDetailPage() {
   const [isAddCargoOpen, setIsAddCargoOpen] = useState(false);
   const [editingCargoItem, setEditingCargoItem] = useState<any>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [selectedHistoryDocUuid, setSelectedHistoryDocUuid] = useState<string | null>(null);
+  const [selectedHistoryDocUuid, setSelectedHistoryDocUuid] = useState<
+    string | null
+  >(null);
 
   const {
     gateOperation,
@@ -186,11 +195,15 @@ export default function GateVerificationDetailPage() {
   const isNotesDocsReadOnly = isReadOnly;
 
   // 1. Verification history timeline hook
-  const { data: timelineHistory, refresh: refreshTimeline } = useGateVerificationHistory(uuid);
+  const { data: timelineHistory, refresh: refreshTimeline } =
+    useGateVerificationHistory(uuid);
 
   // Attached documents list for multi-document support
   const attachedDocs: any[] = React.useMemo(() => {
-    if (gateOperation?.documentReferences && gateOperation.documentReferences.length > 0) {
+    if (
+      gateOperation?.documentReferences &&
+      gateOperation.documentReferences.length > 0
+    ) {
       return gateOperation.documentReferences.map((r: any) => {
         const docRef = r.documentReference || r;
         return {
@@ -198,7 +211,8 @@ export default function GateVerificationDetailPage() {
           uuid: docRef.uuid || r.uuid,
           documentNumber: docRef.documentNumber || r.documentNumber || "-",
           origin: docRef.origin || r.origin,
-          partnerName: docRef.partnerName || r.partnerName || gateOperation?.clientPartner,
+          partnerName:
+            docRef.partnerName || r.partnerName || gateOperation?.clientPartner,
           referenceQty: r.referenceQty ?? docRef.referenceQty ?? 0,
           realizedQty: r.realizedQty ?? docRef.realizedQty ?? 0,
           remainingQty: r.remainingQty ?? docRef.remainingQty ?? 0,
@@ -222,9 +236,12 @@ export default function GateVerificationDetailPage() {
           documentNumber: docRef.documentNumber || "-",
           origin: docRef.origin,
           partnerName: docRef.partnerName || gateOperation?.clientPartner,
-          referenceQty: gateOperation.totalReferenceQty ?? docRef.referenceQty ?? 0,
-          realizedQty: gateOperation.totalRealizedQty ?? docRef.realizedQty ?? 0,
-          remainingQty: gateOperation.totalRemainingQty ?? docRef.remainingQty ?? 0,
+          referenceQty:
+            gateOperation.totalReferenceQty ?? docRef.referenceQty ?? 0,
+          realizedQty:
+            gateOperation.totalRealizedQty ?? docRef.realizedQty ?? 0,
+          remainingQty:
+            gateOperation.totalRemainingQty ?? docRef.remainingQty ?? 0,
           status: docRef.status || "PARTIAL",
           items: docRef.items || [],
           summary: docRef.summary || [],
@@ -244,15 +261,27 @@ export default function GateVerificationDetailPage() {
     const list: string[] = [];
     if (attachedDocs && attachedDocs.length > 0) {
       attachedDocs.forEach((d: any) => {
-        if (d.partnerName && typeof d.partnerName === "string" && d.partnerName.trim()) {
+        if (
+          d.partnerName &&
+          typeof d.partnerName === "string" &&
+          d.partnerName.trim()
+        ) {
           list.push(d.partnerName.trim());
         }
       });
     }
-    if (gateOperation?.clientPartner && typeof gateOperation.clientPartner === "string" && gateOperation.clientPartner.trim()) {
+    if (
+      gateOperation?.clientPartner &&
+      typeof gateOperation.clientPartner === "string" &&
+      gateOperation.clientPartner.trim()
+    ) {
       list.push(gateOperation.clientPartner.trim());
     }
-    if (gateOperation?.documentReference?.partnerName && typeof gateOperation.documentReference.partnerName === "string" && gateOperation.documentReference.partnerName.trim()) {
+    if (
+      gateOperation?.documentReference?.partnerName &&
+      typeof gateOperation.documentReference.partnerName === "string" &&
+      gateOperation.documentReference.partnerName.trim()
+    ) {
       list.push(gateOperation.documentReference.partnerName.trim());
     }
     return Array.from(new Set(list));
@@ -261,7 +290,7 @@ export default function GateVerificationDetailPage() {
   const handleRemoveDocRef = async (docRefId: number) => {
     if (
       !window.confirm(
-        "Apakah Anda yakin ingin melepas dokumen referensi ini dari operasi gerbang?",
+        "Apakah Anda yakin ingin melepas dokumen referensi ini dari operasi gerbang? Quantity yang teralokasi ke dokumen ini akan dikembalikan menjadi sisa.",
       )
     ) {
       return;
@@ -301,7 +330,11 @@ export default function GateVerificationDetailPage() {
   // Redirect if this gate verification is already finalized (VERIFIED or CANCELED)
   useEffect(() => {
     if (isNavigatingToNext.current) return;
-    if (gateOperation && (gateOperation.status === "VERIFIED" || gateOperation.status === "CANCELED")) {
+    if (
+      gateOperation &&
+      (gateOperation.status === "VERIFIED" ||
+        gateOperation.status === "CANCELED")
+    ) {
       router.replace(`/gate-operations/${uuid}`);
     }
   }, [gateOperation, uuid, router]);
@@ -309,7 +342,9 @@ export default function GateVerificationDetailPage() {
   // Unique references computed from gateOperation.references list
   const uniqueReferences = React.useMemo(() => {
     if (!gateOperation?.references) return [];
-    const docs = gateOperation.references.map((r: any) => r.erpDocument?.documentNumber).filter(Boolean);
+    const docs = gateOperation.references
+      .map((r: any) => r.erpDocument?.documentNumber)
+      .filter(Boolean);
     return Array.from(new Set(docs)) as string[];
   }, [gateOperation]);
 
@@ -326,13 +361,12 @@ export default function GateVerificationDetailPage() {
 
     // All cargo items must have location and stack selected
     const hasMissingLocationOrStack = gateOperation.products?.some(
-      (p: any) => !p.locationId || !p.quantId
+      (p: any) => !p.locationId || !p.quantId,
     );
     if (hasMissingLocationOrStack) return false;
 
     return true;
   }, [gateOperation]);
-
 
   const confirmationRequirements = React.useMemo(() => {
     if (!gateOperation) return [];
@@ -347,15 +381,16 @@ export default function GateVerificationDetailPage() {
     }
 
     const hasMissingLocationOrStack = gateOperation.products?.some(
-      (p: any) => !p.locationId || !p.quantId
+      (p: any) => !p.locationId || !p.quantId,
     );
     if (hasMissingLocationOrStack) {
-      reqs.push("Semua barang muatan harus memiliki lokasi dan tumpukan (stack) yang dipilih.");
+      reqs.push(
+        "Semua barang muatan harus memiliki lokasi dan tumpukan (stack) yang dipilih.",
+      );
     }
 
     return reqs;
   }, [gateOperation]);
-
 
   const handleConfirmVerification = async () => {
     if (
@@ -369,10 +404,7 @@ export default function GateVerificationDetailPage() {
     const toastId = toast.loading("Mengonfirmasi verifikasi...");
     try {
       await confirmGateVerification(uuid);
-      toast.success(
-        "Verifikasi berhasil dikonfirmasi!",
-        { id: toastId },
-      );
+      toast.success("Verifikasi berhasil dikonfirmasi!", { id: toastId });
       refreshDetail();
       refreshTimeline();
       navigateToNext();
@@ -385,7 +417,6 @@ export default function GateVerificationDetailPage() {
       setIsSubmitting(false);
     }
   };
-
 
   const getStatusBadge = (statusValue: string) => {
     switch (statusValue) {
@@ -438,10 +469,12 @@ export default function GateVerificationDetailPage() {
       notes: "",
       attachmentPaths: [] as string[],
       products: [] as {
+        uuid?: string;
         productId: number;
         quantity: number;
         quantId?: number | null;
         locationId?: number | null;
+        documentReferenceId?: number | null;
       }[],
       documentReferenceId: null as number | null,
     },
@@ -452,7 +485,8 @@ export default function GateVerificationDetailPage() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty) {
         e.preventDefault();
-        e.returnValue = "Anda memiliki perubahan yang belum disimpan. Apakah Anda yakin ingin meninggalkan halaman ini?";
+        e.returnValue =
+          "Anda memiliki perubahan yang belum disimpan. Apakah Anda yakin ingin meninggalkan halaman ini?";
         return e.returnValue;
       }
     };
@@ -467,14 +501,14 @@ export default function GateVerificationDetailPage() {
     const handlePopState = () => {
       if (isDirty) {
         const confirmLeave = window.confirm(
-          "Anda memiliki perubahan yang belum disimpan. Apakah Anda yakin ingin meninggalkan halaman ini?"
+          "Anda memiliki perubahan yang belum disimpan. Apakah Anda yakin ingin meninggalkan halaman ini?",
         );
         if (!confirmLeave) {
           window.history.pushState(null, "", window.location.pathname);
         }
       }
     };
-    
+
     window.history.pushState(null, "", window.location.pathname);
     window.addEventListener("popstate", handlePopState);
     return () => {
@@ -486,8 +520,6 @@ export default function GateVerificationDetailPage() {
     control,
     name: "products",
   });
-
-
 
   // Local state for adding/editing products step-by-step
   const [tempProduct, setTempProduct] = useState<{
@@ -537,10 +569,12 @@ export default function GateVerificationDetailPage() {
       // Map products directly since there is no separate verification table anymore
       const items =
         gateOperation.products?.map((gp: any) => ({
-          productId: gp.productId,
+          uuid: gp.uuid,
+          productId: gp.productId ?? gp.inventoryId,
           quantity: gp.quantity,
           quantId: gp.quantId || null,
           locationId: gp.locationId || null,
+          documentReferenceId: gp.documentReferenceId ?? null,
         })) || [];
 
       // Populate productDetailsMap cache
@@ -549,7 +583,7 @@ export default function GateVerificationDetailPage() {
       sourceItems.forEach((item: any) => {
         const prod = item.product || item.inventory || item;
         if (prod) {
-          detailsCache[item.productId] = prod;
+          detailsCache[item.productId ?? item.inventoryId] = prod;
         }
       });
       setProductDetailsMap(detailsCache);
@@ -558,9 +592,7 @@ export default function GateVerificationDetailPage() {
         status: gateOperation.status || "PENDING",
         notes: gateOperation.verificationNotes || "",
         attachmentPaths:
-          gateOperation.attachments?.map(
-            (a: any) => a.filePath,
-          ) || [],
+          gateOperation.attachments?.map((a: any) => a.filePath) || [],
         products: items,
         documentReferenceId: gateOperation.documentReferenceId || null,
       });
@@ -579,8 +611,10 @@ export default function GateVerificationDetailPage() {
         notes: notesValue ?? undefined,
         attachmentPaths: attachmentPathsValue,
       });
-      toast.success("Catatan & dokumen pendukung berhasil disimpan.", { id: toastId });
-      
+      toast.success("Catatan & dokumen pendukung berhasil disimpan.", {
+        id: toastId,
+      });
+
       // Reset react-hook-form defaultValues for these fields to clear isDirty warning
       reset({
         ...values,
@@ -625,16 +659,14 @@ export default function GateVerificationDetailPage() {
 
     const cleanedProducts = (data.products || []).map((p: any) => {
       const originalItem = gateOperation.products?.find(
-        (gp: any) =>
-          gp.productId === p.productId &&
-          (gp.quantId || null) === (p.quantId || null) &&
-          (gp.locationId || null) === (p.locationId || null),
+        (gp: any) => gp.uuid === p.uuid,
       );
       return {
         productId: Number(p.productId),
         quantity: originalItem ? Number(originalItem.quantity) : 0,
         quantId: p.quantId || null,
         locationId: p.locationId || null,
+        documentReferenceId: originalItem?.documentReferenceId ?? null,
       };
     });
 
@@ -940,46 +972,9 @@ export default function GateVerificationDetailPage() {
                 )}
               </div>
 
-              {/* Summary Metrics Banner if documents attached */}
-              {attachedDocs.length > 0 && (
-                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 space-y-2">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white border border-blue-100 rounded-lg p-2">
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">
-                        Total Referensi
-                      </div>
-                      <div className="text-xs font-black text-slate-800">
-                        {(
-                          gateOperation.totalReferenceQty ||
-                          attachedDocs.reduce((s: number, d: any) => s + (d.referenceQty || 0), 0)
-                        ).toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                    <div className="bg-white border border-blue-100 rounded-lg p-2">
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">
-                        Total Realisasi
-                      </div>
-                      <div className="text-xs font-black text-blue-700">
-                        {(
-                          gateOperation.totalRealizedQty ||
-                          attachedDocs.reduce((s: number, d: any) => s + (d.realizedQty || 0), 0)
-                        ).toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                    <div className="bg-white border border-blue-100 rounded-lg p-2">
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">
-                        Total Sisa Kuota
-                      </div>
-                      <div className="text-xs font-black text-emerald-700">
-                        {(
-                          gateOperation.totalRemainingQty ||
-                          attachedDocs.reduce((s: number, d: any) => s + (d.remainingQty || 0), 0)
-                        ).toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <GateAllocationSummary
+                summary={gateOperation.allocationSummary}
+              />
 
               {/* List of attached documents */}
               {attachedDocs.length > 0 ? (
@@ -995,8 +990,12 @@ export default function GateVerificationDetailPage() {
                             <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
                               #{idx + 1}
                             </span>
-                            <span className="text-[11px] text-slate-500 uppercase font-sans font-bold">No. Dokumen:</span>
-                            <span className="text-blue-700 font-bold">{doc.documentNumber}</span>
+                            <span className="text-[11px] text-slate-500 uppercase font-sans font-bold">
+                              No. Dokumen:
+                            </span>
+                            <span className="text-blue-700 font-bold">
+                              {doc.documentNumber}
+                            </span>
                             {doc.origin && (
                               <span className="text-slate-400 font-sans text-[11px]">
                                 ({doc.origin})
@@ -1004,9 +1003,13 @@ export default function GateVerificationDetailPage() {
                             )}
                           </div>
                           <div className="text-[11px] text-slate-700 flex items-center gap-1.5 flex-wrap">
-                            <span className="text-slate-500 font-bold uppercase text-[10px]">Partner / Klien:</span>
+                            <span className="text-slate-500 font-bold uppercase text-[10px]">
+                              Partner / Klien:
+                            </span>
                             <span className="font-semibold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-xs">
-                              {doc.partnerName || gateOperation?.clientPartner || "-"}
+                              {doc.partnerName ||
+                                gateOperation?.clientPartner ||
+                                "-"}
                             </span>
                           </div>
                         </div>
@@ -1017,8 +1020,8 @@ export default function GateVerificationDetailPage() {
                                 doc.status === "COMPLETED"
                                   ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
                                   : doc.status === "PARTIAL"
-                                  ? "bg-blue-100 text-blue-800 border border-blue-200"
-                                  : "bg-amber-100 text-amber-800 border border-amber-200"
+                                    ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                    : "bg-amber-100 text-amber-800 border border-amber-200"
                               }`}
                             >
                               {doc.status}
@@ -1049,16 +1052,28 @@ export default function GateVerificationDetailPage() {
                       </div>
                       <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-200/60 text-[11px]">
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Target Qty</span>
-                          <span className="font-bold text-slate-700">{(doc.referenceQty || 0).toLocaleString("id-ID")}</span>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">
+                            Target Qty
+                          </span>
+                          <span className="font-bold text-slate-700">
+                            {(doc.referenceQty || 0).toLocaleString("id-ID")}
+                          </span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Realisasi</span>
-                          <span className="font-bold text-blue-700">{(doc.realizedQty || 0).toLocaleString("id-ID")}</span>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">
+                            Realisasi
+                          </span>
+                          <span className="font-bold text-blue-700">
+                            {(doc.realizedQty || 0).toLocaleString("id-ID")}
+                          </span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Sisa Kuota</span>
-                          <span className="font-bold text-emerald-700">{(doc.remainingQty || 0).toLocaleString("id-ID")}</span>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">
+                            Sisa Kuota
+                          </span>
+                          <span className="font-bold text-emerald-700">
+                            {(doc.remainingQty || 0).toLocaleString("id-ID")}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1105,66 +1120,73 @@ export default function GateVerificationDetailPage() {
           <div className="relative pl-6 border-l-2 border-slate-100 space-y-6">
             {timelineHistory && timelineHistory.length > 0 ? (
               timelineHistory.map((log: any) => {
-                const dateStr = log.timestamp ? new Date(log.timestamp).toLocaleString("id-ID") : "-";
+                const dateStr = log.timestamp
+                  ? new Date(log.timestamp).toLocaleString("id-ID")
+                  : "-";
                 const actorName = log.actor?.name || "System";
-                
+
                 let title = log.action;
                 let description = "";
                 let colorClass = "bg-blue-500";
-                
+
                 switch (log.action) {
-                  case 'GATE_OPERATION_CREATE':
+                  case "GATE_OPERATION_CREATE":
                     title = "Registrasi Kendaraan (Gate IN/OUT)";
                     colorClass = "bg-emerald-500";
                     description = `Mencatat kendaraan ${log.details?.licensePlate || ""} dengan driver ${log.details?.driverName || ""}. ${log.details?.notes ? `Catatan: "${log.details.notes}"` : ""}`;
                     break;
-                  case 'GATE_OPERATION_VERIFY':
+                  case "GATE_OPERATION_VERIFY":
                     title = "Simpan Hasil Verifikasi";
                     colorClass = "bg-blue-500";
                     description = `Menyimpan data verifikasi. ${log.details?.notes ? `Catatan: "${log.details.notes}"` : ""}`;
                     break;
-                  case 'GATE_OPERATION_NOTES_ATTACHMENTS_UPDATE':
+                  case "GATE_OPERATION_NOTES_ATTACHMENTS_UPDATE":
                     title = "Simpan Catatan & Dokumen";
                     colorClass = "bg-indigo-500";
                     description = `Memperbarui catatan verifikasi & dokumen pendukung. ${log.details?.notes ? `Catatan: "${log.details.notes}"` : ""}`;
                     break;
-                  case 'GATE_OPERATION_CANCEL':
+                  case "GATE_OPERATION_CANCEL":
                     title = "Verifikasi Dibatalkan";
                     colorClass = "bg-red-500";
                     description = `Verifikasi dibatalkan oleh auditor.`;
                     break;
-                  case 'GATE_OPERATION_REJECT':
+                  case "GATE_OPERATION_REJECT":
                     title = "Verifikasi Ditolak (REJECT)";
                     colorClass = "bg-red-650";
                     description = `Verifikasi ditolak. Alasan: "${log.details?.reason || "-"}"`;
                     break;
-                  case 'GATE_OPERATION_CONFIRM':
+                  case "GATE_OPERATION_CONFIRM":
                     title = "Verifikasi Dikonfirmasi (CONFIRM)";
                     colorClass = "bg-emerald-600";
                     description = `Verifikasi telah selesai dikonfirmasi..`;
                     break;
-                  case 'GATE_OPERATION_ASSIGN_REFERENCES':
+                  case "GATE_OPERATION_ASSIGN_REFERENCES":
                     title = "Tautkan Referensi ERP";
                     colorClass = "bg-indigo-500";
-                    const assignList = log.details?.assignments?.map((a: any) => `item ERP #${a.erpDocumentItemId} (${a.assignedQuantity} Unit)`).join(", ");
+                    const assignList = log.details?.assignments
+                      ?.map(
+                        (a: any) =>
+                          `item ERP #${a.erpDocumentItemId} (${a.assignedQuantity} Unit)`,
+                      )
+                      .join(", ");
                     description = `Menautkan referensi dokumen ERP ke barang muatan: ${assignList || ""}`;
                     break;
-                  case 'GATE_OPERATION_UNASSIGN_REFERENCE':
+                  case "GATE_OPERATION_UNASSIGN_REFERENCE":
                     title = "Lepas Referensi ERP";
                     colorClass = "bg-amber-500";
                     description = `Melepas referensi ERP ${log.details?.previousReference || ""} dari barang muatan.`;
                     break;
-                  case 'GATE_OPERATION_CARGO_ADD':
+                  case "GATE_OPERATION_CARGO_ADD":
                     title = "Tambah Barang Muatan";
                     colorClass = "bg-purple-500";
                     description = `Menambahkan barang muatan baru. Qty: ${log.details?.quantity || 0}`;
                     break;
-                  case 'GATE_OPERATION_CARGO_UPDATE':
+                  case "GATE_OPERATION_CARGO_UPDATE":
                     title = "Ubah Barang Muatan";
                     colorClass = "bg-sky-500";
                     description = `Mengubah informasi barang muatan. Qty Baru: ${log.details?.quantity || 0}`;
                     break;
-                  case 'GATE_OPERATION_CARGO_DELETE':
+                  case "GATE_OPERATION_CARGO_DELETE":
                     title = "Hapus Barang Muatan";
                     colorClass = "bg-rose-500";
                     description = `Menghapus barang muatan dari daftar verifikasi.`;
@@ -1173,7 +1195,9 @@ export default function GateVerificationDetailPage() {
 
                 return (
                   <div key={log.uuid} className="relative animate-fade-in">
-                    <div className={`absolute -left-[31px] top-1 border-4 border-white h-4.5 w-4.5 rounded-full shadow-sm ${colorClass}`} />
+                    <div
+                      className={`absolute -left-[31px] top-1 border-4 border-white h-4.5 w-4.5 rounded-full shadow-sm ${colorClass}`}
+                    />
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                       {title}
                     </div>
@@ -1181,14 +1205,22 @@ export default function GateVerificationDetailPage() {
                       {description}
                     </div>
                     <div className="text-xs text-slate-500 mt-1 flex items-center space-x-4">
-                      <span>Oleh: <strong className="text-slate-700">{actorName}</strong></span>
-                      <span>Waktu: <strong className="text-slate-700">{dateStr}</strong></span>
+                      <span>
+                        Oleh:{" "}
+                        <strong className="text-slate-700">{actorName}</strong>
+                      </span>
+                      <span>
+                        Waktu:{" "}
+                        <strong className="text-slate-700">{dateStr}</strong>
+                      </span>
                     </div>
                   </div>
                 );
               })
             ) : (
-              <p className="text-xs text-slate-400 italic py-2">Memuat riwayat verifikasi...</p>
+              <p className="text-xs text-slate-400 italic py-2">
+                Memuat riwayat verifikasi...
+              </p>
             )}
           </div>
         </div>
@@ -1236,23 +1268,21 @@ export default function GateVerificationDetailPage() {
                     </tr>
                   ) : (
                     fields.map((field, index) => {
-                      const fQuantId = (field as any).quantId || null;
-                      const fLocId = (field as any).locationId || null;
-
                       const productInfo = productDetailsMap[field.productId];
                       const productDetails = getProductDetails(productInfo);
 
+                      // Several lines can share product/stack/location (one per document allocation)
                       const originalItem = gateOperation.products?.find(
-                        (gp: any) =>
-                          gp.productId === field.productId &&
-                          (gp.quantId || null) === fQuantId &&
-                          (gp.locationId || null) === fLocId,
+                        (gp: any) => gp.uuid === (field as any).uuid,
                       );
                       const originalDetails = getProductDetails(originalItem);
-                      const docItem = gateOperation.documentReference?.items?.find(
-                        (di: any) => di.inventoryId === field.productId,
-                      );
-                      const erpQty = docItem ? (docItem.productQty || docItem.quantity) : 0;
+                      const docItem =
+                        gateOperation.documentReference?.items?.find(
+                          (di: any) => di.inventoryId === field.productId,
+                        );
+                      const erpQty = docItem
+                        ? docItem.productQty || docItem.quantity
+                        : 0;
                       const locLabel =
                         originalItem?.location?.displayName || null;
                       const quantLabel = originalItem?.quant?.lotName || null;
@@ -1284,14 +1314,14 @@ export default function GateVerificationDetailPage() {
                                   📦 Tumpukan: {quantLabel}
                                 </span>
                               )}
-                              {originalItem && !isReadOnly && (!locLabel || !quantLabel) && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                  ⚠️ Pilih Lokasi & Tumpukan
-                                </span>
-                              )}
+                              {originalItem &&
+                                !isReadOnly &&
+                                (!locLabel || !quantLabel) && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    ⚠️ Pilih Lokasi & Tumpukan
+                                  </span>
+                                )}
                             </div>
-
-
                           </td>
                           <td className="px-4 py-3 font-mono text-xs">
                             {(() => {
@@ -1321,7 +1351,9 @@ export default function GateVerificationDetailPage() {
                               <div className="flex items-center justify-end space-x-1.5 font-extrabold text-blue-700 bg-blue-50/10 px-2.5 py-1 rounded-lg border border-blue-100/50 inline-flex">
                                 <span>
                                   {originalItem
-                                    ? originalItem.quantity.toLocaleString("id-ID")
+                                    ? originalItem.quantity.toLocaleString(
+                                        "id-ID",
+                                      )
                                     : "0"}
                                 </span>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase">
@@ -1329,7 +1361,10 @@ export default function GateVerificationDetailPage() {
                                 </span>
                               </div>
                               <span className="text-[10px] text-slate-400 font-normal mt-1 block">
-                                {formatSecondaryQty(originalItem ? originalItem.quantity : 0, productDetails.uom)}
+                                {formatSecondaryQty(
+                                  originalItem ? originalItem.quantity : 0,
+                                  productDetails.uom,
+                                )}
                               </span>
                             </div>
                           </td>
@@ -1417,9 +1452,7 @@ export default function GateVerificationDetailPage() {
                   <AttachmentUploader
                     value={field.value || []}
                     onChange={field.onChange}
-                    initialAttachments={
-                      gateOperation.attachments || []
-                    }
+                    initialAttachments={gateOperation.attachments || []}
                     label="Unggah Dokumen Pendukung / Surat Jalan (Multiple)"
                     disabled={isNotesDocsReadOnly}
                   />
@@ -1514,7 +1547,9 @@ export default function GateVerificationDetailPage() {
           setIsHistoryOpen(false);
           setSelectedHistoryDocUuid(null);
         }}
-        docRefUuid={selectedHistoryDocUuid || gateOperation?.documentReference?.uuid}
+        docRefUuid={
+          selectedHistoryDocUuid || gateOperation?.documentReference?.uuid
+        }
         documentNumber={gateOperation?.documentReference?.documentNumber}
         preloadedHistory={gateOperation?.documentHistory}
         documents={attachedDocs}
@@ -1532,7 +1567,8 @@ export default function GateVerificationDetailPage() {
         editData={
           editingCargoItem
             ? {
-                productId: editingCargoItem.productId,
+                productId:
+                  editingCargoItem.productId ?? editingCargoItem.inventoryId,
                 quantity: editingCargoItem.quantity,
                 locationId: editingCargoItem.locationId,
                 quantId: editingCargoItem.quantId,
@@ -1623,7 +1659,6 @@ export default function GateVerificationDetailPage() {
           </div>
         </div>
       )}
- 
     </div>
   );
 }

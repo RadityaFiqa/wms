@@ -25,6 +25,15 @@ import { getReconciledStockForQuants } from '@/core/utils/stock-reconciliation';
 import * as fs from 'fs';
 import * as path from 'path';
 
+const QTY_EPSILON = 1e-6;
+
+/** Round float quantities to avoid drift when splitting/merging cargo lines. */
+const roundQty = (value: number) => Math.round(value * 1e6) / 1e6;
+
+/** UoMs match when equal (case/space-insensitive) or when either side is unknown. */
+const isSameUom = (a?: string | null, b?: string | null) =>
+  !a || !b || a.trim().toLowerCase() === b.trim().toLowerCase();
+
 @Injectable()
 export class GateService {
   private readonly logger = new Logger(GateService.name);
@@ -228,34 +237,13 @@ export class GateService {
           );
         }
 
-        // Fetch document items for all attached documents to assist with mapping/validation
-        const attachedDocItems =
-          docRefIds.length > 0
-            ? await tx.documentReferenceItem.findMany({
-                where: { documentReferenceId: { in: docRefIds } },
-              })
-            : [];
-
-        // Validate and assign documentReferenceId for each product
+        // Products without an explicit document stay unallocated; they are
+        // allocated to the attached documents after all lines are created.
         const productsWithDocRef = body.products.map((prod) => {
-          let assignedDocId = prod.documentReferenceId || null;
-          if (!assignedDocId && docRefIds.length === 1) {
-            assignedDocId = docRefIds[0];
-          } else if (!assignedDocId && docRefIds.length > 1) {
-            const matchingDocs = attachedDocItems.filter(
-              (it: any) => it.inventoryId === prod.productId,
-            );
-            const matchingDocIds = Array.from(
-              new Set(matchingDocs.map((it: any) => it.documentReferenceId)),
-            );
-            if (matchingDocIds.length === 1) {
-              assignedDocId = matchingDocIds[0];
-            } else if (matchingDocIds.length > 1) {
-              throw new BadRequestException(
-                `Produk ID ${prod.productId} terdapat pada beberapa dokumen referensi terpilih. Harap tentukan dokumen referensi untuk produk ini.`,
-              );
-            }
-          }
+          const assignedDocId =
+            prod.documentReferenceId && docRefIds.includes(prod.documentReferenceId)
+              ? prod.documentReferenceId
+              : null;
           return { ...prod, assignedDocId };
         });
 
@@ -314,6 +302,10 @@ export class GateService {
               prod.quantity,
             );
           }
+        }
+
+        for (const docId of docRefIds) {
+          await this.allocateDocumentReference(tx, gateOperation.id, docId);
         }
       }
 
@@ -545,15 +537,7 @@ export class GateService {
           },
           include: {
             products: {
-              where: {
-                OR: [
-                  { documentReferenceId: doc.id },
-                  {
-                    documentReferenceId: null,
-                    gateOperation: { documentReferenceId: doc.id },
-                  },
-                ],
-              },
+              where: { documentReferenceId: doc.id },
               include: { inventory: true },
             },
           },
@@ -562,18 +546,11 @@ export class GateService {
 
         const docItemsSummary = await Promise.all(
           (doc.items || []).map(async (docItem: any) => {
+            // Unallocated lines (documentReferenceId = null) are not realization of any document
             const aggregate = await this.prisma.gateOperationProduct.aggregate({
               where: {
                 inventoryId: docItem.inventoryId,
-                OR: [
-                  { documentReferenceId: doc.id },
-                  {
-                    documentReferenceId: null,
-                    gateOperation: {
-                      documentReferenceId: doc.id,
-                    },
-                  },
-                ],
+                documentReferenceId: doc.id,
                 gateOperation: {
                   status: { notIn: ['CANCELED', 'REJECTED'] },
                 },
@@ -653,6 +630,7 @@ export class GateService {
       resultObj.totalReferenceQty = totalReferenceQty;
       resultObj.totalRealizedQty = totalRealizedQty;
       resultObj.totalRemainingQty = totalRemainingQty;
+      resultObj.allocationSummary = this.buildAllocationSummary(item.products);
       resultObj.documentHistory = computedDocRefs[0]
         ? {
             summary: computedDocRefs[0].summary,
@@ -832,21 +810,11 @@ export class GateService {
         );
 
         if (removedDocIds.length > 0) {
-          const linkedProducts = await tx.gateOperationProduct.findMany({
-            where: {
-              gateOperationId: gateOperation.id,
-              OR: [
-                { documentReferenceId: { in: removedDocIds } },
-                {
-                  documentReferenceId: null,
-                  gateOperation: { documentReferenceId: { in: removedDocIds } },
-                },
-              ],
-            },
-          });
-          if (linkedProducts.length > 0) {
-            throw new BadRequestException(
-              'Tidak dapat menghapus dokumen referensi yang masih memiliki barang muatan terkait.',
+          for (const docId of removedDocIds) {
+            await this.releaseDocumentReferenceAllocation(
+              tx,
+              gateOperation.id,
+              docId,
             );
           }
 
@@ -867,6 +835,7 @@ export class GateService {
                 documentReferenceId: docId,
               },
             });
+            await this.allocateDocumentReference(tx, gateOperation.id, docId);
           }
         }
 
@@ -908,12 +877,21 @@ export class GateService {
             gateOperation.id,
           );
 
-          // Find existing GateOperationProduct and update it
+          // Find the existing line. A product can have several lines (one per
+          // stack/document allocation), so match on all identifying fields when given.
           const existingOpProd = await tx.gateOperationProduct.findFirst({
             where: {
               gateOperationId: gateOperation.id,
               inventoryId: prod.productId,
+              ...(prod.documentReferenceId !== undefined
+                ? {
+                    documentReferenceId: prod.documentReferenceId ?? null,
+                    quantId: prod.quantId ?? null,
+                    locationId: prod.locationId ?? null,
+                  }
+                : {}),
             },
+            orderBy: { id: 'asc' },
           });
 
           if (existingOpProd) {
@@ -1240,15 +1218,7 @@ export class GateService {
       const otherOpsAggregate = await tx.gateOperationProduct.aggregate({
         where: {
           inventoryId: prod.productId,
-          OR: [
-            { documentReferenceId },
-            {
-              documentReferenceId: null,
-              gateOperation: {
-                documentReferenceId,
-              },
-            },
-          ],
+          documentReferenceId,
           gateOperation: {
             id: excludeGateOperationId
               ? { not: excludeGateOperationId }
@@ -1273,15 +1243,7 @@ export class GateService {
             gateOperationId: excludeGateOperationId,
             inventoryId: prod.productId,
             id: excludeCargoItemId ? { not: excludeCargoItemId } : undefined,
-            OR: [
-              { documentReferenceId },
-              {
-                documentReferenceId: null,
-                gateOperation: {
-                  documentReferenceId,
-                },
-              },
-            ],
+            documentReferenceId,
           },
         });
         currentOpQty = currentOpProducts.reduce(
@@ -1573,10 +1535,12 @@ export class GateService {
       );
 
       // 3. Validate document reference limits if linked
+      // A line without documentReferenceId is unallocated quantity; it must not
+      // be implicitly attributed to the primary document.
       const targetDocId =
         documentReferenceId !== undefined
           ? documentReferenceId
-          : cargoItem.documentReferenceId || gateOperation.documentReferenceId;
+          : cargoItem.documentReferenceId;
 
       if (targetDocId) {
         await this.validateDocumentReferenceLimits(
@@ -1625,14 +1589,12 @@ export class GateService {
   }
 
   /**
-   * Attach a document reference to an existing Gate Operation.
+   * Attach a document reference to an existing Gate Operation and allocate
+   * the unallocated cargo quantity to it.
    */
   async attachDocumentReference(uuid: string, documentReferenceId: number) {
     const gateOperation = await this.prisma.gateOperation.findUnique({
       where: { uuid },
-      include: {
-        documentReferences: true,
-      },
     });
 
     if (!gateOperation) {
@@ -1651,22 +1613,31 @@ export class GateService {
     const doc = await this.prisma.documentReference.findUnique({
       where: { id: documentReferenceId },
     });
-    if (!doc) {
+    if (!doc || doc.warehouseId !== gateOperation.warehouseId) {
       throw new NotFoundException('Dokumen referensi tidak ditemukan.');
     }
 
-    const isAlreadyAttached =
-      gateOperation.documentReferences.some(
-        (ref) => ref.documentReferenceId === documentReferenceId,
-      ) || gateOperation.documentReferenceId === documentReferenceId;
-
-    if (isAlreadyAttached) {
-      throw new BadRequestException(
-        'Dokumen referensi sudah terhubung dengan operasi gerbang ini.',
+    await this.prisma.$transaction(async (tx) => {
+      // Serialize allocation per gate operation to prevent duplicate links/allocations
+      await tx.$queryRawUnsafe(
+        'SELECT id FROM "GateOperation" WHERE id = $1 FOR UPDATE',
+        gateOperation.id,
       );
-    }
 
-    return this.prisma.$transaction(async (tx) => {
+      const existingLink = await tx.gateOperationDocumentReference.findFirst({
+        where: { gateOperationId: gateOperation.id, documentReferenceId },
+      });
+      const current = await tx.gateOperation.findUnique({
+        where: { id: gateOperation.id },
+        select: { documentReferenceId: true },
+      });
+
+      if (existingLink || current?.documentReferenceId === documentReferenceId) {
+        throw new BadRequestException(
+          'Dokumen referensi sudah terhubung dengan operasi gerbang ini.',
+        );
+      }
+
       await tx.gateOperationDocumentReference.create({
         data: {
           gateOperationId: gateOperation.id,
@@ -1674,27 +1645,30 @@ export class GateService {
         },
       });
 
-      if (!gateOperation.documentReferenceId) {
+      if (!current?.documentReferenceId) {
         await tx.gateOperation.update({
           where: { id: gateOperation.id },
           data: { documentReferenceId },
         });
       }
 
-      return this.getGateOperationByUuid(uuid);
+      await this.allocateDocumentReference(
+        tx,
+        gateOperation.id,
+        documentReferenceId,
+      );
     });
+
+    return this.getGateOperationByUuid(uuid);
   }
 
   /**
-   * Remove an attached document reference from a Gate Operation.
+   * Remove an attached document reference from a Gate Operation. Quantity
+   * allocated to it returns to the unallocated cargo lines.
    */
   async removeDocumentReference(uuid: string, documentReferenceId: number) {
     const gateOperation = await this.prisma.gateOperation.findUnique({
       where: { uuid },
-      include: {
-        documentReferences: true,
-        products: true,
-      },
     });
 
     if (!gateOperation) {
@@ -1710,21 +1684,18 @@ export class GateService {
       );
     }
 
-    // Check if any products in this gate operation belong to this documentReferenceId
-    const linkedProducts = gateOperation.products.filter(
-      (p) =>
-        p.documentReferenceId === documentReferenceId ||
-        (!p.documentReferenceId &&
-          gateOperation.documentReferenceId === documentReferenceId),
-    );
-
-    if (linkedProducts.length > 0) {
-      throw new BadRequestException(
-        'Tidak dapat menghapus dokumen referensi yang masih memiliki barang muatan terkait.',
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(
+        'SELECT id FROM "GateOperation" WHERE id = $1 FOR UPDATE',
+        gateOperation.id,
       );
-    }
 
-    return this.prisma.$transaction(async (tx) => {
+      await this.releaseDocumentReferenceAllocation(
+        tx,
+        gateOperation.id,
+        documentReferenceId,
+      );
+
       await tx.gateOperationDocumentReference.deleteMany({
         where: {
           gateOperationId: gateOperation.id,
@@ -1748,9 +1719,229 @@ export class GateService {
           },
         });
       }
-
-      return this.getGateOperationByUuid(uuid);
     });
+
+    return this.getGateOperationByUuid(uuid);
+  }
+
+  /**
+   * Allocate unallocated cargo lines (documentReferenceId = null) to a document.
+   *
+   * For every product+UoM on the gate operation that also appears on the document,
+   * allocation = MIN(remaining document quantity, unallocated quantity). The
+   * allocated part is split off the unallocated line(s) into a line linked to the
+   * document, so the total quantity of the gate operation never changes and is
+   * never counted twice.
+   */
+  private async allocateDocumentReference(
+    tx: any,
+    gateOperationId: number,
+    documentReferenceId: number,
+  ) {
+    await tx.$queryRawUnsafe(
+      'SELECT id FROM "DocumentReference" WHERE id = $1 FOR UPDATE',
+      documentReferenceId,
+    );
+
+    const [lines, docItems] = await Promise.all([
+      tx.gateOperationProduct.findMany({
+        where: { gateOperationId },
+        include: { inventory: true },
+        orderBy: { id: 'asc' },
+      }),
+      tx.documentReferenceItem.findMany({ where: { documentReferenceId } }),
+    ]);
+
+    const productIds: number[] = Array.from(
+      new Set(
+        lines
+          .filter((l: any) => l.documentReferenceId === null)
+          .map((l: any) => l.inventoryId),
+      ),
+    );
+
+    for (const inventoryId of productIds) {
+      // Prevent duplicate allocation of the same document to the same product
+      const alreadyAllocated = lines.some(
+        (l: any) =>
+          l.inventoryId === inventoryId &&
+          l.documentReferenceId === documentReferenceId,
+      );
+      if (alreadyAllocated) continue;
+
+      const unallocatedLines = lines.filter(
+        (l: any) =>
+          l.inventoryId === inventoryId &&
+          l.documentReferenceId === null &&
+          l.quantity > QTY_EPSILON,
+      );
+      if (unallocatedLines.length === 0) continue;
+
+      const uom = unallocatedLines[0].inventory?.uom;
+      const matchingDocItems = docItems.filter(
+        (it: any) => it.inventoryId === inventoryId && isSameUom(it.uom, uom),
+      );
+      if (matchingDocItems.length === 0) continue;
+
+      const docQty = matchingDocItems.reduce(
+        (sum: number, it: any) => sum + (it.productQty || it.quantity || 0),
+        0,
+      );
+      const realized = await tx.gateOperationProduct.aggregate({
+        where: {
+          inventoryId,
+          documentReferenceId,
+          gateOperation: { status: { notIn: ['CANCELED', 'REJECTED'] } },
+        },
+        _sum: { quantity: true },
+      });
+      const docRemaining = docQty - (realized._sum.quantity || 0);
+      const unallocatedQty = unallocatedLines.reduce(
+        (sum: number, l: any) => sum + l.quantity,
+        0,
+      );
+
+      let toAllocate = roundQty(Math.min(docRemaining, unallocatedQty));
+      if (toAllocate <= QTY_EPSILON) continue;
+
+      for (const line of unallocatedLines) {
+        if (toAllocate <= QTY_EPSILON) break;
+        const take = roundQty(Math.min(line.quantity, toAllocate));
+
+        if (line.quantity - take <= QTY_EPSILON) {
+          // Whole line is allocated: link it instead of splitting
+          await tx.gateOperationProduct.update({
+            where: { id: line.id },
+            data: { documentReferenceId },
+          });
+        } else {
+          await tx.gateOperationProduct.update({
+            where: { id: line.id },
+            data: { quantity: roundQty(line.quantity - take) },
+          });
+          await tx.gateOperationProduct.create({
+            data: {
+              gateOperationId,
+              inventoryId,
+              quantity: take,
+              notes: line.notes,
+              quantId: line.quantId,
+              locationId: line.locationId,
+              documentReferenceId,
+            },
+          });
+        }
+        toAllocate = roundQty(toAllocate - take);
+      }
+    }
+  }
+
+  /**
+   * Return quantity allocated to a document back to unallocated cargo lines,
+   * merging into an existing unallocated line with the same stack/location.
+   */
+  private async releaseDocumentReferenceAllocation(
+    tx: any,
+    gateOperationId: number,
+    documentReferenceId: number,
+  ) {
+    const allocatedLines = await tx.gateOperationProduct.findMany({
+      where: { gateOperationId, documentReferenceId },
+      orderBy: { id: 'asc' },
+    });
+
+    for (const line of allocatedLines) {
+      const target = await tx.gateOperationProduct.findFirst({
+        where: {
+          gateOperationId,
+          inventoryId: line.inventoryId,
+          quantId: line.quantId,
+          locationId: line.locationId,
+          documentReferenceId: null,
+          id: { not: line.id },
+        },
+        orderBy: { id: 'asc' },
+      });
+
+      if (target) {
+        await tx.gateOperationProduct.update({
+          where: { id: target.id },
+          data: { quantity: roundQty(target.quantity + line.quantity) },
+        });
+        await tx.gateOperationProduct.delete({ where: { id: line.id } });
+      } else {
+        await tx.gateOperationProduct.update({
+          where: { id: line.id },
+          data: { documentReferenceId: null },
+        });
+      }
+    }
+  }
+
+  /**
+   * Per-product totals: quantity (all lines), allocated (lines linked to a
+   * document) and remaining (unallocated lines). total = allocated + remaining.
+   */
+  private buildAllocationSummary(products: any[]) {
+    const byProduct = new Map<number, any>();
+
+    for (const p of products || []) {
+      let row = byProduct.get(p.inventoryId);
+      if (!row) {
+        row = {
+          productId: p.inventoryId,
+          productName: p.inventory?.name || '',
+          sku: p.inventory?.sku || '',
+          uom: p.inventory?.uom || null,
+          totalQty: 0,
+          allocatedQty: 0,
+          remainingQty: 0,
+          allocations: [] as {
+            documentReferenceId: number;
+            documentNumber: string;
+            quantity: number;
+          }[],
+        };
+        byProduct.set(p.inventoryId, row);
+      }
+
+      row.totalQty += p.quantity;
+      if (p.documentReferenceId) {
+        row.allocatedQty += p.quantity;
+        const existing = row.allocations.find(
+          (a: any) => a.documentReferenceId === p.documentReferenceId,
+        );
+        if (existing) {
+          existing.quantity += p.quantity;
+        } else {
+          row.allocations.push({
+            documentReferenceId: p.documentReferenceId,
+            documentNumber: p.documentReference?.documentNumber || '',
+            quantity: p.quantity,
+          });
+        }
+      } else {
+        row.remainingQty += p.quantity;
+      }
+    }
+
+    const items = Array.from(byProduct.values()).map((row) => ({
+      ...row,
+      totalQty: roundQty(row.totalQty),
+      allocatedQty: roundQty(row.allocatedQty),
+      remainingQty: roundQty(row.remainingQty),
+      allocations: row.allocations.map((a: any) => ({
+        ...a,
+        quantity: roundQty(a.quantity),
+      })),
+    }));
+
+    return {
+      items,
+      totalQty: roundQty(items.reduce((s, r) => s + r.totalQty, 0)),
+      allocatedQty: roundQty(items.reduce((s, r) => s + r.allocatedQty, 0)),
+      remainingQty: roundQty(items.reduce((s, r) => s + r.remainingQty, 0)),
+    };
   }
 
   private async validateStackQuantity(

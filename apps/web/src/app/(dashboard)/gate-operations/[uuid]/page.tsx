@@ -51,6 +51,7 @@ import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AddCargoItemDrawer } from "@/components/AddCargoItemDrawer";
 import { DocumentReferenceSelector } from "@/components/DocumentReferenceSelector";
 import { DocumentReferenceHistoryDrawer } from "@/components/DocumentReferenceHistoryDrawer";
+import { GateAllocationSummary } from "@/components/GateAllocationSummary";
 
 const getProductDetails = (item: any) => {
   if (!item) return { sku: "-", name: "-", uom: "-" };
@@ -242,7 +243,7 @@ export default function GateOperationDetailPage() {
   const handleRemoveDocRef = async (docRefId: number) => {
     if (
       !window.confirm(
-        "Apakah Anda yakin ingin melepas dokumen referensi ini dari operasi gerbang?",
+        "Apakah Anda yakin ingin melepas dokumen referensi ini dari operasi gerbang? Quantity yang teralokasi ke dokumen ini akan dikembalikan menjadi sisa.",
       )
     ) {
       return;
@@ -457,10 +458,12 @@ export default function GateOperationDetailPage() {
       notes: "",
       attachmentPaths: [] as string[],
       products: [] as {
+        uuid?: string;
         productId: number;
         quantity: number;
         quantId?: number | null;
         locationId?: number | null;
+        documentReferenceId?: number | null;
       }[],
       documentReferenceId: null as number | null,
     },
@@ -515,10 +518,12 @@ export default function GateOperationDetailPage() {
     if (gateOperation) {
       const items =
         gateOperation.products?.map((gp: any) => ({
-          productId: gp.productId,
+          uuid: gp.uuid,
+          productId: gp.productId ?? gp.inventoryId,
           quantity: gp.quantity,
           quantId: gp.quantId || null,
           locationId: gp.locationId || null,
+          documentReferenceId: gp.documentReferenceId ?? null,
         })) || [];
 
       // Populate productDetailsMap cache
@@ -527,7 +532,7 @@ export default function GateOperationDetailPage() {
       sourceItems.forEach((item: any) => {
         const prod = item.product || item.inventory || item;
         if (prod) {
-          detailsCache[item.productId] = prod;
+          detailsCache[item.productId ?? item.inventoryId] = prod;
         }
       });
       setProductDetailsMap(detailsCache);
@@ -567,16 +572,14 @@ export default function GateOperationDetailPage() {
 
     const cleanedProducts = (data.products || []).map((p: any) => {
       const originalItem = gateOperation.products?.find(
-        (gp: any) =>
-          gp.productId === p.productId &&
-          (gp.quantId || null) === (p.quantId || null) &&
-          (gp.locationId || null) === (p.locationId || null),
+        (gp: any) => gp.uuid === p.uuid,
       );
       return {
         productId: Number(p.productId),
         quantity: originalItem ? Number(originalItem.quantity) : 0,
         quantId: p.quantId || null,
         locationId: p.locationId || null,
+        documentReferenceId: originalItem?.documentReferenceId ?? null,
       };
     });
 
@@ -894,46 +897,7 @@ export default function GateOperationDetailPage() {
                 )}
               </div>
 
-              {/* Summary Metrics Banner if documents attached */}
-              {attachedDocs.length > 0 && (
-                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 space-y-2">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white border border-blue-100 rounded-lg p-2">
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">
-                        Total Referensi
-                      </div>
-                      <div className="text-xs font-black text-slate-800">
-                        {(
-                          gateOperation.totalReferenceQty ||
-                          attachedDocs.reduce((s: number, d: any) => s + (d.referenceQty || 0), 0)
-                        ).toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                    <div className="bg-white border border-blue-100 rounded-lg p-2">
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">
-                        Total Realisasi
-                      </div>
-                      <div className="text-xs font-black text-blue-700">
-                        {(
-                          gateOperation.totalRealizedQty ||
-                          attachedDocs.reduce((s: number, d: any) => s + (d.realizedQty || 0), 0)
-                        ).toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                    <div className="bg-white border border-blue-100 rounded-lg p-2">
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">
-                        Total Sisa Kuota
-                      </div>
-                      <div className="text-xs font-black text-emerald-700">
-                        {(
-                          gateOperation.totalRemainingQty ||
-                          attachedDocs.reduce((s: number, d: any) => s + (d.remainingQty || 0), 0)
-                        ).toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <GateAllocationSummary summary={gateOperation.allocationSummary} />
 
               {/* List of attached documents */}
               {attachedDocs.length > 0 ? (
@@ -1190,17 +1154,12 @@ export default function GateOperationDetailPage() {
                     </tr>
                   ) : (
                     fields.map((field, index) => {
-                      const fQuantId = (field as any).quantId || null;
-                      const fLocId = (field as any).locationId || null;
-
                       const productInfo = productDetailsMap[field.productId];
                       const productDetails = getProductDetails(productInfo);
 
+                      // Several lines can share product/stack/location (one per document allocation)
                       const originalItem = gateOperation.products?.find(
-                        (gp: any) =>
-                          gp.productId === field.productId &&
-                          (gp.quantId || null) === fQuantId &&
-                          (gp.locationId || null) === fLocId,
+                        (gp: any) => gp.uuid === (field as any).uuid,
                       );
                       const docItem = gateOperation.documentReference?.items?.find(
                         (di: any) => di.inventoryId === field.productId,
@@ -1394,7 +1353,8 @@ export default function GateOperationDetailPage() {
         editData={
           editingCargoItem
             ? {
-                productId: editingCargoItem.productId,
+                productId:
+                  editingCargoItem.productId ?? editingCargoItem.inventoryId,
                 quantity: editingCargoItem.quantity,
                 locationId: editingCargoItem.locationId,
                 quantId: editingCargoItem.quantId,

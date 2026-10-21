@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { PENDING_GATE_PRODUCT_WHERE } from '@/core/utils/stock-reconciliation';
 
 @Injectable()
 export class ReconciliationService {
@@ -108,16 +109,9 @@ export class ReconciliationService {
         status: {
           notIn: ['CANCELED', 'REJECTED'],
         },
-        OR: [
-          { documentReferenceId: null },
-          {
-            documentReference: {
-              state: { not: 'done' },
-            },
-          },
-        ],
         products: {
           some: {
+            ...PENDING_GATE_PRODUCT_WHERE,
             ...(query?.productId
               ? { inventory: { uuid: query.productId } }
               : {}),
@@ -128,6 +122,7 @@ export class ReconciliationService {
       include: {
         products: {
           where: {
+            ...PENDING_GATE_PRODUCT_WHERE,
             ...(query?.productId
               ? { inventory: { uuid: query.productId } }
               : {}),
@@ -373,17 +368,10 @@ export class ReconciliationService {
         status: {
           notIn: ['CANCELED', 'REJECTED'],
         },
-        OR: [
-          { documentReferenceId: null },
-          {
-            documentReference: {
-              state: { not: 'done' },
-            },
-          },
-        ],
         products: {
           some: {
             inventoryId: inventory.id,
+            ...PENDING_GATE_PRODUCT_WHERE,
           },
         },
       },
@@ -391,6 +379,7 @@ export class ReconciliationService {
         products: {
           where: {
             inventoryId: inventory.id,
+            ...PENDING_GATE_PRODUCT_WHERE,
           },
           include: {
             location: true,
@@ -699,14 +688,12 @@ export class ReconciliationService {
         where: {
           warehouseId,
           status: { notIn: ['CANCELED', 'REJECTED'] },
-          OR: [
-            { documentReferenceId: null },
-            { documentReference: { state: { not: 'done' } } },
-          ],
+          products: { some: PENDING_GATE_PRODUCT_WHERE },
         },
         select: {
           cardType: true,
           products: {
+            where: PENDING_GATE_PRODUCT_WHERE,
             select: { inventoryId: true, locationId: true, quantity: true },
           },
         },

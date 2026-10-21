@@ -693,18 +693,6 @@ export class ErpDocumentReferenceService {
             gateOperation: true,
           },
         },
-        gateOperations: {
-          where: {
-            status: { notIn: ['CANCELED', 'REJECTED'] },
-          },
-          include: {
-            products: {
-              where: {
-                documentReferenceId: null,
-              },
-            },
-          },
-        },
       },
     });
 
@@ -726,27 +714,17 @@ export class ErpDocumentReferenceService {
     const productMap = new Map<number, any>();
 
     for (const doc of dbDocs) {
-      // Gather all products associated with this doc:
-      // 1. Products directly assigned to this doc via documentReferenceId
-      // 2. Legacy products where documentReferenceId is null on a gateOperation linked to this doc
+      // Products assigned to this doc via documentReferenceId. Lines without a
+      // documentReferenceId are unallocated gate quantity and are not picked for any doc.
       const docProds: {
         inventoryId: number;
         quantity: number;
         gateOp: any;
-      }[] = [
-        ...doc.operationProducts.map((p) => ({
-          inventoryId: p.inventoryId,
-          quantity: p.quantity,
-          gateOp: p.gateOperation,
-        })),
-        ...doc.gateOperations.flatMap((op) =>
-          op.products.map((p) => ({
-            inventoryId: p.inventoryId,
-            quantity: p.quantity,
-            gateOp: op,
-          })),
-        ),
-      ];
+      }[] = doc.operationProducts.map((p) => ({
+        inventoryId: p.inventoryId,
+        quantity: p.quantity,
+        gateOp: p.gateOperation,
+      }));
 
       // Picked quantities map for this document
       const pickedMap = new Map<number, number>();
@@ -1674,15 +1652,7 @@ export class ErpDocumentReferenceService {
       },
       include: {
         products: {
-          where: {
-            OR: [
-              { documentReferenceId: doc.id },
-              {
-                documentReferenceId: null,
-                gateOperation: { documentReferenceId: doc.id },
-              },
-            ],
-          },
+          where: { documentReferenceId: doc.id },
           include: { inventory: true },
         },
       },
@@ -1694,15 +1664,7 @@ export class ErpDocumentReferenceService {
         const aggregate = await this.prisma.gateOperationProduct.aggregate({
           where: {
             inventoryId: docItem.inventoryId,
-            OR: [
-              { documentReferenceId: doc.id },
-              {
-                documentReferenceId: null,
-                gateOperation: {
-                  documentReferenceId: doc.id,
-                },
-              },
-            ],
+            documentReferenceId: doc.id,
             gateOperation: {
               status: { notIn: ['CANCELED', 'REJECTED'] },
             },

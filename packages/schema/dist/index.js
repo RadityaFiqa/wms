@@ -25,8 +25,8 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TagihanQuerySchema = exports.UpdateTagihanSchema = exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
-exports.BuruhQuerySchema = exports.UpdateBuruhSchema = exports.CreateBuruhSchema = exports.TagihanReportStageEnum = exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = void 0;
+exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.GateAllocationSummarySchema = exports.GateAllocationSummaryItemSchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
+exports.BuruhQuerySchema = exports.UpdateBuruhSchema = exports.CreateBuruhSchema = exports.TagihanReportStageEnum = exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = exports.TagihanQuerySchema = exports.UpdateTagihanSchema = void 0;
 exports.validateTagihanTypeRules = validateTagihanTypeRules;
 exports.getSecondaryQty = getSecondaryQty;
 exports.getSecondaryUnit = getSecondaryUnit;
@@ -186,6 +186,27 @@ exports.CreateGateVerificationSchema = zod_1.z.object({
 });
 exports.AttachDocumentReferenceSchema = zod_1.z.object({
     documentReferenceId: zod_1.z.number().int("ID Dokumen Referensi harus berupa angka"),
+});
+// Gate Operation cargo allocation per product: totalQty = allocatedQty + remainingQty
+exports.GateAllocationSummaryItemSchema = zod_1.z.object({
+    productId: zod_1.z.number().int(),
+    productName: zod_1.z.string(),
+    sku: zod_1.z.string(),
+    uom: zod_1.z.string().nullable(),
+    totalQty: zod_1.z.number(),
+    allocatedQty: zod_1.z.number(),
+    remainingQty: zod_1.z.number(),
+    allocations: zod_1.z.array(zod_1.z.object({
+        documentReferenceId: zod_1.z.number().int(),
+        documentNumber: zod_1.z.string(),
+        quantity: zod_1.z.number(),
+    })),
+});
+exports.GateAllocationSummarySchema = zod_1.z.object({
+    items: zod_1.z.array(exports.GateAllocationSummaryItemSchema),
+    totalQty: zod_1.z.number(),
+    allocatedQty: zod_1.z.number(),
+    remainingQty: zod_1.z.number(),
 });
 exports.ErpDocumentReferenceQuerySchema = zod_1.z.object({
     search: zod_1.z.string().optional(),
