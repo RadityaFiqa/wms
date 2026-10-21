@@ -410,9 +410,8 @@ export default function ReportsPage() {
                                                   <th className="px-3 py-2 w-[15%]">No. Tiket</th>
                                                   <th className="px-3 py-2 text-center w-[12%]">Tipe</th>
                                                   <th className="px-3 py-2 w-[22%]">Client / Partner</th>
-                                                  <th className="px-3 py-2 w-[10%]">Stack</th>
                                                   <th className="px-3 py-2 w-[10%]">Status</th>
-                                                  <th className="px-3 py-2 w-[10%]">Ref Dokumen</th>
+                                                  <th className="px-3 py-2 w-[20%]">Ref Dokumen</th>
                                                   <th className="px-3 py-2 text-right w-[8%]">Qty</th>
                                                   <th className="px-3 py-2 text-center w-[8%]">Detail</th>
                                                 </tr>
@@ -469,9 +468,6 @@ export default function ReportsPage() {
                                                            <span>{tx.clientPartner || `${tx.driverName} (${tx.licensePlate})`}</span>
                                                          )}
                                                        </td>
-                                                      <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-[11px]">
-                                                        {tx.stack || "-"}
-                                                      </td>
                                                       <td className="px-3 py-2">
                                                         {tx.type === "ADJUSTMENT_IN" || tx.type === "ADJUSTMENT_OUT" ? (
                                                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${

@@ -94,6 +94,7 @@ export class StockOpnameController {
   @CheckPolicies((ability) => ability.can('update', 'StockOpname'))
   @AuditLogAction('STOCK_OPNAME_UPDATE_DRAFT')
   async update(
+    @Req() req: any,
     @Param('uuid') uuid: string,
     @Body(new ZodValidationPipe(UpdateStockOpnameSchema))
     body: UpdateStockOpnameInput,
@@ -104,7 +105,20 @@ export class StockOpnameController {
         'Warehouse context (header x-warehouse-id) diperlukan.',
       );
     }
-    return this.service.updateStockOpname(warehouseId, uuid, body);
+    return this.service.updateStockOpname(warehouseId, uuid, body, req.user.id);
+  }
+
+  @Post(':uuid/refresh-stock')
+  @CheckPolicies((ability) => ability.can('update', 'StockOpname'))
+  @AuditLogAction('STOCK_OPNAME_REFRESH_STOCK')
+  async refreshStock(@Param('uuid') uuid: string) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    return this.service.refreshStockOpnameStock(warehouseId, uuid);
   }
 
   @Delete(':uuid')
@@ -154,27 +168,6 @@ export class StockOpnameController {
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename=lembar-perhitungan-fisik-${uuid}-${Date.now()}.pdf`,
-      'Content-Length': pdfBuffer.length,
-    });
-
-    res.end(pdfBuffer);
-  }
-
-  @Get(':uuid/export/pdf')
-  @CheckPolicies((ability) => ability.can('read', 'StockOpname'))
-  async exportResultPdf(@Param('uuid') uuid: string, @Res() res: any) {
-    const warehouseId = this.warehouseContext.getWarehouseId();
-    if (!warehouseId) {
-      throw new BadRequestException(
-        'Warehouse context (header x-warehouse-id) diperlukan.',
-      );
-    }
-
-    const pdfBuffer = await this.service.generateResultPdf(warehouseId, uuid);
-
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename=stock-opname-report-${uuid}-${Date.now()}.pdf`,
       'Content-Length': pdfBuffer.length,
     });
 

@@ -94,6 +94,21 @@ export function useStockOpnameDetail(uuid?: string) {
     return res.data;
   }, [uuid, refreshDetail]);
 
+  const refreshStock = useCallback(async (): Promise<
+    | {
+        uuid: string;
+        newStacks: number;
+        prefilled: number;
+        prefillsRemoved: number;
+      }
+    | undefined
+  > => {
+    if (!uuid) return;
+    const res = await api.post(API_ROUTES.stockOpname.refreshStock(uuid));
+    await refreshDetail();
+    return res.data;
+  }, [uuid, refreshDetail]);
+
   const deleteOpname = useCallback(async () => {
     if (!uuid) return;
     const res = await api.delete(API_ROUTES.stockOpname.delete(uuid));
@@ -120,22 +135,6 @@ export function useStockOpnameDetail(uuid?: string) {
     window.URL.revokeObjectURL(url);
   }, [uuid]);
 
-  const downloadResultPdf = useCallback(async () => {
-    if (!uuid) return;
-    const res = await api.get(API_ROUTES.stockOpname.exportPdf(uuid), {
-      responseType: "blob",
-    });
-    const blob = new Blob([res.data], { type: "application/pdf" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `stock-opname-report-${uuid}.pdf`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  }, [uuid]);
-
   return {
     detailData: data,
     error,
@@ -143,8 +142,8 @@ export function useStockOpnameDetail(uuid?: string) {
     refresh: refreshDetail,
     updateDraft,
     submitOpname,
+    refreshStock,
     deleteOpname,
     downloadPhysicalCountSheet,
-    downloadResultPdf,
   };
 }

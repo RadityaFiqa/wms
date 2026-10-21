@@ -241,6 +241,11 @@ export const UpdateStockOpnameStackSchema = z.object({
     .max(STOCK_OPNAME_NOTE_MAX_LENGTH, `Catatan maksimal ${STOCK_OPNAME_NOTE_MAX_LENGTH} karakter`)
     .nullable()
     .optional(),
+  /**
+   * For a count prefilled from the previous opname: true = the officer confirmed the
+   * tumpukan is unchanged ("Masih sama"). Omitted keeps the saved confirmation.
+   */
+  confirmed: z.boolean().optional(),
 });
 export type UpdateStockOpnameStackInput = z.infer<typeof UpdateStockOpnameStackSchema>;
 
@@ -250,6 +255,13 @@ export const UpdateStockOpnameSchema = z.object({
   attachmentPaths: z.array(z.string()).optional(),
 });
 export type UpdateStockOpnameInput = z.infer<typeof UpdateStockOpnameSchema>;
+
+/**
+ * Tumpukan compared with the previous COMPLETED opname: CHANGED = moved or system
+ * qty changed since then, UNCHANGED = not moved. null = nothing to compare with.
+ */
+export const STOCK_OPNAME_STACK_MOVEMENTS = ["CHANGED", "UNCHANGED"] as const;
+export type StockOpnameStackMovement = (typeof STOCK_OPNAME_STACK_MOVEMENTS)[number];
 
 /** Calculator row as persisted on StockOpnameStack.calculationRows. */
 export interface StockOpnameCalculationRow {

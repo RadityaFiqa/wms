@@ -11,7 +11,25 @@ import {
   getLocalEndOfDay,
   formatDateInTimezone,
 } from '@/core/utils/date';
-import { Cron } from '@nestjs/schedule';
+import type { Prisma } from '@prisma/client';
+
+const ACTIVE_GATE_STATUSES: Prisma.EnumVerificationStatusFilter['in'] = [
+  'PENDING',
+  'VERIFIED',
+];
+
+// A done ERP document is "independent" only when no active gate operation is linked to it
+// through any relation (legacy FK, per-product link or junction table); otherwise its
+// movement is already counted through the gate operation.
+const NO_ACTIVE_GATE_OPERATION = {
+  gateOperations: { none: { status: { in: ACTIVE_GATE_STATUSES } } },
+  operationProducts: {
+    none: { gateOperation: { status: { in: ACTIVE_GATE_STATUSES } } },
+  },
+  gateOperationLinks: {
+    none: { gateOperation: { status: { in: ACTIVE_GATE_STATUSES } } },
+  },
+} satisfies Prisma.DocumentReferenceWhereInput;
 
 type MoveLineDocument = {
   documentNumber: string;
@@ -22,7 +40,6 @@ type MoveLineDocument = {
     inventoryId: number;
     sourceLocationId: number | null;
     destinationLocationId: number | null;
-    lotName: string | null;
     pickingName: string | null;
     quantity: number;
   }[];
@@ -31,7 +48,6 @@ type MoveLineDocument = {
 type MoveLineAllocation = {
   locationId: number;
   qty: number;
-  stack: string;
   referenceDocument: string;
 };
 
@@ -93,574 +109,6 @@ export class ReportsService {
     }
 
     return result;
-  }
-
-  /**
-   * Cron Job to capture daily location-level stock snapshots at 05:00 AM (Asia/Makassar timezone)
-   */
-  @Cron('0 5 * * *', { timeZone: 'Asia/Makassar' })
-  async handleDailyStockSnapshot() {
-    const tz = 'Asia/Makassar';
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const dateStr = formatDateInTimezone(yesterday, tz);
-    const start = getLocalStartOfDay(dateStr, tz);
-    const end = getLocalEndOfDay(dateStr, tz);
-
-    console.log(
-      `[Cron] Running daily location stock snapshot for date: ${dateStr}`,
-    );
-
-    // Fetch all internal locations
-    const locations = await this.prisma.location.findMany({
-      include: {
-        warehouse: true,
-      },
-    });
-
-    // Fetch all inventories/products
-    const inventories = await this.prisma.inventory.findMany();
-
-    // Fetch all pending and verified Gate Operations that happened yesterday
-    const yesterdayOps = await this.prisma.gateOperation.findMany({
-      where: {
-        status: { in: ['PENDING', 'VERIFIED'] },
-        OR: [
-          {
-            cardType: 'OUT',
-            createdAt: {
-              gte: start,
-              lte: end,
-            },
-          },
-          {
-            cardType: 'IN',
-            OR: [
-              {
-                verifiedAt: {
-                  gte: start,
-                  lte: end,
-                },
-              },
-              {
-                verifiedAt: null,
-                createdAt: {
-                  gte: start,
-                  lte: end,
-                },
-              },
-            ],
-          },
-        ],
-      },
-      include: {
-        products: {
-          include: {
-            documentReference: { include: { moveLines: true } },
-          },
-        },
-        documentReference: { include: { moveLines: true } },
-        documentReferences: {
-          include: {
-            documentReference: { include: { moveLines: true } },
-          },
-        },
-      },
-    });
-
-    const locationIds = new Set(locations.map((l) => l.id));
-
-    // Fetch all active pending/unreconciled gate operations in the system
-    const allPendingOps = await this.prisma.gateOperation.findMany({
-      where: {
-        status: { in: ['PENDING', 'VERIFIED'] },
-      },
-      include: {
-        products: {
-          include: {
-            documentReference: { include: { moveLines: true } },
-          },
-        },
-        documentReference: { include: { moveLines: true } },
-        documentReferences: {
-          include: {
-            documentReference: { include: { moveLines: true } },
-          },
-        },
-      },
-    });
-
-    // Fetch all completed independent ERP Document References that happened yesterday (across all warehouses)
-    const yesterdayIndependentDocs =
-      await this.prisma.documentReference.findMany({
-        where: {
-          state: 'done',
-          pickingTypeCode: { in: ['incoming', 'outgoing'] },
-          gateOperations: {
-            none: {
-              status: {
-                in: ['PENDING', 'VERIFIED'],
-              },
-            },
-          },
-          OR: [
-            {
-              dateDone: {
-                gte: start,
-                lte: end,
-              },
-            },
-            {
-              dateDone: null,
-              updatedAt: {
-                gte: start,
-                lte: end,
-              },
-            },
-          ],
-        },
-        include: {
-          items: true,
-          moveLines: true,
-        },
-      });
-
-    // Fetch all completed Document References in the system (up to the snapshot end date)
-    const completedDocs = await this.prisma.documentReference.findMany({
-      where: {
-        state: 'done',
-        OR: [
-          { dateDone: { lte: end } },
-          { dateDone: null, updatedAt: { lte: end } },
-        ],
-        AND: [
-          {
-            OR: [
-              {
-                operationProducts: {
-                  some: {
-                    gateOperation: {
-                      status: { notIn: ['CANCELED', 'REJECTED'] },
-                    },
-                  },
-                },
-              },
-              {
-                gateOperations: {
-                  some: {
-                    status: { notIn: ['CANCELED', 'REJECTED'] },
-                  },
-                },
-              },
-              {
-                gateOperationLinks: {
-                  some: {
-                    gateOperation: {
-                      status: { notIn: ['CANCELED', 'REJECTED'] },
-                    },
-                  },
-                },
-              },
-            ],
-          },
-        ],
-      },
-      include: {
-        items: true,
-        moveLines: true,
-        operationProducts: {
-          where: {
-            gateOperation: {
-              status: { notIn: ['CANCELED', 'REJECTED'] },
-            },
-          },
-        },
-        gateOperations: {
-          where: {
-            status: {
-              notIn: ['CANCELED', 'REJECTED'],
-            },
-          },
-          include: {
-            products: {
-              where: {
-                documentReferenceId: null,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const locationAdjustmentsMap = new Map<string, number>();
-
-    for (const doc of completedDocs) {
-      const pickingTypeCode = doc.pickingTypeCode;
-      if (pickingTypeCode !== 'incoming' && pickingTypeCode !== 'outgoing') {
-        continue;
-      }
-
-      // Group gate operations products by inventoryId strictly for this doc
-      const docGateProductsMap = new Map<
-        number,
-        { total: number; locations: Map<number, number> }
-      >();
-      const docProducts = [
-        ...doc.operationProducts,
-        ...doc.gateOperations.flatMap((op) => op.products),
-      ];
-      for (const gp of docProducts) {
-        const current = docGateProductsMap.get(gp.inventoryId) || {
-          total: 0,
-          locations: new Map<number, number>(),
-        };
-        current.total += gp.quantity;
-        for (const alloc of this.allocateGateProduct(gp, doc, locationIds)) {
-          current.locations.set(
-            alloc.locationId,
-            (current.locations.get(alloc.locationId) || 0) + alloc.qty,
-          );
-        }
-        docGateProductsMap.set(gp.inventoryId, current);
-      }
-
-      for (const item of doc.items) {
-        const invId = item.inventoryId;
-        const erpQty = item.productQty;
-        const gateInfo = docGateProductsMap.get(invId) || {
-          total: 0,
-          locations: new Map<number, number>(),
-        };
-        const sumGateQty = gateInfo.total;
-
-        if (sumGateQty !== erpQty) {
-          let adjustment = 0;
-          if (pickingTypeCode === 'incoming') {
-            adjustment = sumGateQty - erpQty;
-          } else if (pickingTypeCode === 'outgoing') {
-            adjustment = erpQty - sumGateQty;
-          }
-
-          if (adjustment !== 0) {
-            // Distribute adjustment to locations
-            if (gateInfo.locations.size > 0) {
-              const locList = Array.from(gateInfo.locations.entries()).map(
-                ([id, qty]) => ({ id, qty }),
-              );
-              const distributed = this.distributeAdjustment(
-                adjustment,
-                locList,
-              );
-              for (const [locId, locAdj] of distributed.entries()) {
-                const key = `${locId}_${invId}`;
-                locationAdjustmentsMap.set(
-                  key,
-                  (locationAdjustmentsMap.get(key) || 0) + locAdj,
-                );
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Fetch all current quants to use as a fallback if no previous snapshot exists
-    const currentQuants = await this.prisma.quant.findMany({
-      where: {
-        quantity: { gt: 0 },
-      },
-    });
-
-    // Fetch previous snapshots to get previous closing stock (start of yesterday - 1 day, i.e., start of day before yesterday)
-    const dayBeforeYesterday = new Date(
-      yesterday.getTime() - 24 * 60 * 60 * 1000,
-    );
-    const dayBeforeYesterdayStr = formatDateInTimezone(dayBeforeYesterday, tz);
-    const dayBeforeYesterdayStart = getLocalStartOfDay(
-      dayBeforeYesterdayStr,
-      tz,
-    );
-
-    const prevSnaps = await this.prisma.dailyLocationStockSnapshot.findMany({
-      where: {
-        date: dayBeforeYesterdayStart,
-      },
-    });
-
-    // Map of locationId_inventoryId to previous snapshot
-    const prevSnapsMap = new Map<string, (typeof prevSnaps)[number]>();
-    for (const snap of prevSnaps) {
-      prevSnapsMap.set(`${snap.locationId}_${snap.inventoryId}`, snap);
-    }
-
-    // Build the set of unique location + product pairs
-    // We want to capture snapshots for:
-    // 1. Every location and product currently having a Quant (physical stock exists)
-    // 2. Every location and product affected by yesterday's Gate Operations
-    // 3. Every location and product that had stock in the previous snapshot (closingStock > 0)
-    const uniqueKeys = new Set<string>();
-
-    for (const q of currentQuants) {
-      uniqueKeys.add(`${q.locationId}_${q.inventoryId}`);
-    }
-
-    // Yesterday's gate movements at their real stack (document move lines win over the gate location)
-    const yesterdayGateMovements = yesterdayOps.flatMap((op) =>
-      op.products.flatMap((p) =>
-        this.allocateGateProduct(
-          p,
-          this.resolveProductDocRefAndPartner(p, op).docRef,
-          locationIds,
-        ).map((alloc) => ({
-          cardType: op.cardType,
-          inventoryId: p.inventoryId,
-          ...alloc,
-        })),
-      ),
-    );
-
-    for (const m of yesterdayGateMovements) {
-      uniqueKeys.add(`${m.locationId}_${m.inventoryId}`);
-    }
-
-    for (const snap of prevSnaps) {
-      if (snap.closingStock > 0) {
-        uniqueKeys.add(`${snap.locationId}_${snap.inventoryId}`);
-      }
-    }
-
-    // Map each independent ERP movement to the location with the highest mismatch
-    const yesterdayIndependentMovementsMapped: any[] = [];
-    const mismatchMapsCache = new Map<string, Map<number, number>>();
-
-    for (const doc of yesterdayIndependentDocs) {
-      const whLocs = locations.filter((l) => l.warehouseId === doc.warehouseId);
-      const whLocIds = new Set(whLocs.map((l) => l.id));
-      const fallbackLocId = whLocs[0]?.id;
-
-      for (const item of doc.items) {
-        const prodId = item.inventoryId;
-        const cacheKey = `${doc.warehouseId}_${prodId}`;
-
-        let mismatchMap = mismatchMapsCache.get(cacheKey);
-        if (!mismatchMap) {
-          const productQuants = currentQuants.filter(
-            (q) => q.inventoryId === prodId,
-          );
-          mismatchMap = await this.getProductMismatchMap(
-            doc.warehouseId,
-            prodId,
-            whLocs,
-            productQuants,
-          );
-          mismatchMapsCache.set(cacheKey, mismatchMap);
-        }
-
-        const productQuants = currentQuants.filter(
-          (q) => q.inventoryId === prodId,
-        );
-        const allocations = this.allocateIndependentDocItem(
-          doc,
-          item,
-          whLocIds,
-          () =>
-            this.getBestMismatchLocation(
-              whLocs,
-              mismatchMap,
-              productQuants,
-              fallbackLocId,
-            ),
-        );
-
-        for (const alloc of allocations) {
-          const currentMismatch = mismatchMap.get(alloc.locationId) || 0;
-          const movementQty =
-            doc.pickingTypeCode === 'incoming' ? alloc.qty : -alloc.qty;
-          mismatchMap.set(alloc.locationId, currentMismatch - movementQty);
-
-          yesterdayIndependentMovementsMapped.push({
-            doc,
-            item,
-            locationId: alloc.locationId,
-            qty: alloc.qty,
-          });
-
-          uniqueKeys.add(`${alloc.locationId}_${prodId}`);
-        }
-      }
-    }
-
-    // Process each location + product pair
-    for (const key of uniqueKeys) {
-      const [locationIdStr, inventoryIdStr] = key.split('_');
-      const locationId = parseInt(locationIdStr, 10);
-      const inventoryId = parseInt(inventoryIdStr, 10);
-
-      const location = locations.find((l) => l.id === locationId);
-      if (!location) continue;
-      const warehouseId = location.warehouseId;
-
-      // 1. erpStock
-      const matchingQuants = currentQuants.filter(
-        (q) => q.locationId === locationId && q.inventoryId === inventoryId,
-      );
-      const erpStock = matchingQuants.reduce((sum, q) => sum + q.quantity, 0);
-
-      // 2. pendingInQty & pendingOutQty
-      let pendingInQty = 0;
-      let pendingOutQty = 0;
-      const pendingOpRefs: string[] = [];
-
-      for (const op of allPendingOps) {
-        const matchingProducts = op.products.filter(
-          (p) => p.locationId === locationId && p.inventoryId === inventoryId,
-        );
-        for (const matchingProduct of matchingProducts) {
-          const { docRef } = this.resolveProductDocRefAndPartner(
-            matchingProduct,
-            op,
-          );
-          if (docRef && docRef.state === 'done') {
-            continue;
-          }
-          if (op.cardType === 'IN') {
-            pendingInQty += matchingProduct.quantity;
-          } else {
-            pendingOutQty += matchingProduct.quantity;
-          }
-          pendingOpRefs.push(op.opNumber);
-        }
-      }
-      const gateOpRefsStr =
-        pendingOpRefs.length > 0 ? pendingOpRefs.join(', ') : null;
-
-      // 3. closingStock
-      const adjustmentQty = locationAdjustmentsMap.get(key) || 0;
-      const closingStock =
-        erpStock + pendingInQty - pendingOutQty + adjustmentQty;
-
-      // 4. openingStock
-      const prevSnap = prevSnapsMap.get(key);
-      let openingStock = 0;
-      if (prevSnap) {
-        openingStock = prevSnap.closingStock;
-      } else {
-        openingStock = erpStock;
-      }
-
-      // 5. totalIn & totalOut (yesterday's movements for backward compatibility and UI display)
-      let totalIn = 0;
-      let totalOut = 0;
-
-      for (const m of yesterdayGateMovements) {
-        if (m.locationId !== locationId || m.inventoryId !== inventoryId) {
-          continue;
-        }
-        if (m.cardType === 'OUT') {
-          totalOut += m.qty;
-        } else {
-          totalIn += m.qty;
-        }
-      }
-
-      for (const m of yesterdayIndependentMovementsMapped) {
-        if (m.locationId === locationId && m.item.inventoryId === inventoryId) {
-          if (m.doc.pickingTypeCode === 'incoming') {
-            totalIn += m.qty;
-          } else if (m.doc.pickingTypeCode === 'outgoing') {
-            totalOut += m.qty;
-          }
-        }
-      }
-
-      // 6. stackStr
-      const stacks = Array.from(
-        new Set(matchingQuants.map((q) => q.lotName).filter(Boolean)),
-      );
-      const stackStr = stacks.join(', ') || null;
-
-      // Persist the daily snapshot
-      await this.prisma.dailyLocationStockSnapshot.upsert({
-        where: {
-          date_warehouseId_locationId_inventoryId: {
-            date: start,
-            warehouseId,
-            locationId,
-            inventoryId,
-          },
-        },
-        update: {
-          openingStock,
-          erpStock,
-          pendingInQty,
-          pendingOutQty,
-          totalIn,
-          totalOut,
-          closingStock,
-          stack: stackStr,
-          gateOpRefs: gateOpRefsStr,
-        },
-        create: {
-          date: start,
-          warehouseId,
-          locationId,
-          inventoryId,
-          openingStock,
-          erpStock,
-          pendingInQty,
-          pendingOutQty,
-          totalIn,
-          totalOut,
-          closingStock,
-          stack: stackStr,
-          gateOpRefs: gateOpRefsStr,
-        },
-      });
-    }
-
-    console.log(
-      `[Cron] Completed daily stock snapshots for ${uniqueKeys.size} location-product quants.`,
-    );
-
-    // Also populate warehouse-level DailyStockSnapshot for backward compatibility
-    // We group by warehouseId and inventoryId, summing up closingStock
-    const snapshotsYesterday =
-      await this.prisma.dailyLocationStockSnapshot.findMany({
-        where: {
-          date: start,
-        },
-      });
-
-    const warehouseGroupMap = new Map<string, number>();
-    for (const s of snapshotsYesterday) {
-      const gKey = `${s.warehouseId}_${s.inventoryId}`;
-      const currentSum = warehouseGroupMap.get(gKey) || 0;
-      warehouseGroupMap.set(gKey, currentSum + s.closingStock);
-    }
-
-    for (const [gKey, closingStock] of warehouseGroupMap.entries()) {
-      const [warehouseIdStr, inventoryIdStr] = gKey.split('_');
-      const warehouseId = parseInt(warehouseIdStr, 10);
-      const inventoryId = parseInt(inventoryIdStr, 10);
-
-      await this.prisma.dailyStockSnapshot.upsert({
-        where: {
-          date_warehouseId_inventoryId: {
-            date: start,
-            warehouseId,
-            inventoryId,
-          },
-        },
-        update: {
-          closingStock,
-        },
-        create: {
-          date: start,
-          warehouseId,
-          inventoryId,
-          closingStock,
-        },
-      });
-    }
   }
 
   /**
@@ -732,7 +180,6 @@ export class ReportsService {
       include: {
         products: {
           include: {
-            quant: true,
             documentReference: { include: { moveLines: true } },
           },
         },
@@ -838,13 +285,7 @@ export class ReportsService {
           warehouseId,
           state: 'done',
           pickingTypeCode: { in: ['incoming', 'outgoing'] },
-          gateOperations: {
-            none: {
-              status: {
-                in: ['PENDING', 'VERIFIED'],
-              },
-            },
-          },
+          ...NO_ACTIVE_GATE_OPERATION,
           OR: [
             {
               dateDone: {
@@ -953,6 +394,10 @@ export class ReportsService {
 
             if (isWithinDateRange) {
               movedProductIdsSet.add(invId);
+            }
+            // Adjustments after the period are needed too: opening stock is
+            // calculated backward from today's real stock
+            if (docDate >= start && docDate <= today) {
               completedDocsAdjustments.push({
                 doc,
                 invId,
@@ -1000,27 +445,13 @@ export class ReportsService {
       },
     });
 
-    // 4. Load location-level snapshots
-    const locationSnapshots =
-      await this.prisma.dailyLocationStockSnapshot.findMany({
-        where: {
-          warehouseId,
-          inventoryId: { in: movedProductIds },
-          date: {
-            gte: start,
-            lte: today,
-          },
-        },
-      });
-
-    // 5. Map location IDs to UUIDs and display names
+    // 4. Map location IDs to UUIDs and display names
     const locationsMap = new Map<number, (typeof dbLocations)[number]>(
       dbLocations.map((l) => [l.id, l]),
     );
 
     const reportRows: any[] = [];
     const datesList = this.generateDatesList(start, end);
-    const backwardDates = this.generateDatesList(start, today).reverse();
 
     for (const prod of products) {
       // Ensure any location that had operations or has current quants or has active pending ops is included
@@ -1117,8 +548,10 @@ export class ReportsService {
       // Formula: realStock = erpStock (Quant quantity) + pendingInQty - pendingOutQty + cumulativeAdjustment
       const currentStockTrackerMap = new Map<number, number>();
       for (const locId of activeLocationIds) {
-        const q = prod.quants.find((quant) => quant.locationId === locId);
-        const erpStock = q ? q.quantity : 0;
+        // A location can hold several lots (stacks): sum all its quants
+        const erpStock = prod.quants
+          .filter((quant) => quant.locationId === locId)
+          .reduce((sum, quant) => sum + quant.quantity, 0);
 
         let pendingInQty = 0;
         let pendingOutQty = 0;
@@ -1157,7 +590,6 @@ export class ReportsService {
         referenceDocument: string;
         status: string;
         effectiveDate: Date;
-        stack: string;
         type: string;
         locationId: number;
         erpQty?: number;
@@ -1177,7 +609,7 @@ export class ReportsService {
             documentNumber: resolvedDocNumber,
           } = this.resolveProductDocRefAndPartner(opProd, op);
 
-          // Real stack from the document's move lines when available, else the gate location
+          // Real location from the document's move lines when available, else the gate location
           const allocations = this.allocateGateProduct(
             opProd,
             docRef,
@@ -1198,7 +630,6 @@ export class ReportsService {
                 op.cardType === 'OUT'
                   ? op.createdAt
                   : op.verifiedAt || op.createdAt,
-              stack: alloc.stack || opProd.quant?.lotName || '-',
               type: 'GATE_OPERATION',
               locationId: alloc.locationId,
             });
@@ -1210,7 +641,7 @@ export class ReportsService {
       for (const m of mappedIndependentDocs) {
         const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
         rawTransactionsList.push({
-          txUuid: `${m.doc.uuid}_${m.locationId}_${m.stack}`,
+          txUuid: `${m.doc.uuid}_${m.locationId}`,
           opNumber: m.doc.documentNumber,
           driverName: m.doc.driver || '-',
           licensePlate: m.doc.plateNumber || '-',
@@ -1220,7 +651,6 @@ export class ReportsService {
           referenceDocument: m.referenceDocument,
           status: m.doc.state.toUpperCase(), // 'DONE'
           effectiveDate: docDate,
-          stack: m.stack,
           type: 'ERP_DOCUMENT',
           locationId: m.locationId,
         });
@@ -1255,7 +685,6 @@ export class ReportsService {
               referenceDocument: doc.documentNumber,
               status: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
               effectiveDate: adjInfo.docDate,
-              stack: '-',
               type: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
               locationId: locId,
               erpQty,
@@ -1279,7 +708,6 @@ export class ReportsService {
               referenceDocument: doc.documentNumber,
               status: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
               effectiveDate: adjInfo.docDate,
-              stack: '-',
               type: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
               locationId: locId,
               erpQty,
@@ -1317,60 +745,14 @@ export class ReportsService {
             return a.txUuid.localeCompare(b.txUuid);
           });
 
-        // 1. Calculate opening stock at start date
-        // Query latest snapshot prior to start date
-        const prevSnap = await this.prisma.dailyLocationStockSnapshot.findFirst(
-          {
-            where: {
-              warehouseId,
-              locationId: locId,
-              inventoryId: prod.id,
-              date: {
-                lt: start,
-              },
-            },
-            orderBy: {
-              date: 'desc',
-            },
-          },
+        // 1. Opening stock at start date: backward calculation from today's real stock
+        // (ERP quants + pending gate ops + adjustments), so the closing stock always ties
+        // back to ERP instead of drifting from stored snapshots
+        const openingStockAtStart = this.calculateOpeningStockBackward(
+          currentStockTrackerMap.get(locId) || 0,
+          locTransactions,
+          start,
         );
-
-        let openingStockAtStart = 0;
-        if (prevSnap) {
-          openingStockAtStart = prevSnap.closingStock;
-          const lastSnapDate = prevSnap.date;
-          const lastSnapEnd = getLocalEndOfDay(
-            formatDateInTimezone(lastSnapDate, timezone),
-            timezone,
-          );
-          const gapTx = locTransactions.filter(
-            (tx) => tx.effectiveDate > lastSnapEnd && tx.effectiveDate < start,
-          );
-          for (const tx of gapTx) {
-            if (tx.cardType === 'IN') {
-              openingStockAtStart += tx.quantity;
-            } else {
-              openingStockAtStart -= tx.quantity;
-            }
-          }
-        } else {
-          // Backward calculation from today's real physical stock
-          const currentStockToday = currentStockTrackerMap.get(locId) || 0;
-          const reportAndLaterTx = locTransactions.filter(
-            (tx) => tx.effectiveDate >= start,
-          );
-
-          let calculatedStock = currentStockToday;
-          for (let i = reportAndLaterTx.length - 1; i >= 0; i--) {
-            const tx = reportAndLaterTx[i];
-            if (tx.cardType === 'IN') {
-              calculatedStock -= tx.quantity;
-            } else {
-              calculatedStock += tx.quantity;
-            }
-          }
-          openingStockAtStart = calculatedStock;
-        }
 
         // 2. Perform forward running balance day by day
         let runningStock = openingStockAtStart;
@@ -1408,7 +790,6 @@ export class ReportsService {
               referenceDocument: tx.referenceDocument,
               status: tx.status,
               createdAt: tx.effectiveDate,
-              stack: tx.stack,
               type: tx.type,
               erpQty: tx.erpQty,
               totalGateQty: tx.totalGateQty,
@@ -1437,31 +818,6 @@ export class ReportsService {
             inList,
             outList,
           });
-
-          // Persist snapshot to database on the fly if it doesn't exist
-          const snap = locationSnapshots.find(
-            (s) =>
-              s.locationId === locId &&
-              s.inventoryId === prod.id &&
-              formatDateInTimezone(s.date, timezone) === dStr,
-          );
-
-          if (!snap && dStr !== todayStr) {
-            await this.prisma.dailyLocationStockSnapshot
-              .create({
-                data: {
-                  date: dDate,
-                  warehouseId,
-                  locationId: locId,
-                  inventoryId: prod.id,
-                  openingStock: dayLocOpening,
-                  totalIn: inbound,
-                  totalOut: outbound,
-                  closingStock: dayLocClosing,
-                },
-              })
-              .catch(() => {});
-          }
         }
       }
 
@@ -1580,13 +936,7 @@ export class ReportsService {
               inventoryId: inventory.id,
             },
           },
-          gateOperations: {
-            none: {
-              status: {
-                in: ['PENDING', 'VERIFIED'],
-              },
-            },
-          },
+          ...NO_ACTIVE_GATE_OPERATION,
           OR: [
             {
               dateDone: {
@@ -1946,7 +1296,6 @@ export class ReportsService {
             inventoryId: inventory.id,
           },
           include: {
-            quant: true,
             documentReference: { include: { moveLines: true } },
           },
         },
@@ -1995,18 +1344,6 @@ export class ReportsService {
         quantity: { gt: 0 },
       },
     });
-
-    const locationSnapshots =
-      await this.prisma.dailyLocationStockSnapshot.findMany({
-        where: {
-          warehouseId,
-          inventoryId: inventory.id,
-          date: {
-            gte: start,
-            lte: today,
-          },
-        },
-      });
 
     const activeLocationIds = new Set<number>();
     for (const q of quants) {
@@ -2105,7 +1442,6 @@ export class ReportsService {
       referenceDocument: string;
       status: string;
       effectiveDate: Date;
-      stack: string;
       type: string;
       locationId: number;
       erpQty?: number;
@@ -2125,7 +1461,7 @@ export class ReportsService {
           documentNumber: resolvedDocNumber,
         } = this.resolveProductDocRefAndPartner(opProd, op);
 
-        // Real stack from the document's move lines when available, else the gate location
+        // Real location from the document's move lines when available, else the gate location
         const allocations = this.allocateGateProduct(
           opProd,
           docRef,
@@ -2146,7 +1482,6 @@ export class ReportsService {
               op.cardType === 'OUT'
                 ? op.createdAt
                 : op.verifiedAt || op.createdAt,
-            stack: alloc.stack || opProd.quant?.lotName || '-',
             type: 'GATE_OPERATION',
             locationId: alloc.locationId,
           });
@@ -2158,7 +1493,7 @@ export class ReportsService {
     for (const m of mappedIndependentDocs) {
       const docDate = m.doc.dateDone || m.doc.updatedAt || m.doc.createdAt;
       rawTransactionsList.push({
-        txUuid: `${m.doc.uuid}_${m.locationId}_${m.stack}`,
+        txUuid: `${m.doc.uuid}_${m.locationId}`,
         opNumber: m.doc.documentNumber,
         driverName: m.doc.driver || '-',
         licensePlate: m.doc.plateNumber || '-',
@@ -2168,7 +1503,6 @@ export class ReportsService {
         referenceDocument: m.referenceDocument,
         status: m.doc.state.toUpperCase(), // 'DONE'
         effectiveDate: docDate,
-        stack: m.stack,
         type: 'ERP_DOCUMENT',
         locationId: m.locationId,
       });
@@ -2201,7 +1535,6 @@ export class ReportsService {
             referenceDocument: doc.documentNumber,
             status: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             effectiveDate: adjInfo.docDate,
-            stack: '-',
             type: locAdjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             locationId: locId,
             erpQty,
@@ -2225,7 +1558,6 @@ export class ReportsService {
             referenceDocument: doc.documentNumber,
             status: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             effectiveDate: adjInfo.docDate,
-            stack: '-',
             type: adjustment > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             locationId: locId,
             erpQty,
@@ -2239,8 +1571,10 @@ export class ReportsService {
 
     const currentStockTrackerMap = new Map<number, number>();
     for (const locId of activeLocationIds) {
-      const q = quants.find((quant) => quant.locationId === locId);
-      const erpStock = q ? q.quantity : 0;
+      // A location can hold several lots (stacks): sum all its quants
+      const erpStock = quants
+        .filter((quant) => quant.locationId === locId)
+        .reduce((sum, quant) => sum + quant.quantity, 0);
 
       let pendingInQty = 0;
       let pendingOutQty = 0;
@@ -2283,58 +1617,13 @@ export class ReportsService {
           return a.txUuid.localeCompare(b.txUuid);
         });
 
-      // 1. Calculate opening stock at start date (the target date)
-      // Query latest snapshot prior to start date
-      const prevSnap = await this.prisma.dailyLocationStockSnapshot.findFirst({
-        where: {
-          warehouseId,
-          locationId: locId,
-          inventoryId: inventory.id,
-          date: {
-            lt: start,
-          },
-        },
-        orderBy: {
-          date: 'desc',
-        },
-      });
-
-      let openingStockAtStart = 0;
-      if (prevSnap) {
-        openingStockAtStart = prevSnap.closingStock;
-        const lastSnapDate = prevSnap.date;
-        const lastSnapEnd = getLocalEndOfDay(
-          formatDateInTimezone(lastSnapDate, timezone),
-          timezone,
-        );
-        const gapTx = locTransactions.filter(
-          (tx) => tx.effectiveDate > lastSnapEnd && tx.effectiveDate < start,
-        );
-        for (const tx of gapTx) {
-          if (tx.cardType === 'IN') {
-            openingStockAtStart += tx.quantity;
-          } else {
-            openingStockAtStart -= tx.quantity;
-          }
-        }
-      } else {
-        // Backward calculation from today's real physical stock
-        const currentStockToday = currentStockTrackerMap.get(locId) || 0;
-        const reportAndLaterTx = locTransactions.filter(
-          (tx) => tx.effectiveDate >= start,
-        );
-
-        let calculatedStock = currentStockToday;
-        for (let i = reportAndLaterTx.length - 1; i >= 0; i--) {
-          const tx = reportAndLaterTx[i];
-          if (tx.cardType === 'IN') {
-            calculatedStock -= tx.quantity;
-          } else {
-            calculatedStock += tx.quantity;
-          }
-        }
-        openingStockAtStart = calculatedStock;
-      }
+      // 1. Opening stock at the target date: backward calculation from today's real stock
+      // (ERP quants + pending gate ops + adjustments), consistent with the stock movement report
+      const openingStockAtStart = this.calculateOpeningStockBackward(
+        currentStockTrackerMap.get(locId) || 0,
+        locTransactions,
+        start,
+      );
 
       // 2. Perform forward running balance for the target date
       const dayStart = getLocalStartOfDay(targetDateStr, timezone);
@@ -2373,6 +1662,28 @@ export class ReportsService {
   }
 
   /**
+   * Opening stock at `start`, calculated backward from the current real stock by undoing
+   * every transaction from `start` until now.
+   */
+  private calculateOpeningStockBackward(
+    currentStock: number,
+    transactions: {
+      cardType: 'IN' | 'OUT';
+      quantity: number;
+      effectiveDate: Date;
+    }[],
+    start: Date,
+  ): number {
+    return transactions
+      .filter((tx) => tx.effectiveDate >= start)
+      .reduce(
+        (stock, tx) =>
+          tx.cardType === 'IN' ? stock - tx.quantity : stock + tx.quantity,
+        currentStock,
+      );
+  }
+
+  /**
    * Helper to compute product mismatch per location
    * Mismatch = ERP Expected Qty - Current Location Qty
    */
@@ -2408,7 +1719,10 @@ export class ReportsService {
 
     const currentQtyMap = new Map<number, number>();
     for (const q of quants) {
-      currentQtyMap.set(q.locationId, q.quantity);
+      currentQtyMap.set(
+        q.locationId,
+        (currentQtyMap.get(q.locationId) || 0) + q.quantity,
+      );
     }
 
     const mismatchMap = new Map<number, number>();
@@ -2437,8 +1751,8 @@ export class ReportsService {
 
     const isIncoming = doc.pickingTypeCode === 'incoming';
     const grouped = new Map<
-      string,
-      { locationId: number; qty: number; stack: string; pickings: Set<string> }
+      number,
+      { locationId: number; qty: number; pickings: Set<string> }
     >();
 
     for (const line of doc.moveLines) {
@@ -2456,19 +1770,16 @@ export class ReportsService {
         : line.sourceLocationId;
       if (!locationId || !validLocationIds.has(locationId)) continue;
 
-      const stack = line.lotName || '-';
-      const key = `${locationId}_${stack}`;
-      const current = grouped.get(key) || {
+      const current = grouped.get(locationId) || {
         locationId,
         qty: 0,
-        stack,
         pickings: new Set<string>(),
       };
       current.qty += line.quantity;
       if (line.pickingName && line.pickingName !== doc.documentNumber) {
         current.pickings.add(line.pickingName);
       }
-      grouped.set(key, current);
+      grouped.set(locationId, current);
     }
 
     const allocations = Array.from(grouped.values());
@@ -2481,7 +1792,6 @@ export class ReportsService {
     return allocations.map((a) => ({
       locationId: a.locationId,
       qty: a.qty * scale,
-      stack: a.stack,
       referenceDocument:
         a.pickings.size > 0
           ? `${doc.documentNumber} (${Array.from(a.pickings).join(', ')})`
@@ -2511,7 +1821,6 @@ export class ReportsService {
       {
         locationId: getFallbackLocationId(),
         qty: item.productQty,
-        stack: '-',
         referenceDocument: doc.documentNumber,
       },
     ];
@@ -2520,7 +1829,7 @@ export class ReportsService {
   /**
    * Locations of a gate operation product. When its ERP document is done and has move
    * lines, the real stack from the WMS picking/putaway wins over the location picked at the gate.
-   * stack / referenceDocument are null when the gate location is used.
+   * referenceDocument is null when the gate location is used.
    */
   private allocateGateProduct(
     opProd: {
@@ -2533,7 +1842,6 @@ export class ReportsService {
   ): {
     locationId: number;
     qty: number;
-    stack: string | null;
     referenceDocument: string | null;
   }[] {
     const allocations = this.getMoveLineAllocations(
@@ -2549,7 +1857,6 @@ export class ReportsService {
           {
             locationId: opProd.locationId,
             qty: opProd.quantity,
-            stack: null,
             referenceDocument: null,
           },
         ]
@@ -2568,7 +1875,10 @@ export class ReportsService {
 
     const currentQtyMap = new Map<number, number>();
     for (const q of quants) {
-      currentQtyMap.set(q.locationId, q.quantity);
+      currentQtyMap.set(
+        q.locationId,
+        (currentQtyMap.get(q.locationId) || 0) + q.quantity,
+      );
     }
 
     for (const loc of dbLocations) {

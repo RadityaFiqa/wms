@@ -162,9 +162,9 @@ export const API_ROUTES = {
     update: (uuid: string) => `/stock-opname/${uuid}`,
     delete: (uuid: string) => `/stock-opname/${uuid}`,
     submit: (uuid: string) => `/stock-opname/${uuid}/submit`,
+    refreshStock: (uuid: string) => `/stock-opname/${uuid}/refresh-stock`,
     physicalCountSheet: (uuid: string) =>
       `/stock-opname/${uuid}/physical-count-sheet/pdf`,
-    exportPdf: (uuid: string) => `/stock-opname/${uuid}/export/pdf`,
   },
   reports: {
     stockMovement: "/reports/stock-movement",

@@ -88,16 +88,31 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
       ]);
     });
 
-    it('Case 1 & 2: should calculate forward running balance correctly using a prior snapshot', async () => {
-      // Prior snapshot on 25 Jun 2026: closing stock 10,204
+    it('Case 1 & 2: should anchor the running balance to today real stock (summing all lots) and ignore stale snapshots', async () => {
+      // Stale prior snapshot must NOT drive the opening stock anymore
       prismaMock.dailyLocationStockSnapshot.findFirst.mockResolvedValue({
         id: 1,
         date: new Date('2026-06-25T00:00:00+08:00'),
         warehouseId,
         locationId: locId,
         inventoryId: prodId,
-        closingStock: 10204,
+        closingStock: 99999,
       });
+
+      // Today's ERP stock at the location is split over two lots (stacks): 15,000 + 6,282 = 21,282
+      prismaMock.inventory.findMany.mockResolvedValue([
+        {
+          id: prodId,
+          uuid: 'prod-uuid-1',
+          sku: 'PRD001',
+          name: 'Beras Pack 5 Kg',
+          uom: 'Pack',
+          quants: [
+            { locationId: locId, inventoryId: prodId, quantity: 15000 },
+            { locationId: locId, inventoryId: prodId, quantity: 6282 },
+          ],
+        },
+      ]);
 
       // Transactions:
       // 1. 26 Jun 2026: Outbound 7,522
@@ -178,7 +193,7 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
       expect(row29.closingStock).toBe(21282); // 2682 + 20000 - 1400 = 21282
     });
 
-    it('should fallback to backward calculation from today real stock if no prior snapshot exists', async () => {
+    it('should calculate opening stock backward from today real stock when no snapshot exists', async () => {
       // Mock NO snapshot prior to startDate
       prismaMock.dailyLocationStockSnapshot.findFirst.mockResolvedValue(null);
 
@@ -561,13 +576,11 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         {
           locationId: 21,
           qty: 60,
-          stack: 'STACK-A',
           referenceDocument: 'WH/OUT/0001 (WH/PICK/0001)',
         },
         {
           locationId: 22,
           qty: 40,
-          stack: 'STACK-B',
           referenceDocument: 'WH/OUT/0001 (WH/PICK/0001)',
         },
       ]);
@@ -596,7 +609,6 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         {
           locationId: 99,
           qty: 100,
-          stack: '-',
           referenceDocument: 'WH/OUT/0001',
         },
       ]);
@@ -641,13 +653,11 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         {
           locationId: 21,
           qty: 30,
-          stack: 'STACK-A',
           referenceDocument: 'WH/OUT/0002 (PICK/0009)',
         },
         {
           locationId: 22,
           qty: 10,
-          stack: 'STACK-B',
           referenceDocument: 'WH/OUT/0002 (PICK/0009)',
         },
       ]);
@@ -660,16 +670,14 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         new Set([21, 22, 30]),
       );
       expect(result).toEqual([
-        { locationId: 30, qty: 40, stack: null, referenceDocument: null },
+        { locationId: 30, qty: 40, referenceDocument: null },
       ]);
     });
 
     it('keeps the gate location when there is no document', () => {
       expect(
         (service as any).allocateGateProduct(opProd, null, new Set([30])),
-      ).toEqual([
-        { locationId: 30, qty: 40, stack: null, referenceDocument: null },
-      ]);
+      ).toEqual([{ locationId: 30, qty: 40, referenceDocument: null }]);
     });
 
     it('returns nothing when there is neither a move line nor a gate location', () => {
@@ -680,6 +688,71 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
           new Set([30]),
         ),
       ).toEqual([]);
+    });
+  });
+
+  describe('independent ERP documents - no double count with gate operations', () => {
+    it('excludes documents linked to an active gate operation through any relation', async () => {
+      await service.getDailyStockMovementReport(1, {
+        startDate: '2026-06-26',
+        endDate: '2026-06-29',
+      });
+
+      const independentQuery = prismaMock.documentReference.findMany.mock.calls
+        .map((call: any[]) => call[0].where)
+        .find((where: any) => where.pickingTypeCode);
+      const active = { in: ['PENDING', 'VERIFIED'] };
+      expect(independentQuery.gateOperations).toEqual({
+        none: { status: active },
+      });
+      expect(independentQuery.operationProducts).toEqual({
+        none: { gateOperation: { status: active } },
+      });
+      expect(independentQuery.gateOperationLinks).toEqual({
+        none: { gateOperation: { status: active } },
+      });
+    });
+  });
+
+  describe('getMoveLineAllocations - grouped per location', () => {
+    it('merges lots picked from the same location into one allocation', () => {
+      const result = (service as any).getMoveLineAllocations(
+        {
+          documentNumber: 'WH/OUT/0003',
+          pickingTypeCode: 'outgoing',
+          state: 'done',
+          moveLines: [
+            {
+              documentReferenceItemId: 1,
+              inventoryId: 101,
+              sourceLocationId: 21,
+              destinationLocationId: 5,
+              lotName: 'LOT-1',
+              pickingName: 'PICK/0010',
+              quantity: 30,
+            },
+            {
+              documentReferenceItemId: 1,
+              inventoryId: 101,
+              sourceLocationId: 21,
+              destinationLocationId: 5,
+              lotName: 'LOT-2',
+              pickingName: 'PICK/0010',
+              quantity: 20,
+            },
+          ],
+        },
+        { inventoryId: 101 },
+        50,
+        new Set([21]),
+      );
+      expect(result).toEqual([
+        {
+          locationId: 21,
+          qty: 50,
+          referenceDocument: 'WH/OUT/0003 (PICK/0010)',
+        },
+      ]);
     });
   });
 });

@@ -21,6 +21,7 @@ import {
   STOCK_OPNAME_NOTE_MAX_LENGTH,
   roundQuantity,
   type StockOpnameCalculationRow,
+  type StockOpnameStackMovement,
   type UpdateStockOpnameInput,
 } from "@bulog-wms/schema";
 import {
@@ -42,6 +43,8 @@ import {
   Trash2,
   Printer,
   StickyNote,
+  History,
+  RefreshCw,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
@@ -54,6 +57,11 @@ interface OpnameStack {
   variance: number | null;
   calculationRows?: StockOpnameCalculationRow[] | null;
   note?: string | null;
+  movementStatus?: StockOpnameStackMovement | null;
+  movementReasons?: string[];
+  requiresConfirmation?: boolean;
+  confirmedAt?: string | null;
+  confirmedBy?: string | null;
 }
 
 interface LocationEntry {
@@ -71,6 +79,14 @@ interface LocationGroup {
   uom: string | null;
   erpQty: number;
   calculatedPhysical: number | null;
+  /** CHANGED when any SKU of the tumpukan moved since the previous opname */
+  movementStatus: StockOpnameStackMovement | null;
+  movementReasons: string[];
+  /** Count was prefilled from the previous opname and must be confirmed */
+  requiresConfirmation: boolean;
+  /** Saved confirmation of the prefilled count */
+  confirmed: boolean;
+  confirmedBy: string | null;
 }
 
 interface AreaGroup {
@@ -130,6 +146,11 @@ function groupByLocation(items: any[]): AreaGroup[] {
           uom: item.productUom,
           erpQty: 0,
           calculatedPhysical: null,
+          movementStatus: null,
+          movementReasons: [],
+          requiresConfirmation: false,
+          confirmed: false,
+          confirmedBy: null,
         };
         locations.set(stack.locationName, loc);
       }
@@ -161,20 +182,49 @@ function groupByLocation(items: any[]): AreaGroup[] {
         )
       : null;
 
+    const statuses = loc.entries.map((e) => e.stack.movementStatus ?? null);
+    loc.movementStatus = statuses.includes("CHANGED")
+      ? "CHANGED"
+      : statuses.length > 0 && statuses.every((s) => s === "UNCHANGED")
+        ? "UNCHANGED"
+        : null;
+    loc.movementReasons = Array.from(
+      new Set(loc.entries.flatMap((e) => e.stack.movementReasons ?? [])),
+    );
+    const prefilled = loc.entries.filter((e) => e.stack.requiresConfirmation);
+    loc.requiresConfirmation = prefilled.length > 0;
+    loc.confirmed =
+      loc.requiresConfirmation && prefilled.every((e) => !!e.stack.confirmedAt);
+    loc.confirmedBy = prefilled.find((e) => e.stack.confirmedBy)?.stack
+      .confirmedBy ?? null;
+
     const area = locationArea(loc.locationName);
     const list = areas.get(area) ?? [];
     list.push(loc);
     areas.set(area, list);
   }
 
+  // Tumpukan that moved since the previous opname come first, unmoved ones last
+  const areaHasChange = (locs: LocationGroup[]) =>
+    locs.some((l) => l.movementStatus === "CHANGED");
   return Array.from(areas.entries())
-    .sort(([a], [b]) => collator.compare(a, b))
+    .sort(
+      ([a, aLocs], [b, bLocs]) =>
+        Number(areaHasChange(bLocs)) - Number(areaHasChange(aLocs)) ||
+        collator.compare(a, b),
+    )
     .map(([area, locs]) => ({
       area,
-      locations: locs.sort((a, b) =>
-        collator.compare(a.locationName, b.locationName),
+      locations: locs.sort(
+        (a, b) =>
+          movementRank(a.movementStatus) - movementRank(b.movementStatus) ||
+          collator.compare(a.locationName, b.locationName),
       ),
     }));
+}
+
+function movementRank(status: StockOpnameStackMovement | null): number {
+  return status === "CHANGED" ? 0 : status === "UNCHANGED" ? 2 : 1;
 }
 
 function varianceClass(value: number): string {
@@ -196,9 +246,9 @@ export default function StockOpnameDetailPage() {
     error,
     updateDraft,
     submitOpname,
+    refreshStock,
     deleteOpname,
     downloadPhysicalCountSheet,
-    downloadResultPdf,
   } = useStockOpnameDetail(uuid);
   const { hasPermission } = useAuthStore();
   const canDelete = hasPermission("delete", "StockOpname");
@@ -212,6 +262,7 @@ export default function StockOpnameDetailPage() {
   const [attachmentPaths, setAttachmentPaths] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshingStock, setIsRefreshingStock] = useState(false);
   const [expandedAreas, setExpandedAreas] = useState<Record<string, boolean>>(
     {},
   );
@@ -221,6 +272,10 @@ export default function StockOpnameDetailPage() {
   // Rows as loaded, so untouched tumpukan (incl. legacy counts) are not re-sent
   const loadedRowsRef = useRef<Record<string, string[]>>({});
   const loadedNotesRef = useRef<Record<string, string>>({});
+  // "Masih sama" per prefilled tumpukan (location name)
+  const [confirmations, setConfirmations] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const areaGroups = useMemo(
     () => (detailData ? groupByLocation(detailData.items) : []),
@@ -238,17 +293,59 @@ export default function StockOpnameDetailPage() {
   useEffect(() => {
     const rows: Record<string, string[]> = {};
     const notesByLocation: Record<string, string> = {};
+    const confirmedByLocation: Record<string, boolean> = {};
     for (const { locations } of areaGroups) {
       for (const loc of locations) {
         rows[loc.key] = initialLocationRows(loc);
         notesByLocation[loc.key] = initialLocationNote(loc);
+        confirmedByLocation[loc.key] = loc.confirmed;
       }
     }
     loadedRowsRef.current = rows;
     loadedNotesRef.current = notesByLocation;
     setCalcRows(rows);
     setStackNotes(notesByLocation);
+    setConfirmations(confirmedByLocation);
   }, [areaGroups]);
+
+  // A prefilled tumpukan whose rows or note were changed counts as updated
+  const isLocationEdited = useCallback(
+    (key: string) => {
+      const filled = (rows: string[] | undefined) =>
+        (rows ?? [])
+          .map((r) => r.trim())
+          .filter((r) => r !== "")
+          .join("\n");
+      return (
+        filled(calcRows[key]) !== filled(loadedRowsRef.current[key]) ||
+        (stackNotes[key] ?? "").trim() !==
+          (loadedNotesRef.current[key] ?? "").trim()
+      );
+    },
+    [calcRows, stackNotes],
+  );
+
+  const isLocationConfirmed = useCallback(
+    (loc: LocationGroup) =>
+      !loc.requiresConfirmation ||
+      !!confirmations[loc.key] ||
+      isLocationEdited(loc.key),
+    [confirmations, isLocationEdited],
+  );
+
+  const movementSummary = useMemo(() => {
+    let changed = 0;
+    let unchanged = 0;
+    let awaitingConfirmation = 0;
+    for (const { locations } of areaGroups) {
+      for (const loc of locations) {
+        if (loc.movementStatus === "CHANGED") changed++;
+        if (loc.movementStatus === "UNCHANGED") unchanged++;
+        if (!isLocationConfirmed(loc)) awaitingConfirmation++;
+      }
+    }
+    return { changed, unchanged, awaitingConfirmation };
+  }, [areaGroups, isLocationConfirmed]);
 
   const handleRowsChange = useCallback(
     (locationKey: string, rows: string[]) => {
@@ -346,13 +443,18 @@ export default function StockOpnameDetailPage() {
       for (const loc of locations) {
         const rows = calcRows[loc.key];
         const note = stackNotes[loc.key] ?? "";
+        const confirmed = isLocationConfirmed(loc);
+        const confirmationChanged =
+          loc.requiresConfirmation && confirmed !== loc.confirmed;
         if (
           !rows ||
           (rows === loadedRowsRef.current[loc.key] &&
-            note === loadedNotesRef.current[loc.key])
+            note === loadedNotesRef.current[loc.key] &&
+            !confirmationChanged)
         )
           continue;
         const total = summarizeCalculationRows(rows).total;
+        const confirmation = loc.requiresConfirmation ? { confirmed } : {};
         // The tumpukan count is stored on its first SKU; other SKUs get 0, so
         // the summed variance equals count - total ERP of the tumpukan
         loc.entries.forEach(({ stack }, i) => {
@@ -363,12 +465,14 @@ export default function StockOpnameDetailPage() {
                   actualQty: total,
                   calculationRows: rows.filter((r) => r.trim() !== ""),
                   note: note.trim() || null,
+                  ...confirmation,
                 }
               : {
                   uuid: stack.uuid,
                   actualQty: total === null ? null : 0,
                   calculationRows: [],
                   note: null,
+                  ...confirmation,
                 },
           );
         });
@@ -398,7 +502,8 @@ export default function StockOpnameDetailPage() {
   };
 
   const handleSubmitOpname = async () => {
-    if (hasInvalidExpression) return;
+    if (hasInvalidExpression || movementSummary.awaitingConfirmation > 0)
+      return;
     // Save first, then submit
     setIsSubmitting(true);
     const toastId = toast.loading(
@@ -417,6 +522,40 @@ export default function StockOpnameDetailPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleRefreshStock = async () => {
+    if (hasInvalidExpression) return;
+    if (
+      !confirm(
+        "Perbarui Snapshot ERP dan Stok Rekonsiliasi draf ini ke stok terbaru? Hitungan, catatan, dan konfirmasi yang sudah diisi tetap disimpan. Isi otomatis yang belum dikonfirmasi akan dihapus bila tumpukannya ternyata bergerak.",
+      )
+    )
+      return;
+    setIsRefreshingStock(true);
+    const toastId = toast.loading("Menyimpan draf dan memperbarui stok...");
+    try {
+      // Save first so unsaved counts are not lost when the detail reloads
+      await updateDraft(buildSavePayload());
+      const result = await refreshStock();
+      const details = [
+        result?.newStacks ? `${result.newStacks} tumpukan baru` : null,
+        result?.prefilled ? `${result.prefilled} diisi otomatis` : null,
+        result?.prefillsRemoved
+          ? `${result.prefillsRemoved} isi otomatis dihapus karena bergerak`
+          : null,
+      ].filter(Boolean);
+      toast.success(
+        `Stok berhasil diperbarui${details.length ? ` (${details.join(", ")})` : ""}.`,
+        { id: toastId },
+      );
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || "Gagal memperbarui stok.", {
+        id: toastId,
+      });
+    } finally {
+      setIsRefreshingStock(false);
     }
   };
 
@@ -442,16 +581,6 @@ export default function StockOpnameDetailPage() {
     const toastId = toast.loading("Mengunduh Lembar Perhitungan Fisik...");
     try {
       await downloadPhysicalCountSheet();
-      toast.success("Unduhan sukses!", { id: toastId });
-    } catch (e) {
-      toast.error("Gagal mengunduh berkas PDF.", { id: toastId });
-    }
-  };
-
-  const handleExportPdf = async () => {
-    const toastId = toast.loading("Mengunduh Laporan Stock Opname...");
-    try {
-      await downloadResultPdf();
       toast.success("Unduhan sukses!", { id: toastId });
     } catch (e) {
       toast.error("Gagal mengunduh berkas PDF.", { id: toastId });
@@ -517,16 +646,6 @@ export default function StockOpnameDetailPage() {
 
         {/* Action button bar */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {!isDraft && (
-            <button
-              onClick={handleExportPdf}
-              className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm"
-            >
-              <FileText className="h-4.5 w-4.5 mr-2 text-slate-500" />
-              Unduh Laporan Hasil
-            </button>
-          )}
-
           <button
             onClick={handlePrintPhysicalCountSheet}
             className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm"
@@ -549,6 +668,22 @@ export default function StockOpnameDetailPage() {
               )}
 
               <button
+                onClick={handleRefreshStock}
+                disabled={
+                  isSaving ||
+                  isSubmitting ||
+                  isRefreshingStock ||
+                  hasInvalidExpression
+                }
+                className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw
+                  className={`h-4.5 w-4.5 mr-2 text-slate-500 ${isRefreshingStock ? "animate-spin" : ""}`}
+                />
+                {isRefreshingStock ? "Memperbarui..." : "Perbarui Stok"}
+              </button>
+
+              <button
                 onClick={handleSaveDraft}
                 disabled={isSaving || isSubmitting || hasInvalidExpression}
                 className="flex items-center justify-center bg-white border border-blue-200 text-blue-600 hover:bg-blue-50/50 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -559,7 +694,17 @@ export default function StockOpnameDetailPage() {
 
               <button
                 onClick={handleSubmitOpname}
-                disabled={isSaving || isSubmitting || hasInvalidExpression}
+                disabled={
+                  isSaving ||
+                  isSubmitting ||
+                  hasInvalidExpression ||
+                  movementSummary.awaitingConfirmation > 0
+                }
+                title={
+                  movementSummary.awaitingConfirmation > 0
+                    ? `${movementSummary.awaitingConfirmation} tumpukan isi otomatis belum dikonfirmasi`
+                    : undefined
+                }
                 className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-emerald-500/10 transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="h-4.5 w-4.5 mr-2" />
@@ -593,6 +738,36 @@ export default function StockOpnameDetailPage() {
         </div>
       )}
 
+      {detailData.previousStockOpname && (
+        <div className="bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4 flex items-start gap-3.5 shadow-xs">
+          <History className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+          <div className="text-xs text-blue-900 dark:text-blue-300 leading-relaxed space-y-1">
+            <div>
+              Dibandingkan dengan opname terakhir{" "}
+              <span className="font-bold font-mono">
+                {detailData.previousStockOpname.opnameNumber}
+              </span>
+              :{" "}
+              <span className="font-bold text-red-700 dark:text-red-400">
+                {movementSummary.changed} tumpukan berubah
+              </span>{" "}
+              (ditampilkan paling atas, perlu dihitung ulang) dan{" "}
+              <span className="font-bold">
+                {movementSummary.unchanged} tumpukan tidak bergerak
+              </span>{" "}
+              (hitungan & catatan diisi otomatis dari opname terakhir).
+            </div>
+            {isDraft && movementSummary.awaitingConfirmation > 0 && (
+              <div className="font-bold text-amber-700 dark:text-amber-400">
+                {movementSummary.awaitingConfirmation} tumpukan isi otomatis
+                perlu dikonfirmasi &quot;Masih sama&quot; atau diperbarui
+                sebelum Stock Opname bisa diselesaikan.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Locations list card, grouped by area (GBB 01, GBB 02, GKP, ...) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-100 dark:border-slate-800/80">
@@ -616,6 +791,12 @@ export default function StockOpnameDetailPage() {
             const countedCount = locations.filter(
               (loc) => locationPhysicalQty(loc) !== null,
             ).length;
+            const changedCount = locations.filter(
+              (loc) => loc.movementStatus === "CHANGED",
+            ).length;
+            const awaitingCount = isDraft
+              ? locations.filter((loc) => !isLocationConfirmed(loc)).length
+              : 0;
 
             return (
               <div key={area}>
@@ -637,6 +818,18 @@ export default function StockOpnameDetailPage() {
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {area}
                   </span>
+                  {changedCount > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-150 dark:border-red-900/30">
+                      <RefreshCw className="h-3 w-3" />
+                      {changedCount} berubah
+                    </span>
+                  )}
+                  {awaitingCount > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
+                      <AlertTriangle className="h-3 w-3" />
+                      {awaitingCount} perlu konfirmasi
+                    </span>
+                  )}
                   <span className="ml-auto text-xs font-semibold text-slate-400">
                     {countedCount}/{locations.length} tumpukan dihitung
                   </span>
@@ -674,12 +867,66 @@ export default function StockOpnameDetailPage() {
                               : null;
                           const isCalcOpen = !!expandedCalculators[loc.key];
                           const isMixed = loc.entries.length > 1;
+                          const isChanged = loc.movementStatus === "CHANGED";
+                          const isEdited =
+                            loc.requiresConfirmation &&
+                            isDraft &&
+                            isLocationEdited(loc.key);
+                          const isConfirmed = isDraft
+                            ? isLocationConfirmed(loc)
+                            : loc.confirmed;
+                          const rowTint = isChanged
+                            ? "bg-red-50/40 dark:bg-red-950/10"
+                            : loc.requiresConfirmation && !isConfirmed
+                              ? "bg-amber-50/40 dark:bg-amber-950/10"
+                              : "";
 
                           return (
                             <React.Fragment key={loc.key}>
-                              <tr className="align-top">
-                                <td className="px-6 py-3.5 font-bold text-slate-800 dark:text-slate-200">
+                              <tr className={`align-top ${rowTint}`}>
+                                <td
+                                  className={`px-6 py-3.5 font-bold text-slate-800 dark:text-slate-200 ${
+                                    isChanged
+                                      ? "border-l-4 border-red-500"
+                                      : loc.requiresConfirmation && !isConfirmed
+                                        ? "border-l-4 border-amber-400"
+                                        : ""
+                                  }`}
+                                >
                                   {loc.locationName}
+                                  <div className="mt-1.5 flex flex-wrap gap-1">
+                                    {isChanged && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400">
+                                        <RefreshCw className="h-3 w-3" />
+                                        Berubah — hitung ulang
+                                      </span>
+                                    )}
+                                    {loc.movementStatus === "UNCHANGED" && (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                        Tidak bergerak
+                                      </span>
+                                    )}
+                                    {loc.requiresConfirmation &&
+                                      (isConfirmed ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400">
+                                          <CheckCircle className="h-3 w-3" />
+                                          {isEdited ? "Diperbarui" : "Terkonfirmasi"}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
+                                          <AlertTriangle className="h-3 w-3" />
+                                          Perlu konfirmasi
+                                        </span>
+                                      ))}
+                                  </div>
+                                  {isChanged &&
+                                    loc.movementReasons.length > 0 && (
+                                      <ul className="mt-1.5 space-y-0.5 text-[10px] font-medium text-red-700/90 dark:text-red-400/90 list-disc pl-3.5">
+                                        {loc.movementReasons.map((r) => (
+                                          <li key={r}>{r}</li>
+                                        ))}
+                                      </ul>
+                                    )}
                                 </td>
                                 <td className="px-6 py-3.5 space-y-1.5">
                                   {loc.entries.map((e) => (
@@ -737,8 +984,43 @@ export default function StockOpnameDetailPage() {
                                   )}
                                 </td>
                               </tr>
-                              <tr>
+                              <tr className={rowTint}>
                                 <td colSpan={6} className="px-6 pb-3.5">
+                                  {loc.requiresConfirmation && (
+                                    <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-150 dark:border-amber-900/30 bg-amber-50/60 dark:bg-amber-950/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                                      <History className="h-3.5 w-3.5 shrink-0" />
+                                      <span>
+                                        Hitungan & catatan diisi otomatis dari
+                                        opname terakhir karena tumpukan tidak
+                                        bergerak.
+                                      </span>
+                                      {isDraft ? (
+                                        <label className="ml-auto inline-flex items-center gap-1.5 font-bold cursor-pointer select-none">
+                                          <input
+                                            type="checkbox"
+                                            className="h-4 w-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed"
+                                            checked={isConfirmed}
+                                            disabled={isEdited}
+                                            onChange={(e) =>
+                                              setConfirmations((prev) => ({
+                                                ...prev,
+                                                [loc.key]: e.target.checked,
+                                              }))
+                                            }
+                                          />
+                                          {isEdited
+                                            ? "Diperbarui petugas"
+                                            : "Masih sama"}
+                                        </label>
+                                      ) : (
+                                        <span className="ml-auto font-bold">
+                                          {isConfirmed
+                                            ? `Dikonfirmasi${loc.confirmedBy ? ` oleh ${loc.confirmedBy}` : ""}`
+                                            : "Belum dikonfirmasi"}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                   <div className="rounded-lg border border-slate-150 dark:border-slate-800">
                                     <button
                                       type="button"

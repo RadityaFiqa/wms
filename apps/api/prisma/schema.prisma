@@ -27,7 +27,8 @@ model User {
   passwordResetTokens       PasswordResetToken[]
   sessions                  Session[]
   stockOpnames              StockOpname[]
-  role                      Role                 @relation(fields: [roleId], references: [id])
+  confirmedStockOpnameStacks StockOpnameStack[]  @relation("StockOpnameStackConfirmedBy")
+  role                     Role                 @relation(fields: [roleId], references: [id])
   warehouse                 Warehouse?           @relation(fields: [warehouseId], references: [id])
   warehouseAccesses         WarehouseAccess[]
   manualDocuments           ManualDocument[]
@@ -476,10 +477,14 @@ model StockOpname {
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
   completionDate DateTime?         @db.Timestamptz(3)
   createdById    Int
+  /// Last COMPLETED opname of the warehouse when this one was created; its stacks are the comparison baseline
+  previousStockOpnameId Int?
   attachments    FileAttachment[]
   createdBy      User              @relation(fields: [createdById], references: [id])
   warehouse      Warehouse         @relation(fields: [warehouseId], references: [id])
   items          StockOpnameItem[]
+  previousStockOpname StockOpname?  @relation("StockOpnamePrevious", fields: [previousStockOpnameId], references: [id], onDelete: SetNull)
+  nextStockOpnames    StockOpname[] @relation("StockOpnamePrevious")
 
   @@index([warehouseId])
   @@index([uuid])
@@ -521,8 +526,17 @@ model StockOpnameStack {
   calculationRows   Json?
   /// Free-text note for the tumpukan, kept on its first SKU
   note              String?
+  /// Tumpukan compared with the previous COMPLETED opname; NULL when there was nothing to compare with
+  movementStatus    StockOpnameStackMovement?
+  /// Reasons the tumpukan is CHANGED (string[])
+  movementReasons   Json?
+  /// Count/note were prefilled from the previous opname and must be confirmed (or edited) before submit
+  requiresConfirmation Boolean      @default(false)
+  confirmedAt       DateTime?       @db.Timestamptz(3)
+  confirmedById     Int?
   location          Location        @relation(fields: [locationId], references: [id])
   item              StockOpnameItem @relation(fields: [stockOpnameItemId], references: [id], onDelete: Cascade)
+  confirmedBy       User?           @relation("StockOpnameStackConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
 
   @@index([stockOpnameItemId])
   @@index([locationId])
@@ -900,6 +914,11 @@ enum OdooSyncStatus {
 enum StockOpnameStatus {
   DRAFT
   COMPLETED
+}
+
+enum StockOpnameStackMovement {
+  CHANGED
+  UNCHANGED
 }
 
 enum KartuTumpukanSource {
