@@ -3,6 +3,8 @@ FROM node:20-alpine AS base
 # Install necessary tools
 RUN apk add --no-cache libc6-compat
 RUN corepack enable pnpm
+# Download pnpm once here so every stage reuses it instead of hitting the npm registry again
+RUN corepack prepare pnpm@9.1.0 --activate
 
 # Dependencies
 FROM base AS deps
