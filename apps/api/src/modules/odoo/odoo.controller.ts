@@ -301,6 +301,27 @@ export class OdooController {
     return this.nonCommoditySyncService.resetOffset(warehouseId);
   }
 
+  @Post('sync/non-commodity/documents/:uuid')
+  @CheckPolicies((ability) => ability.can('update', 'DocumentPurchaseOrder'))
+  @AuditLogAction('ODOO_NON_COMMODITY_FORCE_SYNC')
+  async forceSyncNonCommodityDocument(
+    @Param('uuid') uuid: string,
+    @Req() req: any,
+  ) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    const triggeredBy = req.user?.email || 'System';
+    return this.nonCommoditySyncService.forceSyncDocument(
+      warehouseId,
+      uuid,
+      triggeredBy,
+    );
+  }
+
   private sanitize(account: any) {
     if (!account) return null;
     const { encryptedPassword, ...sanitized } = account;

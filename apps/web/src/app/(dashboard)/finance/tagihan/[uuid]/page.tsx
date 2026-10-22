@@ -333,7 +333,7 @@ export default function TagihanDetailPage() {
           href="/finance/tagihan"
           className="inline-flex items-center px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold"
         >
-          Kembali ke Daftar Tagihan
+          Kembali ke Billing Management
         </Link>
       </div>
     );
@@ -358,7 +358,7 @@ export default function TagihanDetailPage() {
           className="inline-flex items-center text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition gap-1.5"
         >
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke Daftar Tagihan
+          Kembali ke Billing Management
         </Link>
 
         <div className="flex items-center gap-2">

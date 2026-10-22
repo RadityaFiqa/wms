@@ -755,4 +755,42 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
       ]);
     });
   });
+
+  describe('allocateGateProduct - gate direction picks the move line side', () => {
+    const internalDoc = {
+      documentNumber: 'INT/0001',
+      pickingTypeCode: 'internal',
+      state: 'done',
+      moveLines: [
+        {
+          documentReferenceItemId: 1,
+          inventoryId: 101,
+          sourceLocationId: 21,
+          destinationLocationId: 22,
+          pickingName: 'PICK/0001',
+          quantity: 10,
+        },
+      ],
+    };
+
+    it('uses the source location for a gate OUT', () => {
+      const result = (service as any).allocateGateProduct(
+        { inventoryId: 101, quantity: 10, locationId: 30 },
+        internalDoc,
+        new Set([21, 22]),
+        'OUT',
+      );
+      expect(result.map((r: any) => r.locationId)).toEqual([21]);
+    });
+
+    it('uses the destination location for a gate IN', () => {
+      const result = (service as any).allocateGateProduct(
+        { inventoryId: 101, quantity: 10, locationId: 30 },
+        internalDoc,
+        new Set([21, 22]),
+        'IN',
+      );
+      expect(result.map((r: any) => r.locationId)).toEqual([22]);
+    });
+  });
 });

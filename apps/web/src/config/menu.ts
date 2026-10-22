@@ -209,18 +209,18 @@ export const menuGroups: MenuGroup[] = [
     description: "Kelola dokumen penagihan dan Purchase Order Non Commodity.",
     items: [
       {
-        name: "Tagihan",
+        name: "Billing Management",
         description: "Kelola data tagihan jasa pergudangan, dokumen ERP & non-commodity.",
         href: "/finance/tagihan",
         icon: ReceiptText,
         color: "text-emerald-600 bg-emerald-50 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30",
-        btnText: "Buka Tagihan",
+        btnText: "Buka Billing",
         permissionSubject: "Tagihan",
         permissionAction: "read",
         priority: true,
       },
       {
-        name: "Non Commodity Document",
+        name: "PO Document",
         description: "Daftar dan detail Purchase Order Non Commodity dari Odoo ERP.",
         href: "/finance/non-commodity-documents",
         icon: Receipt,
@@ -231,7 +231,7 @@ export const menuGroups: MenuGroup[] = [
         priority: true,
       },
       {
-        name: "Buruh",
+        name: "Labor Management",
         description: "Kelola data buruh gudang beserta foto KTP untuk tanda terima upah.",
         href: "/finance/buruh",
         icon: HardHat,

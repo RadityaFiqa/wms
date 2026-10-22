@@ -1508,12 +1508,21 @@ export declare const BuruhQuerySchema: z.ZodObject<{
     isMandor?: "true" | "false" | undefined;
 }>;
 export type BuruhQueryInput = z.infer<typeof BuruhQuerySchema>;
+export declare const MoveBuruhSchema: z.ZodObject<{
+    direction: z.ZodEnum<["up", "down"]>;
+}, "strip", z.ZodTypeAny, {
+    direction: "up" | "down";
+}, {
+    direction: "up" | "down";
+}>;
+export type MoveBuruhInput = z.infer<typeof MoveBuruhSchema>;
 export interface BuruhResponse {
     uuid: string;
     name: string;
     nik: string | null;
     isActive: boolean;
     isMandor: boolean;
+    sortOrder: number;
     ktpPhotoUrl: string | null;
     createdAt: string;
     updatedAt: string;

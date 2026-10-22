@@ -26,7 +26,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TagihanQuerySchema = exports.UpdateTagihanSchema = exports.CreateTagihanSchema = exports.TagihanSummaryItemInputSchema = exports.TagihanManualDocumentInputSchema = exports.UpdateMasterTagihanStatusSchema = exports.CreateMasterTagihanStatusSchema = exports.MasterTagihanStatusSchema = exports.TagihanTypeEnum = exports.BulkRejectSchema = exports.BulkApproveSchema = exports.GenerateDocumentSchema = exports.UpdatePlaceholdersSchema = exports.PlaceholderItemSchema = exports.PlaceholderColumnSchema = exports.UpdateAssemblySchema = exports.AssemblyItemSchema = exports.UpdateDocumentTemplateSchema = exports.CreateDocumentTemplateSchema = exports.UpdateKartuTumpukanSourceSchema = exports.StackCardQuerySchema = exports.UpdateStackCardSchema = exports.ImportStackCardSchema = exports.StackCardRowSchema = exports.SignDocumentSchema = exports.CreateManualDocumentSchema = exports.UpdateSignatureTemplateSchema = exports.CreateSignatureTemplateSchema = exports.UpdateDocumentCategorySchema = exports.CreateDocumentCategorySchema = exports.UpdateWarehouseSchema = exports.CreateWarehouseSchema = exports.PendingPickupQuerySchema = exports.ErpDocumentReferenceQuerySchema = exports.AttachDocumentReferenceSchema = exports.CreateGateVerificationSchema = exports.CreateGateOperationSchema = exports.GateOperationProductSchema = exports.VerificationStatusEnum = exports.CardTypeEnum = exports.PurchaseOrderQuerySchema = exports.UpdateOdooAccountSchema = exports.CreateOdooAccountSchema = exports.CreateRoleSchema = exports.UpdateUserSchema = exports.CreateUserSchema = exports.ChangePasswordSchema = exports.ResetPasswordSchema = exports.ForgotPasswordSchema = exports.LoginSchema = void 0;
-exports.BuruhQuerySchema = exports.UpdateBuruhSchema = exports.CreateBuruhSchema = exports.TagihanReportStageEnum = exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = void 0;
+exports.MoveBuruhSchema = exports.BuruhQuerySchema = exports.UpdateBuruhSchema = exports.CreateBuruhSchema = exports.TagihanReportStageEnum = exports.TagihanReportJobStatusEnum = exports.GenerateTagihanReportInputSchema = exports.TagihanReportTypeEnum = void 0;
 exports.validateTagihanTypeRules = validateTagihanTypeRules;
 exports.getSecondaryQty = getSecondaryQty;
 exports.getSecondaryUnit = getSecondaryUnit;
@@ -711,4 +711,8 @@ exports.BuruhQuerySchema = zod_1.z.object({
     limit: zod_1.z.string().or(zod_1.z.number()).optional(),
     isActive: zod_1.z.enum(["true", "false"]).optional(),
     isMandor: zod_1.z.enum(["true", "false"]).optional(),
+});
+// Moves a buruh one position in the warehouse order used by tanda terima
+exports.MoveBuruhSchema = zod_1.z.object({
+    direction: zod_1.z.enum(["up", "down"]),
 });

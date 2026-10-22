@@ -274,7 +274,7 @@ export default function CreateTagihanPage() {
           className="inline-flex items-center text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition gap-1.5"
         >
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke Daftar Tagihan
+          Kembali ke Billing Management
         </Link>
       </div>
 

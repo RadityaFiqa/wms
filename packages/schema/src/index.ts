@@ -862,12 +862,19 @@ export const BuruhQuerySchema = z.object({
 });
 export type BuruhQueryInput = z.infer<typeof BuruhQuerySchema>;
 
+// Moves a buruh one position in the warehouse order used by tanda terima
+export const MoveBuruhSchema = z.object({
+  direction: z.enum(["up", "down"]),
+});
+export type MoveBuruhInput = z.infer<typeof MoveBuruhSchema>;
+
 export interface BuruhResponse {
   uuid: string;
   name: string;
   nik: string | null;
   isActive: boolean;
   isMandor: boolean;
+  sortOrder: number;
   ktpPhotoUrl: string | null;
   createdAt: string;
   updatedAt: string;

@@ -29,6 +29,8 @@ import {
   type UpdateBuruhInput,
   BuruhQuerySchema,
   type BuruhQueryInput,
+  MoveBuruhSchema,
+  type MoveBuruhInput,
 } from '@bulog-wms/schema';
 
 @Controller('buruh')
@@ -80,6 +82,17 @@ export class BuruhController {
   ) {
     const warehouseId = this.warehouseContext.getWarehouseId()!;
     return this.buruhService.update(warehouseId, uuid, body, file);
+  }
+
+  @Put(':uuid/order')
+  @CheckPolicies((ability) => ability.can('update', 'Buruh'))
+  @AuditLogAction('BURUH_REORDER')
+  async move(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(MoveBuruhSchema)) body: MoveBuruhInput,
+  ) {
+    const warehouseId = this.warehouseContext.getWarehouseId()!;
+    return this.buruhService.move(warehouseId, uuid, body);
   }
 
   @Delete(':uuid')

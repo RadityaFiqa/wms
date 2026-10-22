@@ -156,7 +156,7 @@ export default function NonCommodityDocumentsPage() {
       <div>
         <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center">
           <FileSpreadsheet className="h-8 w-8 text-purple-600 mr-3" />
-          Dokumen Non Commodity (Purchase Order)
+          PO Document
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
           Manajemen penagihan & dokumen PO Non Commodity Odoo untuk gudang:{" "}

@@ -361,7 +361,7 @@ export class InventoryService {
     const allProductIds = products.map((p: any) => p.id);
     const existingInv = await tx.inventory.findMany({
       where: { id: { in: allProductIds } },
-      select: { id: true, sku: true, name: true, uom: true, warehouseId: true },
+      select: { id: true, sku: true, name: true, uom: true },
     });
     const existingMap = new Map<number, (typeof existingInv)[number]>(
       existingInv.map((p) => [p.id, p]),
@@ -388,20 +388,17 @@ export class InventoryService {
           sku,
           name: productName,
           uom,
-          warehouseId,
         });
       } else if (
         existing.sku !== sku ||
         existing.name !== productName ||
-        existing.uom !== uom ||
-        existing.warehouseId !== warehouseId
+        existing.uom !== uom
       ) {
         productsToUpdate.push({
           id: odooProdId,
           sku,
           name: productName,
           uom,
-          warehouseId,
         });
       }
     }
@@ -420,7 +417,6 @@ export class InventoryService {
           sku: item.sku,
           name: item.name,
           uom: item.uom,
-          warehouseId: item.warehouseId,
         },
       });
     }
@@ -454,14 +450,12 @@ export class InventoryService {
           sku,
           name: productName,
           uom,
-          warehouseId,
         },
         create: {
           id: odooProdId,
           sku,
           name: productName,
           uom,
-          warehouseId,
         },
       });
       finalExistingInvIds.add(odooProdId);
@@ -676,7 +670,6 @@ export class InventoryService {
     const skip = (page - 1) * limit;
 
     const where: any = {
-      warehouseId,
       quants: {
         some: {
           location: {

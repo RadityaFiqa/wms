@@ -57,11 +57,24 @@ export function useNonCommodityOrderDetail(uuid: string | null) {
     }
   }, [swrKey]);
 
+  const forceSync = useCallback(async () => {
+    if (!uuid) return null;
+    const res = await api.post(API_ROUTES.odoo.forceSyncNonCommodityDocument(uuid));
+    refresh();
+    mutate(
+      (key) =>
+        typeof key === "string" &&
+        key.startsWith(API_ROUTES.finance.purchaseOrders.list),
+    );
+    return res.data as { message: string; state: string | null };
+  }, [uuid, refresh]);
+
   return {
     orderDetail: data,
     isLoading,
     error,
     refresh,
+    forceSync,
   };
 }
 

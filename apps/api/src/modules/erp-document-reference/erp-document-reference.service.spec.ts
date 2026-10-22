@@ -582,6 +582,110 @@ describe('ErpDocumentReferenceService - getPendingPickups', () => {
     });
   });
 
+  describe('upsertDocumentRecord - internal transfer delivered via WMS picking', () => {
+    it('uses picking_ids lines (stack as source) for an internal document, e.g. INT/01661', async () => {
+      const product = { id: 19013, display_name: 'Beras Medium 5 KG' };
+      const loc = (id: number, display_name: string) => ({ id, display_name });
+      const lot = { id: 1425649, display_name: 'LT12894456' };
+      const tx = {
+        documentReference: {
+          upsert: jest
+            .fn()
+            .mockImplementation((args) =>
+              Promise.resolve({ id: args.where.id, ...args.create }),
+            ),
+        },
+        documentReferenceItem: { upsert: jest.fn(), deleteMany: jest.fn() },
+        documentReferenceMoveLine: {
+          deleteMany: jest.fn(),
+          createMany: jest.fn(),
+        },
+      };
+
+      await service.upsertDocumentRecord(
+        tx,
+        {
+          id: 8484290,
+          name: 'INT/01661/10/2026/16001.022',
+          state: 'done',
+          picking_type_code: 'internal',
+          location_id: loc(12433, '16001.022/Input'),
+          location_dest_id: loc(706658, 'CON02041/Stock/PELANGGAN'),
+          move_ids_without_package: [
+            {
+              id: 11517621,
+              product_id: product,
+              quantity: 600,
+              product_qty: 600,
+              move_line_ids: [
+                {
+                  id: 19892884,
+                  product_id: product,
+                  location_id: loc(12433, '16001.022/Input'),
+                  location_dest_id: loc(706658, 'CON02041/Stock/PELANGGAN'),
+                  lot_id: lot,
+                  quantity: 600,
+                },
+              ],
+            },
+          ],
+          picking_ids: [
+            {
+              id: 571062,
+              name: 'PICK/2026/10/571095',
+              state: 'done',
+              move_ids: [
+                {
+                  id: 11517695,
+                  state: 'done',
+                  product_id: product,
+                  move_line_ids: [
+                    {
+                      id: 19892876,
+                      picking_id: false,
+                      product_id: product,
+                      location_id: loc(542258, 'GBB 02/B01.1.1'),
+                      location_dest_id: loc(12433, '16001.022/Input'),
+                      lot_id: lot,
+                      quantity: 8,
+                    },
+                    {
+                      id: 19892877,
+                      picking_id: false,
+                      product_id: product,
+                      location_id: loc(542259, 'GBB 02/B02.1.1'),
+                      location_dest_id: loc(12433, '16001.022/Input'),
+                      lot_id: lot,
+                      quantity: 592,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          putaway_ids: [],
+        },
+        1,
+      );
+
+      const created =
+        tx.documentReferenceMoveLine.createMany.mock.calls[0][0].data;
+      expect(
+        created.map((l: any) => [
+          l.sourceLocationId,
+          l.quantity,
+          l.pickingName,
+        ]),
+      ).toEqual([
+        [542258, 8, 'PICK/2026/10/571095'],
+        [542259, 592, 'PICK/2026/10/571095'],
+      ]);
+      const header = tx.documentReference.upsert.mock.calls[0][0].create;
+      expect(header.sourceLocationName).toBe('GBB 02/B01.1.1, GBB 02/B02.1.1');
+      expect(header.destinationLocationName).toBe('CON02041/Stock/PELANGGAN');
+    });
+  });
+
   describe('readStockPickingWithFallback', () => {
     it('retries with the base specification when Odoo rejects a WMS field', async () => {
       const read = jest

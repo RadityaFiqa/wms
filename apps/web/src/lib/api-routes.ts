@@ -81,6 +81,8 @@ export const API_ROUTES = {
     sync: "/odoo-accounts/sync",
     syncNonCommodity: "/odoo-accounts/sync/non-commodity",
     resetNonCommodityOffset: "/odoo-accounts/sync/non-commodity/reset",
+    forceSyncNonCommodityDocument: (uuid: string) =>
+      `/odoo-accounts/sync/non-commodity/documents/${uuid}`,
   },
   finance: {
     purchaseOrders: {
@@ -120,6 +122,7 @@ export const API_ROUTES = {
       create: "/buruh",
       detail: (uuid: string) => `/buruh/${uuid}`,
       update: (uuid: string) => `/buruh/${uuid}`,
+      move: (uuid: string) => `/buruh/${uuid}/order`,
       delete: (uuid: string) => `/buruh/${uuid}`,
     },
   },

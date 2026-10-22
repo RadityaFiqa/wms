@@ -156,7 +156,6 @@ model Warehouse {
   stackCardUploadLogs      StackCardUploadLog[]
   documentReferences  DocumentReference[]
   gateOperations      GateOperation[]
-  inventories         Inventory[]
   locations           Location[]
   odooAccounts        OdooAccount[]
   odooSyncLogs        OdooSyncLog[]
@@ -250,19 +249,16 @@ model Inventory {
   sku                      String
   name                     String
   uom                      String?
-  warehouseId              Int                       @default(1)
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
   dailyStockSnapshots      DailyStockSnapshot[]
   dailyLocationStockSnapshots DailyLocationStockSnapshot[]
   gateOperationProducts    GateOperationProduct[]
-  warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   quants                   Quant[]
   stockOpnameItems         StockOpnameItem[]
 
   @@index([uuid])
   @@index([sku])
-  @@index([warehouseId])
 }
 
 
@@ -1133,6 +1129,8 @@ model Buruh {
   isActive     Boolean   @default(true)
   // At most one active mandor per warehouse; enforced in BuruhService
   isMandor     Boolean   @default(false)
+  // Manual order on the Buruh Management page; tanda terima rows follow it
+  sortOrder    Int       @default(0)
   createdById  Int?
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
@@ -1146,5 +1144,6 @@ model Buruh {
   @@index([name])
   @@index([isActive])
   @@index([warehouseId, isMandor])
+  @@index([warehouseId, sortOrder])
   @@map("Buruh")
 }

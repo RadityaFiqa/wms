@@ -121,6 +121,27 @@ describe('TagihanDocumentService.generateTandaTerima', () => {
     expect(job.tagihanAttachment).toMatchObject({ tagihanId: 7, fileType: 'TANDA_TERIMA' });
   });
 
+  it('lists rows in the Buruh Management order, not the submitted order', async () => {
+    const { service, prisma, documentGeneration } = setup({
+      buruhs: [
+        { uuid: uuid(2), name: 'JUHRANI', isMandor: false },
+        { uuid: uuid(1), name: 'AGUS HERMAN', isMandor: true },
+      ],
+    });
+    await service.generateTandaTerima(1, TAGIHAN.uuid, ttBody([1134100, 1133900]), 10, 'UTC');
+
+    expect(prisma.buruh.findMany.mock.calls[0][0].orderBy).toEqual([
+      { sortOrder: 'asc' },
+      { name: 'asc' },
+      { id: 'asc' },
+    ]);
+    const job = documentGeneration.enqueueGeneration.mock.calls[0][0];
+    expect(job.placeholder.buruh.map((r: any) => [r.no, r.nama, r.penyaluran])).toEqual([
+      [1, 'JUHRANI', '1.133.900'],
+      [2, 'AGUS HERMAN', '1.134.100'],
+    ]);
+  });
+
   it('rejects allocations that do not sum to the Tagihan total', async () => {
     const { service, documentGeneration } = setup();
     await expect(

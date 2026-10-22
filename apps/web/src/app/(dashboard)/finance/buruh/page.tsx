@@ -13,6 +13,8 @@ import {
   IdCard,
   X,
   Crown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import type { BuruhResponse } from "@bulog-wms/schema";
 import { CreateBuruhSchema } from "@bulog-wms/schema";
@@ -22,6 +24,7 @@ import {
   useBuruhs,
   createBuruh,
   updateBuruh,
+  moveBuruh,
   deleteBuruh,
   type BuruhFormValues,
 } from "@/hooks/useBuruh";
@@ -47,6 +50,7 @@ export default function BuruhManagementPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BuruhResponse | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [movingUuid, setMovingUuid] = useState<string | null>(null);
 
   const { buruhsData, isLoading } = useBuruhs({
     search: debouncedSearch || undefined,
@@ -77,8 +81,22 @@ export default function BuruhManagementPage() {
     }
   };
 
+  const handleMove = async (buruh: BuruhResponse, direction: "up" | "down") => {
+    setMovingUuid(buruh.uuid);
+    try {
+      await moveBuruh(buruh.uuid, direction);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Gagal mengubah urutan buruh.");
+    } finally {
+      setMovingUuid(null);
+    }
+  };
+
   const rows = buruhsData?.data ?? [];
   const pagination = buruhsData?.pagination;
+  // Moving swaps neighbours in the full warehouse list, so it is only offered
+  // when the table shows that full list
+  const canReorder = canUpdate && !debouncedSearch && !isActive;
 
   return (
     <div className="space-y-6">
@@ -86,10 +104,11 @@ export default function BuruhManagementPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-            Manajemen Buruh
+            Labor Management
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Data buruh gudang dan foto KTP untuk pembuatan tanda terima upah.
+            Data buruh gudang dan foto KTP untuk pembuatan tanda terima upah. Urutan di tabel ini
+            dipakai pada tanda terima.
           </p>
         </div>
         {canCreate && (
@@ -142,12 +161,19 @@ export default function BuruhManagementPage() {
         </div>
       </div>
 
+      {canUpdate && !canReorder && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 -mt-3">
+          Kosongkan pencarian dan filter status untuk mengubah urutan buruh.
+        </p>
+      )}
+
       {/* Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-4">Urutan</th>
                 <th className="px-6 py-4">Foto KTP</th>
                 <th className="px-6 py-4">Nama & NIK</th>
                 <th className="px-6 py-4">Status</th>
@@ -158,6 +184,9 @@ export default function BuruhManagementPage() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-4">
+                      <div className="h-4 w-8 bg-slate-200 dark:bg-slate-800 rounded" />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="h-10 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
                     </td>
@@ -175,13 +204,40 @@ export default function BuruhManagementPage() {
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium">
                     Belum ada data buruh.
                   </td>
                 </tr>
               ) : (
-                rows.map((b) => (
+                rows.map((b, i) => {
+                  const position = (page - 1) * limit + i + 1;
+                  return (
                   <tr key={b.uuid} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span className="w-6 font-bold text-slate-700 dark:text-slate-200">{position}</span>
+                        {canReorder && (
+                          <>
+                            <button
+                              onClick={() => handleMove(b, "up")}
+                              disabled={movingUuid !== null || position <= 1}
+                              title="Naikkan urutan"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleMove(b, "down")}
+                              disabled={movingUuid !== null || position >= (pagination?.total ?? 0)}
+                              title="Turunkan urutan"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition"
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       {b.ktpPhotoUrl ? (
                         <button
@@ -251,7 +307,8 @@ export default function BuruhManagementPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

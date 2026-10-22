@@ -469,6 +469,7 @@ export class ReportsService {
             opProd,
             docRef,
             dbLocationIds,
+            op.cardType,
           )) {
             activeLocationIds.add(alloc.locationId);
           }
@@ -614,6 +615,7 @@ export class ReportsService {
             opProd,
             docRef,
             dbLocationIds,
+            op.cardType,
           );
           allocations.forEach((alloc, index) => {
             rawTransactionsList.push({
@@ -1359,6 +1361,7 @@ export class ReportsService {
           opProd,
           docRef,
           dbLocationIds,
+          op.cardType,
         )) {
           activeLocationIds.add(alloc.locationId);
         }
@@ -1466,6 +1469,7 @@ export class ReportsService {
           opProd,
           docRef,
           dbLocationIds,
+          op.cardType,
         );
         allocations.forEach((alloc, index) => {
           rawTransactionsList.push({
@@ -1746,10 +1750,15 @@ export class ReportsService {
     match: { inventoryId: number; itemId?: number },
     qty: number,
     validLocationIds: Set<number>,
+    direction?: 'IN' | 'OUT',
   ): MoveLineAllocation[] {
     if (!doc || doc.state !== 'done' || !doc.moveLines?.length) return [];
 
-    const isIncoming = doc.pickingTypeCode === 'incoming';
+    // Goods coming in land on the destination stack, goods going out leave the source stack.
+    // Without an explicit direction (gate IN/OUT) it follows the document type.
+    const isIncoming = direction
+      ? direction === 'IN'
+      : doc.pickingTypeCode === 'incoming';
     const grouped = new Map<
       number,
       { locationId: number; qty: number; pickings: Set<string> }
@@ -1839,6 +1848,7 @@ export class ReportsService {
     },
     docRef: MoveLineDocument | null | undefined,
     validLocationIds: Set<number>,
+    direction?: 'IN' | 'OUT',
   ): {
     locationId: number;
     qty: number;
@@ -1849,6 +1859,7 @@ export class ReportsService {
       { inventoryId: opProd.inventoryId },
       opProd.quantity,
       validLocationIds,
+      direction,
     );
     if (allocations.length > 0) return allocations;
 

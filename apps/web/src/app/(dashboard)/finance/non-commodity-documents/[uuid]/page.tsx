@@ -22,6 +22,7 @@ import {
   FileText,
   BadgeAlert,
   Boxes,
+  RefreshCw,
 } from "lucide-react";
 
 export default function NonCommodityOrderDetailPage() {
@@ -32,7 +33,24 @@ export default function NonCommodityOrderDetailPage() {
   const [isRawJsonOpen, setIsRawJsonOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const { orderDetail, isLoading, error } = useNonCommodityOrderDetail(uuid);
+  const [isForceSyncing, setIsForceSyncing] = useState(false);
+
+  const { orderDetail, isLoading, error, forceSync } =
+    useNonCommodityOrderDetail(uuid);
+
+  const handleForceSync = async () => {
+    setIsForceSyncing(true);
+    try {
+      const res = await forceSync();
+      toast.success(res?.message || "Dokumen berhasil disinkronisasi ulang.");
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Gagal melakukan force sync dokumen.",
+      );
+    } finally {
+      setIsForceSyncing(false);
+    }
+  };
 
   const handleCopyJson = () => {
     if (!orderDetail?.rawJson) return;
@@ -169,6 +187,17 @@ export default function NonCommodityOrderDetailPage() {
         </div>
 
         <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={handleForceSync}
+            disabled={isForceSyncing}
+            className="inline-flex items-center px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-900/40 bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-950/40 text-xs font-bold text-purple-700 dark:text-purple-400 transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 mr-1.5 ${isForceSyncing ? "animate-spin" : ""}`}
+            />
+            {isForceSyncing ? "Menyinkronkan..." : "Force Sync"}
+          </button>
           {orderDetail.invoiceStatus && (
             <span className="inline-flex items-center px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300">
               <CreditCard className="h-3.5 w-3.5 mr-1.5 text-purple-600" />

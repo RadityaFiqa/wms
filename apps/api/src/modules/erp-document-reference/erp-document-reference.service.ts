@@ -1148,10 +1148,8 @@ export class ErpDocumentReferenceService {
     const rawItems = record.move_ids_without_package || [];
 
     // Real stack movements come from the WMS picking/putaway (move lines), not the picking header
-    const wmsLinesByProduct = this.collectWmsOperationLines(
-      record,
-      pickingTypeCode,
-    );
+    const { linesByProduct: wmsLinesByProduct, stackSide: wmsStackSide } =
+      this.collectWmsOperationLines(record, pickingTypeCode);
     const moveLinesData = rawItems.flatMap((item: any) =>
       (
         wmsLinesByProduct.get(this.getRelationalId(item.product_id) || 0) ||
@@ -1185,11 +1183,19 @@ export class ErpDocumentReferenceService {
       moveLinesData.map((l: any) => l.destinationLocationName),
     );
 
+    // The header shows the real stack on the side where the goods left / entered it
+    const stackSide =
+      wmsStackSide ||
+      (pickingTypeCode === 'outgoing'
+        ? 'source'
+        : pickingTypeCode === 'incoming'
+          ? 'destination'
+          : null);
     const sourceLocationName =
-      (pickingTypeCode === 'outgoing' && pickedSourceNames) ||
+      (stackSide === 'source' && pickedSourceNames) ||
       this.getRelationalName(record.location_id);
     const destinationLocationName =
-      (pickingTypeCode === 'incoming' && pickedDestinationNames) ||
+      (stackSide === 'destination' && pickedDestinationNames) ||
       this.getRelationalName(record.location_dest_id);
     const scheduledDate = record.scheduled_date
       ? new Date(record.scheduled_date)
@@ -1340,21 +1346,42 @@ export class ErpDocumentReferenceService {
   }
 
   /**
-   * Collects done move lines of the WMS operations linked to a stock.picking,
-   * grouped by product: picking_ids (vit.picking) for outgoing, putaway_ids for incoming.
-   * These hold the real stack the goods were picked from / put away to.
+   * Collects done move lines of the WMS operations linked to a stock.picking, grouped by
+   * product. These hold the real stack the goods were picked from / put away to:
+   * picking_ids (vit.picking) carry the stack as source, putaway_ids as destination.
+   * Outgoing uses picking_ids, incoming putaway_ids; other types (e.g. internal transfers
+   * delivered from stock) use whichever has done lines, picking first.
    */
   private collectWmsOperationLines(
     record: any,
     pickingTypeCode: string,
-  ): Map<number, any[]> {
-    const operations =
-      pickingTypeCode === 'outgoing'
-        ? record.picking_ids
-        : pickingTypeCode === 'incoming'
-          ? record.putaway_ids
-          : null;
+  ): {
+    linesByProduct: Map<number, any[]>;
+    stackSide: 'source' | 'destination' | null;
+  } {
+    const picked = this.groupWmsOperationLines(record.picking_ids);
+    const putAway = this.groupWmsOperationLines(record.putaway_ids);
 
+    if (pickingTypeCode === 'outgoing') {
+      return {
+        linesByProduct: picked,
+        stackSide: picked.size ? 'source' : null,
+      };
+    }
+    if (pickingTypeCode === 'incoming') {
+      return {
+        linesByProduct: putAway,
+        stackSide: putAway.size ? 'destination' : null,
+      };
+    }
+    if (picked.size) return { linesByProduct: picked, stackSide: 'source' };
+    if (putAway.size) {
+      return { linesByProduct: putAway, stackSide: 'destination' };
+    }
+    return { linesByProduct: new Map(), stackSide: null };
+  }
+
+  private groupWmsOperationLines(operations: any): Map<number, any[]> {
     const linesByProduct = new Map<number, any[]>();
     if (!Array.isArray(operations)) return linesByProduct;
 

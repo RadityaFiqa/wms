@@ -11,8 +11,14 @@ import type {
   UpdateBuruhInput,
   BuruhQueryInput,
   BuruhResponse,
+  MoveBuruhInput,
 } from '@bulog-wms/schema';
 import { Prisma, type Buruh } from '@prisma/client';
+import {
+  BURUH_ORDER_BY,
+  moveItem,
+  sortOrderChanges,
+} from '@/modules/buruh/buruh-order.utils';
 import * as crypto from 'crypto';
 import * as path from 'path';
 
@@ -53,7 +59,7 @@ export class BuruhService {
         where,
         skip,
         take: limit,
-        orderBy: [{ isMandor: 'desc' }, { name: 'asc' }],
+        orderBy: BURUH_ORDER_BY,
       }),
     ]);
 
@@ -90,6 +96,11 @@ export class BuruhService {
         if (isMandor) {
           await this.clearMandor(tx, warehouseId);
         }
+        // New buruh go to the bottom of the order
+        const { _max } = await tx.buruh.aggregate({
+          where: { warehouseId, deletedAt: null },
+          _max: { sortOrder: true },
+        });
         return tx.buruh.create({
           data: {
             warehouseId,
@@ -97,6 +108,7 @@ export class BuruhService {
             nik: body.nik || null,
             isActive,
             isMandor,
+            sortOrder: (_max.sortOrder ?? 0) + 1,
             ktpPhotoKey,
             createdById: userId,
           },
@@ -155,6 +167,44 @@ export class BuruhService {
     }
 
     return this.toResponse(buruh);
+  }
+
+  /**
+   * Moves a buruh one position up or down within the warehouse order. The whole
+   * list is renumbered so the order stays contiguous.
+   */
+  async move(warehouseId: number, uuid: string, body: MoveBuruhInput) {
+    const moved = await this.prisma.$transaction(
+      async (tx) => {
+        const ordered = await tx.buruh.findMany({
+          where: { warehouseId, deletedAt: null },
+          orderBy: BURUH_ORDER_BY,
+          select: { id: true, uuid: true, sortOrder: true },
+        });
+        const index = ordered.findIndex((b) => b.uuid === uuid);
+        if (index === -1) {
+          throw new NotFoundException('Data buruh tidak ditemukan.');
+        }
+        const reordered = moveItem(ordered, index, body.direction);
+        if (!reordered) {
+          throw new BadRequestException(
+            body.direction === 'up'
+              ? 'Buruh sudah berada di urutan teratas.'
+              : 'Buruh sudah berada di urutan terbawah.',
+          );
+        }
+        for (const change of sortOrderChanges(reordered)) {
+          await tx.buruh.update({
+            where: { id: change.id },
+            data: { sortOrder: change.sortOrder },
+          });
+        }
+        return tx.buruh.findUniqueOrThrow({ where: { id: ordered[index].id } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return this.toResponse(moved);
   }
 
   /**
@@ -257,6 +307,7 @@ export class BuruhService {
       nik: buruh.nik,
       isActive: buruh.isActive,
       isMandor: buruh.isMandor,
+      sortOrder: buruh.sortOrder,
       ktpPhotoUrl,
       createdAt: buruh.createdAt.toISOString(),
       updatedAt: buruh.updatedAt.toISOString(),

@@ -3,7 +3,7 @@ import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
 import { useAuthStore } from "@/store/auth";
-import type { BuruhQueryInput, BuruhResponse } from "@bulog-wms/schema";
+import type { BuruhQueryInput, BuruhResponse, MoveBuruhInput } from "@bulog-wms/schema";
 
 export interface BuruhListResponse {
   data: BuruhResponse[];
@@ -84,6 +84,12 @@ export async function updateBuruh(uuid: string, values: Partial<BuruhFormValues>
   const res = await api.put(API_ROUTES.finance.buruh.update(uuid), toFormData(values), {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  refreshBuruhList();
+  return res.data as BuruhResponse;
+}
+
+export async function moveBuruh(uuid: string, direction: MoveBuruhInput["direction"]) {
+  const res = await api.put(API_ROUTES.finance.buruh.move(uuid), { direction });
   refreshBuruhList();
   return res.data as BuruhResponse;
 }

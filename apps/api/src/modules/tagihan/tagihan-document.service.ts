@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '@/core/prisma/prisma.service';
 import { StorageService } from '@/modules/storage/storage.service';
 import { DocumentGenerationService } from '@/modules/document/document-generation.service';
+import { BURUH_ORDER_BY } from '@/modules/buruh/buruh-order.utils';
 import {
   TAGIHAN_EDITABLE_KEYS,
   TAGIHAN_PURPOSE_LABELS,
@@ -204,7 +205,8 @@ export class TagihanDocumentService {
       );
     }
 
-    // Recipients must be active, non-deleted buruh of this warehouse
+    // Recipients must be active, non-deleted buruh of this warehouse; rows
+    // follow the Buruh Management order regardless of the submitted order
     const buruhs = await this.prisma.buruh.findMany({
       where: {
         warehouseId,
@@ -212,6 +214,7 @@ export class TagihanDocumentService {
         isActive: true,
         uuid: { in: body.recipients.map((r) => r.buruhUuid) },
       },
+      orderBy: BURUH_ORDER_BY,
       select: { uuid: true, name: true },
     });
     const nameByUuid = new Map(buruhs.map((b) => [b.uuid, b.name]));
@@ -242,7 +245,12 @@ export class TagihanDocumentService {
       prefill.workers?.find((w) => w.isMandor)?.name ??
       nameByUuid.get(body.remainderBuruhUuid) ??
       '';
-    const rows = body.recipients.map((r, i) => ({
+    const amountByUuid = new Map(body.recipients.map((r) => [r.buruhUuid, r.amount]));
+    const orderedRecipients = buruhs.map((b) => ({
+      buruhUuid: b.uuid,
+      amount: amountByUuid.get(b.uuid) ?? 0,
+    }));
+    const rows = orderedRecipients.map((r, i) => ({
       no: i + 1,
       nama: nameByUuid.get(r.buruhUuid),
       penyaluran: formatNumberId(r.amount),
@@ -271,7 +279,7 @@ export class TagihanDocumentService {
         templateVersion: template.version,
         totalPayment,
         remainderBuruhUuid: body.remainderBuruhUuid,
-        recipients: body.recipients.map((r) => ({
+        recipients: orderedRecipients.map((r) => ({
           buruhUuid: r.buruhUuid,
           name: nameByUuid.get(r.buruhUuid),
           amount: r.amount,
@@ -575,7 +583,7 @@ export class TagihanDocumentService {
     const [workers, lastTandaTerima] = await Promise.all([
       this.prisma.buruh.findMany({
         where: { warehouseId: tagihan.warehouseId, deletedAt: null, isActive: true },
-        orderBy: [{ isMandor: 'desc' }, { name: 'asc' }],
+        orderBy: BURUH_ORDER_BY,
         select: { uuid: true, name: true, isMandor: true },
       }),
       this.prisma.documentGenerated.findFirst({

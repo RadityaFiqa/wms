@@ -221,7 +221,7 @@ export default function TagihanListPage() {
         <div>
           <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center">
             <ReceiptText className="h-8 w-8 text-emerald-600 mr-3" />
-            Manajemen Tagihan
+            Billing Management
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
             Kelola tagihan jasa pergudangan, dokumen ERP & Non-Commodity untuk gudang:{" "}

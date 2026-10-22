@@ -68,9 +68,7 @@ export class InventoryController {
         'Warehouse context (header x-warehouse-id) diperlukan.',
       );
     }
-    const where: any = {
-      warehouseId,
-    };
+    const where: any = {};
     if (search) {
       where.AND = [
         {
@@ -85,6 +83,7 @@ export class InventoryController {
     if (onlyAvailable === 'true') {
       where.quants = {
         some: {
+          location: { warehouseId },
           availableQuantity: {
             gt: 0,
           },
@@ -104,10 +103,7 @@ export class InventoryController {
       const selId = parseInt(selectedId, 10);
       if (!isNaN(selId) && !products.some((p) => p.id === selId)) {
         const selectedProduct = await this.prisma.inventory.findFirst({
-          where: {
-            id: selId,
-            warehouseId,
-          },
+          where: { id: selId },
         });
         if (selectedProduct) {
           products.unshift(selectedProduct);
@@ -118,10 +114,7 @@ export class InventoryController {
     if (selectedUuid) {
       if (!products.some((p) => p.uuid === selectedUuid)) {
         const selectedProduct = await this.prisma.inventory.findFirst({
-          where: {
-            uuid: selectedUuid,
-            warehouseId,
-          },
+          where: { uuid: selectedUuid },
         });
         if (selectedProduct) {
           products.unshift(selectedProduct);
