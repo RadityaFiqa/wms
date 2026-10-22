@@ -4,6 +4,15 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { WarehouseContextService } from '../warehouse-context/warehouse-context.service';
 
+// Models with a warehouseId column that are auto-scoped to the active warehouse
+const WAREHOUSE_SCOPED_MODELS = [
+  'OdooAccount',
+  'User',
+  'AuditLog',
+  'DocumentTemplate',
+  'DocumentGenerated',
+];
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -56,16 +65,7 @@ export class PrismaService
               currentArgs.where = currentArgs.where || {};
               if (model === 'Warehouse') {
                 currentArgs.where.id = warehouseId;
-              } else if (
-                [
-                  'Inventory',
-                  'OdooAccount',
-                  'User',
-                  'AuditLog',
-                  'DocumentTemplate',
-                  'DocumentGenerated',
-                ].includes(model)
-              ) {
+              } else if (WAREHOUSE_SCOPED_MODELS.includes(model)) {
                 currentArgs.where.warehouseId = warehouseId;
               }
               return (baseClient as any)[model][targetOp](currentArgs);
@@ -75,29 +75,11 @@ export class PrismaService
               currentArgs.where = currentArgs.where || {};
               if (model === 'Warehouse') {
                 currentArgs.where.id = warehouseId;
-              } else if (
-                [
-                  'Inventory',
-                  'OdooAccount',
-                  'User',
-                  'AuditLog',
-                  'DocumentTemplate',
-                  'DocumentGenerated',
-                ].includes(model)
-              ) {
+              } else if (WAREHOUSE_SCOPED_MODELS.includes(model)) {
                 currentArgs.where.warehouseId = warehouseId;
               }
             } else if (op === 'create') {
-              if (
-                [
-                  'Inventory',
-                  'OdooAccount',
-                  'User',
-                  'AuditLog',
-                  'DocumentTemplate',
-                  'DocumentGenerated',
-                ].includes(model)
-              ) {
+              if (WAREHOUSE_SCOPED_MODELS.includes(model)) {
                 currentArgs.data = currentArgs.data || {};
                 if (
                   currentArgs.data.warehouseId === undefined ||
@@ -111,16 +93,7 @@ export class PrismaService
             if (op === 'upsert') {
               currentArgs.create = currentArgs.create || {};
               currentArgs.update = currentArgs.update || {};
-              if (
-                [
-                  'Inventory',
-                  'OdooAccount',
-                  'User',
-                  'AuditLog',
-                  'DocumentTemplate',
-                  'DocumentGenerated',
-                ].includes(model)
-              ) {
+              if (WAREHOUSE_SCOPED_MODELS.includes(model)) {
                 if (
                   currentArgs.create.warehouseId === undefined ||
                   currentArgs.create.warehouseId === null
