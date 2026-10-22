@@ -370,6 +370,145 @@ export declare const AttachDocumentReferenceSchema: z.ZodObject<{
     documentReferenceId: number;
 }>;
 export type AttachDocumentReferenceInput = z.infer<typeof AttachDocumentReferenceSchema>;
+export declare const GateAllocationSummaryItemSchema: z.ZodObject<{
+    productId: z.ZodNumber;
+    productName: z.ZodString;
+    sku: z.ZodString;
+    uom: z.ZodNullable<z.ZodString>;
+    totalQty: z.ZodNumber;
+    allocatedQty: z.ZodNumber;
+    remainingQty: z.ZodNumber;
+    allocations: z.ZodArray<z.ZodObject<{
+        documentReferenceId: z.ZodNumber;
+        documentNumber: z.ZodString;
+        quantity: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        quantity: number;
+        documentReferenceId: number;
+        documentNumber: string;
+    }, {
+        quantity: number;
+        documentReferenceId: number;
+        documentNumber: string;
+    }>, "many">;
+}, "strip", z.ZodTypeAny, {
+    productId: number;
+    productName: string;
+    sku: string;
+    uom: string | null;
+    totalQty: number;
+    allocatedQty: number;
+    remainingQty: number;
+    allocations: {
+        quantity: number;
+        documentReferenceId: number;
+        documentNumber: string;
+    }[];
+}, {
+    productId: number;
+    productName: string;
+    sku: string;
+    uom: string | null;
+    totalQty: number;
+    allocatedQty: number;
+    remainingQty: number;
+    allocations: {
+        quantity: number;
+        documentReferenceId: number;
+        documentNumber: string;
+    }[];
+}>;
+export type GateAllocationSummaryItem = z.infer<typeof GateAllocationSummaryItemSchema>;
+export declare const GateAllocationSummarySchema: z.ZodObject<{
+    items: z.ZodArray<z.ZodObject<{
+        productId: z.ZodNumber;
+        productName: z.ZodString;
+        sku: z.ZodString;
+        uom: z.ZodNullable<z.ZodString>;
+        totalQty: z.ZodNumber;
+        allocatedQty: z.ZodNumber;
+        remainingQty: z.ZodNumber;
+        allocations: z.ZodArray<z.ZodObject<{
+            documentReferenceId: z.ZodNumber;
+            documentNumber: z.ZodString;
+            quantity: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            quantity: number;
+            documentReferenceId: number;
+            documentNumber: string;
+        }, {
+            quantity: number;
+            documentReferenceId: number;
+            documentNumber: string;
+        }>, "many">;
+    }, "strip", z.ZodTypeAny, {
+        productId: number;
+        productName: string;
+        sku: string;
+        uom: string | null;
+        totalQty: number;
+        allocatedQty: number;
+        remainingQty: number;
+        allocations: {
+            quantity: number;
+            documentReferenceId: number;
+            documentNumber: string;
+        }[];
+    }, {
+        productId: number;
+        productName: string;
+        sku: string;
+        uom: string | null;
+        totalQty: number;
+        allocatedQty: number;
+        remainingQty: number;
+        allocations: {
+            quantity: number;
+            documentReferenceId: number;
+            documentNumber: string;
+        }[];
+    }>, "many">;
+    totalQty: z.ZodNumber;
+    allocatedQty: z.ZodNumber;
+    remainingQty: z.ZodNumber;
+}, "strip", z.ZodTypeAny, {
+    totalQty: number;
+    allocatedQty: number;
+    remainingQty: number;
+    items: {
+        productId: number;
+        productName: string;
+        sku: string;
+        uom: string | null;
+        totalQty: number;
+        allocatedQty: number;
+        remainingQty: number;
+        allocations: {
+            quantity: number;
+            documentReferenceId: number;
+            documentNumber: string;
+        }[];
+    }[];
+}, {
+    totalQty: number;
+    allocatedQty: number;
+    remainingQty: number;
+    items: {
+        productId: number;
+        productName: string;
+        sku: string;
+        uom: string | null;
+        totalQty: number;
+        allocatedQty: number;
+        remainingQty: number;
+        allocations: {
+            quantity: number;
+            documentReferenceId: number;
+            documentNumber: string;
+        }[];
+    }[];
+}>;
+export type GateAllocationSummary = z.infer<typeof GateAllocationSummarySchema>;
 export declare const ErpDocumentReferenceQuerySchema: z.ZodObject<{
     search: z.ZodOptional<z.ZodString>;
     page: z.ZodOptional<z.ZodNumber>;
@@ -674,12 +813,12 @@ export declare const StackCardRowSchema: z.ZodObject<{
     quantity: number;
     productName: string;
     sku: string;
+    uom: string;
     lot: string;
     shelfLife: number;
     placementDate: string;
     locationName: string;
     quantum: number;
-    uom: string;
     expiredDate?: string | null | undefined;
     spraying?: string | null | undefined;
     fumigasi?: string | null | undefined;
@@ -689,12 +828,12 @@ export declare const StackCardRowSchema: z.ZodObject<{
     quantity: number;
     productName: string;
     sku: string;
+    uom: string;
     lot: string;
     shelfLife: number;
     placementDate: string;
     locationName: string;
     quantum: number;
-    uom: string;
     expiredDate?: string | null | undefined;
     spraying?: string | null | undefined;
     fumigasi?: string | null | undefined;
@@ -726,12 +865,12 @@ export declare const ImportStackCardSchema: z.ZodObject<{
         quantity: number;
         productName: string;
         sku: string;
+        uom: string;
         lot: string;
         shelfLife: number;
         placementDate: string;
         locationName: string;
         quantum: number;
-        uom: string;
         expiredDate?: string | null | undefined;
         spraying?: string | null | undefined;
         fumigasi?: string | null | undefined;
@@ -741,12 +880,12 @@ export declare const ImportStackCardSchema: z.ZodObject<{
         quantity: number;
         productName: string;
         sku: string;
+        uom: string;
         lot: string;
         shelfLife: number;
         placementDate: string;
         locationName: string;
         quantum: number;
-        uom: string;
         expiredDate?: string | null | undefined;
         spraying?: string | null | undefined;
         fumigasi?: string | null | undefined;
@@ -762,12 +901,12 @@ export declare const ImportStackCardSchema: z.ZodObject<{
         quantity: number;
         productName: string;
         sku: string;
+        uom: string;
         lot: string;
         shelfLife: number;
         placementDate: string;
         locationName: string;
         quantum: number;
-        uom: string;
         expiredDate?: string | null | undefined;
         spraying?: string | null | undefined;
         fumigasi?: string | null | undefined;
@@ -783,12 +922,12 @@ export declare const ImportStackCardSchema: z.ZodObject<{
         quantity: number;
         productName: string;
         sku: string;
+        uom: string;
         lot: string;
         shelfLife: number;
         placementDate: string;
         locationName: string;
         quantum: number;
-        uom: string;
         expiredDate?: string | null | undefined;
         spraying?: string | null | undefined;
         fumigasi?: string | null | undefined;
@@ -817,12 +956,12 @@ export declare const UpdateStackCardSchema: z.ZodObject<{
     quantity: number;
     productName: string;
     sku: string;
+    uom: string;
     lot: string;
     shelfLife: number;
     placementDate: string;
     locationName: string;
     quantum: number;
-    uom: string;
     expiredDate?: string | null | undefined;
     spraying?: string | null | undefined;
     fumigasi?: string | null | undefined;
@@ -833,12 +972,12 @@ export declare const UpdateStackCardSchema: z.ZodObject<{
     quantity: number;
     productName: string;
     sku: string;
+    uom: string;
     lot: string;
     shelfLife: number;
     placementDate: string;
     locationName: string;
     quantum: number;
-    uom: string;
     expiredDate?: string | null | undefined;
     spraying?: string | null | undefined;
     fumigasi?: string | null | undefined;
@@ -1081,18 +1220,18 @@ export declare const GenerateDocumentSchema: z.ZodObject<{
         objectKey: string;
     }>, "many">>>;
 }, "strip", z.ZodTypeAny, {
+    documentNumber: string;
     title: string;
     templateId: string | number;
-    documentNumber: string;
     placeholder: Record<string, any>;
     attachments: {
         type: "PDF";
         objectKey: string;
     }[];
 }, {
+    documentNumber: string;
     title: string;
     templateId: string | number;
-    documentNumber: string;
     placeholder: Record<string, any>;
     attachments?: {
         type: "PDF";

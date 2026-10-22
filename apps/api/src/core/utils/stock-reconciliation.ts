@@ -1,3 +1,27 @@
+import { Prisma } from '@prisma/client';
+
+/**
+ * A gate line is pending (not yet reflected in ERP stock) while the document it is
+ * counted against is not done: its own document, or — for unallocated lines
+ * (documentReferenceId = null) — the gate operation's primary document.
+ * Lines counted against a done document are handled through that document's adjustment,
+ * so every line is counted exactly once even when one operation spans several documents.
+ */
+export const PENDING_GATE_PRODUCT_WHERE = {
+  OR: [
+    {
+      documentReferenceId: null,
+      gateOperation: {
+        OR: [
+          { documentReferenceId: null },
+          { documentReference: { state: { not: 'done' } } },
+        ],
+      },
+    },
+    { documentReference: { state: { not: 'done' } } },
+  ],
+} satisfies Prisma.GateOperationProductWhereInput;
+
 function distributeAdjustmentHelper(
   adjustment: number,
   items: { id: number; qty: number }[],
@@ -81,13 +105,25 @@ export async function getReconciledStockForQuants(
           inventoryId: productId,
         },
       },
-      gateOperations: {
-        some: {
-          status: {
-            notIn: ['CANCELED', 'REJECTED'],
+      OR: [
+        {
+          gateOperations: {
+            some: {
+              status: {
+                notIn: ['CANCELED', 'REJECTED'],
+              },
+            },
           },
         },
-      },
+        {
+          operationProducts: {
+            some: {
+              inventoryId: productId,
+              gateOperation: { status: { notIn: ['CANCELED', 'REJECTED'] } },
+            },
+          },
+        },
+      ],
     },
     include: {
       items: {
@@ -95,6 +131,14 @@ export async function getReconciledStockForQuants(
           inventoryId: productId,
         },
       },
+      // Lines allocated to this document
+      operationProducts: {
+        where: {
+          inventoryId: productId,
+          gateOperation: { status: { notIn: ['CANCELED', 'REJECTED'] } },
+        },
+      },
+      // Unallocated lines of operations whose primary document is this one
       gateOperations: {
         where: {
           status: {
@@ -105,6 +149,7 @@ export async function getReconciledStockForQuants(
           products: {
             where: {
               inventoryId: productId,
+              documentReferenceId: null,
             },
           },
         },
@@ -124,15 +169,17 @@ export async function getReconciledStockForQuants(
     let sumGateQty = 0;
     const docGateQuantsMap = new Map<number, number>();
 
-    for (const op of doc.gateOperations) {
-      for (const gp of op.products) {
-        sumGateQty += gp.quantity;
-        if (gp.quantId) {
-          docGateQuantsMap.set(
-            gp.quantId,
-            (docGateQuantsMap.get(gp.quantId) || 0) + gp.quantity,
-          );
-        }
+    const docGateProducts = [
+      ...doc.operationProducts,
+      ...doc.gateOperations.flatMap((op: any) => op.products),
+    ];
+    for (const gp of docGateProducts) {
+      sumGateQty += gp.quantity;
+      if (gp.quantId) {
+        docGateQuantsMap.set(
+          gp.quantId,
+          (docGateQuantsMap.get(gp.quantId) || 0) + gp.quantity,
+        );
       }
     }
 
@@ -170,17 +217,10 @@ export async function getReconciledStockForQuants(
       warehouseId,
       status: { in: ['PENDING', 'VERIFIED'] },
       id: excludeGateOperationId ? { not: excludeGateOperationId } : undefined,
-      OR: [
-        { documentReferenceId: null },
-        {
-          documentReference: {
-            state: { not: 'done' },
-          },
-        },
-      ],
       products: {
         some: {
           inventoryId: productId,
+          ...PENDING_GATE_PRODUCT_WHERE,
         },
       },
     },
@@ -188,6 +228,7 @@ export async function getReconciledStockForQuants(
       products: {
         where: {
           inventoryId: productId,
+          ...PENDING_GATE_PRODUCT_WHERE,
         },
       },
     },

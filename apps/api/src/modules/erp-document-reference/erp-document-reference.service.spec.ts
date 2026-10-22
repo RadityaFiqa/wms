@@ -183,7 +183,7 @@ describe('ErpDocumentReferenceService - getPendingPickups', () => {
     expect(result.summary.completionRate).toBeCloseTo((650 / 1500) * 100);
   });
 
-  it('should support legacy gate operation fallback when documentReferenceId is null', async () => {
+  it('should not count unallocated gate lines (documentReferenceId null) as picked for the primary document', async () => {
     const warehouseId = 1;
     const prodId = 202;
 
@@ -236,9 +236,9 @@ describe('ErpDocumentReferenceService - getPendingPickups', () => {
     expect(result.products).toHaveLength(1);
 
     const doc = result.products[0].documents[0];
-    expect(doc.pickedQuantityPrimary).toBe(300);
-    expect(doc.remainingQuantityPrimary).toBe(700);
-    expect(doc.gateOperations[0].quantity).toBe(300);
+    expect(doc.pickedQuantityPrimary).toBe(0);
+    expect(doc.remainingQuantityPrimary).toBe(1000);
+    expect(doc.gateOperations).toHaveLength(0);
   });
 
   describe('upsertDocumentRecord - WMS picking move lines', () => {

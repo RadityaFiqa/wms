@@ -197,6 +197,35 @@ export type AttachDocumentReferenceInput = z.infer<
   typeof AttachDocumentReferenceSchema
 >;
 
+// Gate Operation cargo allocation per product: totalQty = allocatedQty + remainingQty
+export const GateAllocationSummaryItemSchema = z.object({
+  productId: z.number().int(),
+  productName: z.string(),
+  sku: z.string(),
+  uom: z.string().nullable(),
+  totalQty: z.number(),
+  allocatedQty: z.number(),
+  remainingQty: z.number(),
+  allocations: z.array(
+    z.object({
+      documentReferenceId: z.number().int(),
+      documentNumber: z.string(),
+      quantity: z.number(),
+    }),
+  ),
+});
+export type GateAllocationSummaryItem = z.infer<
+  typeof GateAllocationSummaryItemSchema
+>;
+
+export const GateAllocationSummarySchema = z.object({
+  items: z.array(GateAllocationSummaryItemSchema),
+  totalQty: z.number(),
+  allocatedQty: z.number(),
+  remainingQty: z.number(),
+});
+export type GateAllocationSummary = z.infer<typeof GateAllocationSummarySchema>;
+
 
 export const ErpDocumentReferenceQuerySchema = z.object({
   search: z.string().optional(),

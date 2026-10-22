@@ -24,8 +24,16 @@ describe('GateService - Bulk Operations', () => {
       },
       gateOperationProduct: {
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
         aggregate: jest.fn().mockResolvedValue({ _sum: { quantity: 0 } }),
+        update: jest.fn(),
+        create: jest.fn(),
+        delete: jest.fn(),
       },
+      documentReferenceItem: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
       gateOperationDocumentReference: {
         create: jest.fn(),
         deleteMany: jest.fn(),
@@ -306,15 +314,40 @@ describe('GateService - Bulk Operations', () => {
           id: 1,
           uuid: 'op-1',
           status: 'PENDING',
-          documentReferences: [{ documentReferenceId: 10 }],
+          warehouseId: 1,
+          documentReferenceId: 30,
         });
         prismaMock.documentReference.findUnique.mockResolvedValue({
           id: 10,
+          warehouseId: 1,
           documentNumber: 'DOC-10',
+        });
+        prismaMock.gateOperationDocumentReference.findFirst.mockResolvedValue({
+          gateOperationId: 1,
+          documentReferenceId: 10,
         });
         await expect(
           service.attachDocumentReference('op-1', 10),
         ).rejects.toThrow(BadRequestException);
+        expect(
+          prismaMock.gateOperationDocumentReference.create,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('should throw NotFoundException if document belongs to another warehouse', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          warehouseId: 1,
+        });
+        prismaMock.documentReference.findUnique.mockResolvedValue({
+          id: 20,
+          warehouseId: 2,
+        });
+        await expect(
+          service.attachDocumentReference('op-1', 20),
+        ).rejects.toThrow(NotFoundException);
       });
 
       it('should successfully attach document reference and create junction record', async () => {
@@ -322,11 +355,12 @@ describe('GateService - Bulk Operations', () => {
           id: 1,
           uuid: 'op-1',
           status: 'PENDING',
+          warehouseId: 1,
           documentReferenceId: 10,
-          documentReferences: [{ documentReferenceId: 10 }],
         });
         prismaMock.documentReference.findUnique.mockResolvedValue({
           id: 20,
+          warehouseId: 1,
           documentNumber: 'DOC-20',
         });
         prismaMock.gateOperationDocumentReference.create.mockResolvedValue({
@@ -351,6 +385,126 @@ describe('GateService - Bulk Operations', () => {
       });
     });
 
+    describe('automatic allocation on attach', () => {
+      const unallocated = (id: number, quantity: number) => ({
+        id,
+        inventoryId: 5,
+        quantity,
+        notes: null,
+        quantId: 7,
+        locationId: 8,
+        documentReferenceId: null,
+        inventory: { uom: 'Lembar' },
+      });
+
+      const attachWith = async (
+        docId: number,
+        docQty: number,
+        lines: any[],
+        docUom = 'Lembar',
+      ) => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          warehouseId: 1,
+          documentReferenceId: 99,
+        });
+        prismaMock.documentReference.findUnique.mockResolvedValue({
+          id: docId,
+          warehouseId: 1,
+        });
+        prismaMock.gateOperationProduct.findMany.mockResolvedValue(lines);
+        prismaMock.documentReferenceItem.findMany.mockResolvedValue([
+          { inventoryId: 5, uom: docUom, productQty: docQty, quantity: docQty },
+        ]);
+        jest
+          .spyOn(service, 'getGateOperationByUuid')
+          .mockResolvedValue({ uuid: 'op-1' } as any);
+        await service.attachDocumentReference('op-1', docId);
+      };
+
+      it('allocates MIN(document qty, remaining) by splitting the unallocated line (65.710 Lembar example)', async () => {
+        // Doc A 3.000 -> 3.000 allocated, 62.710 remaining
+        await attachWith(10, 3000, [unallocated(100, 65710)]);
+        expect(prismaMock.gateOperationProduct.update).toHaveBeenCalledWith({
+          where: { id: 100 },
+          data: { quantity: 62710 },
+        });
+        expect(prismaMock.gateOperationProduct.create).toHaveBeenCalledWith({
+          data: {
+            gateOperationId: 1,
+            inventoryId: 5,
+            quantity: 3000,
+            notes: null,
+            quantId: 7,
+            locationId: 8,
+            documentReferenceId: 10,
+          },
+        });
+
+        // Doc B 60.000 -> 60.000 allocated, 2.710 remaining
+        jest.clearAllMocks();
+        await attachWith(11, 60000, [unallocated(100, 62710)]);
+        expect(prismaMock.gateOperationProduct.update).toHaveBeenCalledWith({
+          where: { id: 100 },
+          data: { quantity: 2710 },
+        });
+        expect(prismaMock.gateOperationProduct.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              quantity: 60000,
+              documentReferenceId: 11,
+            }),
+          }),
+        );
+
+        // Doc C 5.000 -> only 2.710 allocated: the whole remaining line is linked, 0 remaining
+        jest.clearAllMocks();
+        await attachWith(12, 5000, [unallocated(100, 2710)]);
+        expect(prismaMock.gateOperationProduct.update).toHaveBeenCalledWith({
+          where: { id: 100 },
+          data: { documentReferenceId: 12 },
+        });
+        expect(prismaMock.gateOperationProduct.create).not.toHaveBeenCalled();
+      });
+
+      it('caps allocation by the remaining document quantity realized elsewhere', async () => {
+        prismaMock.gateOperationProduct.aggregate.mockResolvedValue({
+          _sum: { quantity: 1000 },
+        });
+        await attachWith(10, 3000, [unallocated(100, 65710)]);
+        expect(prismaMock.gateOperationProduct.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ quantity: 2000 }),
+          }),
+        );
+      });
+
+      it('does not add a line when nothing remains unallocated', async () => {
+        await attachWith(12, 5000, [
+          { ...unallocated(101, 65710), documentReferenceId: 10 },
+        ]);
+        expect(prismaMock.gateOperationProduct.create).not.toHaveBeenCalled();
+        expect(prismaMock.gateOperationProduct.update).not.toHaveBeenCalled();
+      });
+
+      it('does not allocate when the unit of measure differs', async () => {
+        await attachWith(10, 3000, [unallocated(100, 65710)], 'Kg');
+        expect(prismaMock.gateOperationProduct.create).not.toHaveBeenCalled();
+        expect(prismaMock.gateOperationProduct.update).not.toHaveBeenCalled();
+      });
+
+      it('does not allocate the same document twice for a product', async () => {
+        await attachWith(10, 3000, [
+          unallocated(100, 62710),
+          { ...unallocated(101, 3000), documentReferenceId: 10 },
+        ]);
+        expect(prismaMock.gateOperationProduct.create).not.toHaveBeenCalled();
+        expect(prismaMock.gateOperationProduct.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe('removeDocumentReference', () => {
       it('should throw BadRequestException if operation is VERIFIED', async () => {
         prismaMock.gateOperation.findUnique.mockResolvedValue({
@@ -365,21 +519,60 @@ describe('GateService - Bulk Operations', () => {
         ).rejects.toThrow(BadRequestException);
       });
 
-      it('should throw BadRequestException if cargo items are still linked to this document reference', async () => {
+      it('should return allocated quantity to the unallocated line with the same stack', async () => {
         prismaMock.gateOperation.findUnique.mockResolvedValue({
           id: 1,
           uuid: 'op-1',
           status: 'PENDING',
           documentReferenceId: 10,
-          documentReferences: [
-            { documentReferenceId: 10 },
-            { documentReferenceId: 20 },
-          ],
-          products: [{ id: 101, documentReferenceId: 20 }],
         });
-        await expect(
-          service.removeDocumentReference('op-1', 20),
-        ).rejects.toThrow(BadRequestException);
+        prismaMock.gateOperationProduct.findMany.mockResolvedValue([
+          {
+            id: 101,
+            inventoryId: 5,
+            quantity: 3000,
+            quantId: 7,
+            locationId: 8,
+            documentReferenceId: 20,
+          },
+        ]);
+        prismaMock.gateOperationProduct.findFirst.mockResolvedValue({
+          id: 100,
+          quantity: 62710,
+        });
+        jest.spyOn(service, 'getGateOperationByUuid').mockResolvedValue({
+          uuid: 'op-1',
+        } as any);
+
+        await service.removeDocumentReference('op-1', 20);
+        expect(prismaMock.gateOperationProduct.update).toHaveBeenCalledWith({
+          where: { id: 100 },
+          data: { quantity: 65710 },
+        });
+        expect(prismaMock.gateOperationProduct.delete).toHaveBeenCalledWith({
+          where: { id: 101 },
+        });
+      });
+
+      it('should unlink allocated line when no matching unallocated line exists', async () => {
+        prismaMock.gateOperation.findUnique.mockResolvedValue({
+          id: 1,
+          uuid: 'op-1',
+          status: 'PENDING',
+          documentReferenceId: 10,
+        });
+        prismaMock.gateOperationProduct.findMany.mockResolvedValue([
+          { id: 101, inventoryId: 5, quantity: 3000, documentReferenceId: 20 },
+        ]);
+        jest.spyOn(service, 'getGateOperationByUuid').mockResolvedValue({
+          uuid: 'op-1',
+        } as any);
+
+        await service.removeDocumentReference('op-1', 20);
+        expect(prismaMock.gateOperationProduct.update).toHaveBeenCalledWith({
+          where: { id: 101 },
+          data: { documentReferenceId: null },
+        });
       });
 
       it('should successfully remove document reference and update primary if needed', async () => {
