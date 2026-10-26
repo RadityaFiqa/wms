@@ -630,6 +630,7 @@ export class ErpDocumentReferenceService {
       scheduledDate?: string;
       state?: string;
       status?: string;
+      pickingTypeCode?: string;
       page?: number;
       limit?: number;
     },
@@ -713,7 +714,14 @@ export class ErpDocumentReferenceService {
     // Grouping by Product
     const productMap = new Map<number, any>();
 
+    // Pending document uuids per pickingTypeCode, collected before the
+    // pickingTypeCode filter so every tab on the frontend can show its count.
+    const pickingTypeDocs = new Map<string, Set<string>>();
+    const pickingTypeFilter = query.pickingTypeCode?.toLowerCase();
+
     for (const doc of dbDocs) {
+      const docPickingType = (doc.pickingTypeCode || '').toLowerCase();
+
       // Products assigned to this doc via documentReferenceId. Lines without a
       // documentReferenceId are unallocated gate quantity and are not picked for any doc.
       const docProds: {
@@ -766,6 +774,15 @@ export class ErpDocumentReferenceService {
           ) {
             continue;
           }
+        }
+
+        if (!pickingTypeDocs.has(docPickingType)) {
+          pickingTypeDocs.set(docPickingType, new Set());
+        }
+        pickingTypeDocs.get(docPickingType)!.add(doc.uuid);
+
+        if (pickingTypeFilter && docPickingType !== pickingTypeFilter) {
+          continue;
         }
 
         // Initialize or update product group
@@ -974,9 +991,14 @@ export class ErpDocumentReferenceService {
     const totalPages = Math.ceil(total / limit);
     const paginatedProducts = productList.slice(skip, skip + limit);
 
+    const pickingTypeCounts = Array.from(pickingTypeDocs.entries())
+      .map(([code, docs]) => ({ code, count: docs.size }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+
     return {
       products: paginatedProducts,
       summary,
+      pickingTypeCounts,
       pagination: {
         total,
         page,

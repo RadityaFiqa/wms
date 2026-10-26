@@ -183,6 +183,7 @@ export function usePendingPickups(query?: {
   scheduledDate?: string;
   state?: string;
   status?: string;
+  pickingTypeCode?: string;
   page?: number;
   limit?: number;
 }) {
@@ -194,6 +195,7 @@ export function usePendingPickups(query?: {
   if (query?.scheduledDate) searchParams.append("scheduledDate", query.scheduledDate);
   if (query?.state) searchParams.append("state", query.state);
   if (query?.status) searchParams.append("status", query.status);
+  if (query?.pickingTypeCode) searchParams.append("pickingTypeCode", query.pickingTypeCode);
   if (query?.page) searchParams.append("page", String(query.page));
   if (query?.limit) searchParams.append("limit", String(query.limit));
 

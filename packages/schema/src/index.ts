@@ -246,6 +246,7 @@ export const PendingPickupQuerySchema = z.object({
   scheduledDate: z.string().optional(),
   state: z.string().optional(),
   status: z.string().optional(),
+  pickingTypeCode: z.string().optional(),
   page: z.string().or(z.number()).optional(),
   limit: z.string().or(z.number()).optional(),
 });

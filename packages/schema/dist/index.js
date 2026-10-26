@@ -223,6 +223,7 @@ exports.PendingPickupQuerySchema = zod_1.z.object({
     scheduledDate: zod_1.z.string().optional(),
     state: zod_1.z.string().optional(),
     status: zod_1.z.string().optional(),
+    pickingTypeCode: zod_1.z.string().optional(),
     page: zod_1.z.string().or(zod_1.z.number()).optional(),
     limit: zod_1.z.string().or(zod_1.z.number()).optional(),
 });

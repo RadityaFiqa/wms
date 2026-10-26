@@ -541,6 +541,7 @@ export declare const PendingPickupQuerySchema: z.ZodObject<{
     scheduledDate: z.ZodOptional<z.ZodString>;
     state: z.ZodOptional<z.ZodString>;
     status: z.ZodOptional<z.ZodString>;
+    pickingTypeCode: z.ZodOptional<z.ZodString>;
     page: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
     limit: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
 }, "strip", z.ZodTypeAny, {
@@ -551,6 +552,7 @@ export declare const PendingPickupQuerySchema: z.ZodObject<{
     state?: string | undefined;
     partner?: string | undefined;
     scheduledDate?: string | undefined;
+    pickingTypeCode?: string | undefined;
 }, {
     status?: string | undefined;
     search?: string | undefined;
@@ -559,6 +561,7 @@ export declare const PendingPickupQuerySchema: z.ZodObject<{
     state?: string | undefined;
     partner?: string | undefined;
     scheduledDate?: string | undefined;
+    pickingTypeCode?: string | undefined;
 }>;
 export type PendingPickupQueryInput = z.infer<typeof PendingPickupQuerySchema>;
 export declare const CreateWarehouseSchema: z.ZodObject<{

@@ -80,6 +80,7 @@ export class ErpDocumentReferenceController {
     @Query('scheduledDate') scheduledDate?: string,
     @Query('state') state?: string,
     @Query('status') status?: string,
+    @Query('pickingTypeCode') pickingTypeCode?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -95,6 +96,7 @@ export class ErpDocumentReferenceController {
       scheduledDate,
       state,
       status,
+      pickingTypeCode,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });

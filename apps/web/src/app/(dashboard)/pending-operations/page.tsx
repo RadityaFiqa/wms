@@ -37,6 +37,7 @@ export default function PendingPickupPage() {
   const scheduledDate = searchParams.get("scheduledDate") || "";
   const state = searchParams.get("state") || "";
   const status = searchParams.get("status") || "";
+  const pickingTypeCode = searchParams.get("pickingTypeCode") || "";
   const pageStr = searchParams.get("page") || "1";
   const limitStr = searchParams.get("limit") || "10";
 
@@ -104,6 +105,7 @@ export default function PendingPickupPage() {
     scheduledDate,
     state,
     status,
+    pickingTypeCode,
     page,
     limit,
   });
@@ -189,6 +191,28 @@ export default function PendingPickupPage() {
     });
   };
 
+  const PICKING_TYPE_LABELS: Record<string, string> = {
+    incoming: "Penerimaan (IN)",
+    outgoing: "Pengeluaran (OUT)",
+    internal: "Internal (INT)",
+  };
+
+  // Always show the known types; append any other code returned by the API
+  const pickingTypeCounts: { code: string; count: number }[] =
+    pendingPickupsData?.pickingTypeCounts || [];
+  const countByCode = new Map(pickingTypeCounts.map((c) => [c.code, c.count]));
+  const pickingTypeTabs = [
+    { code: "", label: "Semua", count: pickingTypeCounts.reduce((sum, c) => sum + c.count, 0) },
+    ...Object.keys(PICKING_TYPE_LABELS).map((code) => ({
+      code,
+      label: PICKING_TYPE_LABELS[code],
+      count: countByCode.get(code) || 0,
+    })),
+    ...pickingTypeCounts
+      .filter((c) => c.code && !PICKING_TYPE_LABELS[c.code])
+      .map((c) => ({ code: c.code, label: c.code.toUpperCase(), count: c.count })),
+  ];
+
   const products = pendingPickupsData?.products || [];
   const summary = pendingPickupsData?.summary || {
     totalPendingDocuments: 0,
@@ -206,6 +230,35 @@ export default function PendingPickupPage() {
 
   return (
     <div className="space-y-6">
+      {/* Picking Type Nav */}
+      <div className="flex w-full gap-2 p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-x-auto">
+        {pickingTypeTabs.map((tab) => {
+          const isActive = pickingTypeCode === tab.code;
+          return (
+            <button
+              key={tab.code || "all"}
+              onClick={() => handleFilterChange("pickingTypeCode", tab.code)}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold whitespace-nowrap transition cursor-pointer select-none ${
+                isActive
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              }`}
+            >
+              {tab.label}
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  isActive
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
