@@ -66,14 +66,6 @@ function parseMovementReasons(value: Prisma.JsonValue | null): string[] {
     : [];
 }
 
-/** Prefilled stacks the officer has neither confirmed nor edited yet. */
-function isAwaitingConfirmation(stack: {
-  requiresConfirmation: boolean;
-  confirmedAt: Date | null;
-}): boolean {
-  return stack.requiresConfirmation && stack.confirmedAt === null;
-}
-
 @Injectable()
 export class StockOpnameService {
   constructor(
@@ -759,10 +751,10 @@ export class StockOpnameService {
   }
 
   /**
-   * Refresh a draft's ERP / reconciled snapshot to the current stock and re-run the
-   * comparison with the last COMPLETED opname. What the officer entered (counts,
-   * notes, confirmations) is kept; prefills not yet confirmed follow the new
-   * comparison: re-applied when the tumpukan is still unmoved, removed when it moved.
+   * Refresh a draft's ERP / reconciled snapshot to the current stock. Only the stock
+   * columns (and the variance derived from them) change: every count, calculator row,
+   * note and confirmation already on the draft is kept as is, prefilled or not.
+   * Stacks that are new to the draft get the previous opname's count when unmoved.
    */
   async refreshStockOpnameStock(warehouseId: number, uuid: string) {
     const op = await this.prisma.stockOpname.findFirst({
@@ -787,37 +779,24 @@ export class StockOpnameService {
     );
 
     type DbStack = (typeof op.items)[number]['stacks'][number];
-    const isPendingPrefill = (st: DbStack) => isAwaitingConfirmation(st);
     const hasValues = (st: DbStack) =>
       st.actualQty !== null ||
       (parseCalculationRows(st.calculationRows)?.length ?? 0) > 0 ||
       !!st.note?.trim();
 
-    // Tumpukan where the officer entered or confirmed something keep their values
-    const lockedLocations = new Set<number>();
+    // A tumpukan already holding a count keeps it; its new SKUs are not prefilled
+    const countedLocations = new Set<number>();
     const itemsByInventory = new Map<number, (typeof op.items)[number]>();
     const stacksByKey = new Map<string, DbStack>();
     for (const item of op.items) {
       itemsByInventory.set(item.inventoryId, item);
       for (const st of item.stacks) {
         stacksByKey.set(`${item.inventoryId}:${st.locationId}`, st);
-        if (hasValues(st) && !isPendingPrefill(st)) {
-          lockedLocations.add(st.locationId);
-        }
+        if (hasValues(st)) countedLocations.add(st.locationId);
       }
     }
 
-    const cleared = {
-      actualQty: null,
-      variance: null,
-      calculationRows: Prisma.DbNull,
-      note: null,
-      requiresConfirmation: false,
-      confirmedAt: null,
-      confirmedById: null,
-    };
-
-    const summary = { newStacks: 0, prefilled: 0, prefillsRemoved: 0 };
+    const summary = { newStacks: 0, prefilled: 0 };
 
     await this.prisma.$transaction(
       async (tx) => {
@@ -875,17 +854,16 @@ export class StockOpnameService {
                 : Prisma.DbNull,
             };
 
-            let values: Prisma.StockOpnameStackUncheckedUpdateInput;
-            if (lockedLocations.has(stack.locationId)) {
-              const actualQty = existing?.actualQty ?? null;
+            let values: Prisma.StockOpnameStackUncheckedUpdateInput = {};
+            if (existing) {
               values = {
                 variance:
-                  actualQty !== null
-                    ? roundQuantity(actualQty - stack.erpQty)
+                  existing.actualQty !== null
+                    ? roundQuantity(existing.actualQty - stack.erpQty)
                     : null,
               };
-            } else if (prefill) {
-              if (!existing || !isPendingPrefill(existing)) summary.prefilled++;
+            } else if (prefill && !countedLocations.has(stack.locationId)) {
+              summary.prefilled++;
               values = {
                 actualQty: prefill.actualQty,
                 variance:
@@ -897,14 +875,7 @@ export class StockOpnameService {
                   : Prisma.DbNull,
                 note: prefill.note,
                 requiresConfirmation: true,
-                confirmedAt: null,
-                confirmedById: null,
               };
-            } else {
-              if (existing && isPendingPrefill(existing)) {
-                summary.prefillsRemoved++;
-              }
-              values = cleared;
             }
 
             if (existing) {
@@ -945,8 +916,6 @@ export class StockOpnameService {
         for (const item of op.items) {
           for (const st of item.stacks) {
             if (seenStacks.has(st.id)) continue;
-            const locked = lockedLocations.has(st.locationId);
-            if (!locked && isPendingPrefill(st)) summary.prefillsRemoved++;
             await tx.stockOpnameStack.update({
               where: { id: st.id },
               data: {
@@ -958,14 +927,8 @@ export class StockOpnameService {
                 movementReasons: comparison.previousStockOpnameId
                   ? [`${item.productSku}: stok sistem di tumpukan ini sudah habis`]
                   : Prisma.DbNull,
-                ...(locked
-                  ? {
-                      variance:
-                        st.actualQty !== null
-                          ? roundQuantity(st.actualQty)
-                          : null,
-                    }
-                  : cleared),
+                variance:
+                  st.actualQty !== null ? roundQuantity(st.actualQty) : null,
               },
             });
           }
@@ -1032,20 +995,7 @@ export class StockOpnameService {
       );
     }
 
-    // Counts prefilled from the previous opname must be confirmed or edited first
-    const unconfirmed = new Set<string>();
-    for (const item of op.items) {
-      for (const st of item.stacks.filter(isStackCountable)) {
-        if (isAwaitingConfirmation(st)) unconfirmed.add(st.locationName);
-      }
-    }
-    if (unconfirmed.size > 0) {
-      const listed = Array.from(unconfirmed).slice(0, 5).join(', ');
-      throw new BadRequestException(
-        `Masih ada ${unconfirmed.size} tumpukan hasil isi otomatis yang belum dikonfirmasi (${listed}${unconfirmed.size > 5 ? ', ...' : ''}). Konfirmasi "Masih sama" atau perbarui hitungannya terlebih dahulu.`,
-      );
-    }
-
+    // Confirming a prefilled count ("Masih sama") is optional: it is only recorded
     return this.prisma.$transaction(async (tx) => {
       // 1. Calculate difference for each product item
       for (const item of op.items) {

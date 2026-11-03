@@ -18,9 +18,174 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RefreshCw,
   Trash2,
+  User,
 } from "lucide-react";
+
+interface OpnameRow {
+  uuid: string;
+  opnameNumber: string;
+  status: string;
+  createdAt: string;
+  createdBy: string;
+  totalStacks: number;
+}
+
+interface DayGroup {
+  key: string;
+  label: string;
+  items: OpnameRow[];
+}
+
+// Day only, e.g. "Senin, 3 Nov 2026"
+function formatDay(value: string): string {
+  return new Date(value).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// Items arrive newest first, so groups keep that order
+function groupByDay(items: OpnameRow[]): DayGroup[] {
+  const groups = new Map<string, DayGroup>();
+  for (const op of items) {
+    const key = new Date(op.createdAt).toLocaleDateString("en-CA");
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, label: formatDay(op.createdAt), items: [] };
+      groups.set(key, group);
+    }
+    group.items.push(op);
+  }
+  return Array.from(groups.values());
+}
+
+function OpnameStatusBadge({ status }: { status: string }) {
+  return status === "COMPLETED" ? (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-150 dark:border-emerald-900/30">
+      Selesai
+    </span>
+  ) : (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
+      Draf Counting
+    </span>
+  );
+}
+
+function OpnameListRow({
+  op,
+  dateLabel,
+  nested = false,
+  warehouseName,
+  canDelete,
+  deletingUuid,
+  onOpen,
+  onDelete,
+}: {
+  op: OpnameRow;
+  /** Shown for a single opname on its day; nested rows sit under the day header */
+  dateLabel?: string;
+  nested?: boolean;
+  warehouseName?: string;
+  canDelete: boolean;
+  deletingUuid: string | null;
+  onOpen: (op: OpnameRow) => void;
+  onDelete: (op: OpnameRow) => void;
+}) {
+  const isDraft = op.status === "DRAFT";
+  const actions = (
+    <div className="flex items-center justify-end md:justify-center gap-2">
+      <button
+        onClick={() => onOpen(op)}
+        title={isDraft ? "Lanjutkan Isi Counting" : "Tinjau Detail"}
+        className={`p-2 rounded-lg border transition cursor-pointer ${
+          isDraft
+            ? "bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30"
+            : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+        }`}
+      >
+        {isDraft ? <Edit2 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+      {isDraft && canDelete && (
+        <button
+          onClick={() => onDelete(op)}
+          disabled={deletingUuid === op.uuid}
+          title="Hapus Draf"
+          className="p-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30 rounded-lg transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      className={`px-4 md:px-6 py-4 hover:bg-slate-50/60 dark:hover:bg-slate-800/20 transition text-slate-700 dark:text-slate-350 ${
+        nested ? "shadow-[inset_4px_0_0_var(--color-blue-200)]" : ""
+      }`}
+    >
+      {/* Mobile card */}
+      <div className="md:hidden flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => onOpen(op)}
+          className="min-w-0 text-left space-y-1 cursor-pointer"
+        >
+          {dateLabel && (
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+              {dateLabel}
+            </div>
+          )}
+          <div className="font-mono font-bold text-slate-900 dark:text-slate-200 truncate">
+            {op.opnameNumber}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <OpnameStatusBadge status={op.status} />
+            <span>{op.totalStacks} tumpukan</span>
+            <span className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              {op.createdBy}
+            </span>
+          </div>
+        </button>
+        {actions}
+      </div>
+
+      {/* Desktop row */}
+      <div className="hidden md:grid grid-cols-[2.2fr_1.6fr_1.6fr_1.1fr_1.1fr_1fr] gap-4 items-center">
+        <div className="text-xs">
+          {dateLabel && (
+            <div className="font-semibold text-slate-700 dark:text-slate-300">
+              {dateLabel}
+            </div>
+          )}
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            Oleh: {op.createdBy}
+          </div>
+        </div>
+        <span className="font-mono font-bold text-slate-900 dark:text-slate-200 truncate">
+          {op.opnameNumber}
+        </span>
+        <span className="truncate">{warehouseName}</span>
+        <span className="text-center">
+          <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-200 dark:border-slate-700">
+            {op.totalStacks} tumpukan
+          </span>
+        </span>
+        <span className="text-center">
+          <OpnameStatusBadge status={op.status} />
+        </span>
+        {actions}
+      </div>
+    </div>
+  );
+}
 
 export default function StockOpnameListPage() {
   const router = useRouter();
@@ -35,6 +200,9 @@ export default function StockOpnameListPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [isCreating, setIsCreating] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const {
     stockOpnameData,
@@ -186,137 +354,108 @@ export default function StockOpnameListPage() {
         </div>
       </div>
 
-      {/* List Table Container */}
+      {/* List grouped per day; a day with several opnames collapses into one row */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse table-layout-fixed">
-            <thead className="bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
-              <tr className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[22%] font-mono">No. Opname</th>
-                <th className="px-6 py-4 w-[18%]">Gudang</th>
-                <th className="px-6 py-4 w-[20%]">Tanggal Dibuat</th>
-                <th className="px-6 py-4 w-[14%] text-center">Tumpukan</th>
-                <th className="px-6 py-4 w-[12%] text-center">Status</th>
-                <th className="px-6 py-4 w-[14%] text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-              {isLoading ? (
-                Array.from({ length: limit }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-24"></div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-16"></div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-24"></div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-8 mx-auto"></div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-12 mx-auto"></div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="h-4 bg-slate-250 dark:bg-slate-800 rounded w-16 mx-auto"></div>
-                    </td>
-                  </tr>
-                ))
-              ) : !stockOpnameData || stockOpnameData.items.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-6 py-16 text-center text-slate-400 font-medium"
-                  >
-                    Tidak ada sesi Stock Opname ditemukan. Silakan klik tombol
-                    Mulai Opname Baru.
-                  </td>
-                </tr>
-              ) : (
-                stockOpnameData.items.map((op: any) => (
-                  <tr
-                    key={op.uuid}
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800/80 transition text-slate-700 dark:text-slate-350"
-                  >
-                    <td className="px-6 py-4 font-mono font-bold text-slate-900 dark:text-slate-200">
-                      {op.opnameNumber}
-                    </td>
-                    <td className="px-6 py-4 truncate">
-                      {activeWarehouse?.name}
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 text-xs">
-                      <div>
-                        {new Date(op.createdAt).toLocaleString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        Oleh: {op.createdBy}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-200 dark:border-slate-700">
-                        {op.totalStacks} tumpukan
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {op.status === "COMPLETED" ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-150 dark:border-emerald-900/30">
-                          Selesai
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
-                          Draf Counting
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {op.status === "DRAFT" ? (
-                          <button
-                            onClick={() =>
-                              router.push(`/stock-opname/${op.uuid}`)
-                            }
-                            title="Lanjutkan Isi Counting"
-                            className="p-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg transition cursor-pointer"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() =>
-                              router.push(`/stock-opname/${op.uuid}`)
-                            }
-                            title="Tinjau Detail"
-                            className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg transition cursor-pointer"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                        )}
-                        {op.status === "DRAFT" && canDelete && (
-                          <button
-                            onClick={() => handleDelete(op)}
-                            disabled={deletingUuid === op.uuid}
-                            title="Hapus Draf"
-                            className="p-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30 rounded-lg transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="hidden md:grid grid-cols-[2.2fr_1.6fr_1.6fr_1.1fr_1.1fr_1fr] gap-4 px-6 py-4 bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+          <span>Tanggal</span>
+          <span className="font-mono">No. Opname</span>
+          <span>Gudang</span>
+          <span className="text-center">Tumpukan</span>
+          <span className="text-center">Status</span>
+          <span className="text-center">Aksi</span>
         </div>
+
+        {isLoading ? (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="px-6 py-4 animate-pulse flex gap-4">
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-32"></div>
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-24"></div>
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16 ml-auto"></div>
+              </div>
+            ))}
+          </div>
+        ) : !stockOpnameData || stockOpnameData.items.length === 0 ? (
+          <p className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+            Tidak ada sesi Stock Opname ditemukan. Silakan klik tombol Mulai
+            Opname Baru.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+            {groupByDay(stockOpnameData.items as OpnameRow[]).map((group) => {
+              const rowProps = {
+                warehouseName: activeWarehouse?.name,
+                canDelete,
+                deletingUuid,
+                onOpen: (op: OpnameRow) =>
+                  router.push(`/stock-opname/${op.uuid}`),
+                onDelete: handleDelete,
+              };
+              if (group.items.length === 1) {
+                return (
+                  <OpnameListRow
+                    key={group.key}
+                    op={group.items[0]}
+                    dateLabel={group.label}
+                    {...rowProps}
+                  />
+                );
+              }
+              const isOpen = !!expandedDays[group.key];
+              const drafts = group.items.filter(
+                (op) => op.status === "DRAFT",
+              ).length;
+              return (
+                <div key={group.key}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedDays((prev) => ({
+                        ...prev,
+                        [group.key]: !prev[group.key],
+                      }))
+                    }
+                    aria-expanded={isOpen}
+                    className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-4 md:px-6 py-4 text-left hover:bg-slate-50/60 dark:hover:bg-slate-800/20 transition cursor-pointer"
+                  >
+                    {isOpen ? (
+                      <ChevronDown className="h-4.5 w-4.5 text-slate-500 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4.5 w-4.5 text-slate-500 shrink-0" />
+                    )}
+                    <Calendar className="h-4 w-4 text-blue-500 shrink-0" />
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {group.label}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30">
+                      {group.items.length} opname
+                    </span>
+                    {drafts > 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
+                        {drafts} draf
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs font-semibold text-slate-400">
+                      {isOpen ? "Sembunyikan" : "Lihat semua"}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-850/20">
+                      {group.items.map((op) => (
+                        <OpnameListRow
+                          key={op.uuid}
+                          op={op}
+                          nested
+                          {...rowProps}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Pagination footer */}
         {stockOpnameData?.totalPages > 1 && (

@@ -63,7 +63,7 @@ export const QuantityCalculatorRows = memo(function QuantityCalculatorRows({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_2rem] gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      <div className="grid grid-cols-[1rem_minmax(0,1fr)_4.25rem_2.25rem] md:grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_2rem] gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         <span>No</span>
         <span>Ekspresi</span>
         <span className="text-right">Hasil</span>
@@ -76,9 +76,9 @@ export const QuantityCalculatorRows = memo(function QuantityCalculatorRows({
         return (
           <div
             key={index}
-            className="grid grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_2rem] gap-2 items-start"
+            className="grid grid-cols-[1rem_minmax(0,1fr)_4.25rem_2.25rem] md:grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_2rem] gap-2 items-start"
           >
-            <span className="pt-1.5 text-xs font-bold text-slate-400">
+            <span className="pt-3 md:pt-1.5 text-xs font-bold text-slate-400">
               {index + 1}
             </span>
             <div className="min-w-0">
@@ -93,7 +93,7 @@ export const QuantityCalculatorRows = memo(function QuantityCalculatorRows({
                 onChange={(e) => updateRow(index, e.target.value)}
                 placeholder="contoh: 20x2x5"
                 aria-invalid={hasError}
-                className={`w-full bg-slate-50 dark:bg-slate-800 border text-slate-800 dark:text-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed ${
+                className={`w-full bg-slate-50 dark:bg-slate-800 border text-slate-800 dark:text-slate-200 rounded-lg px-3 py-2.5 md:px-2.5 md:py-1.5 font-mono text-base md:text-xs focus:outline-none focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed ${
                   hasError
                     ? "border-red-400 focus:border-red-500"
                     : "border-slate-250 dark:border-slate-700 focus:border-blue-500"
@@ -105,7 +105,7 @@ export const QuantityCalculatorRows = memo(function QuantityCalculatorRows({
                 </p>
               )}
             </div>
-            <span className="pt-1.5 text-right text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
+            <span className="pt-3 md:pt-1.5 text-right text-sm md:text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
               {result?.status === "ok" ? formatQuantity(result.value) : "-"}
             </span>
             {!disabled ? (
@@ -114,7 +114,7 @@ export const QuantityCalculatorRows = memo(function QuantityCalculatorRows({
                 onClick={() => removeRow(index)}
                 title="Hapus baris"
                 aria-label={`Hapus baris ${index + 1}`}
-                className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition cursor-pointer"
+                className="p-2.5 md:p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition cursor-pointer"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -130,7 +130,7 @@ export const QuantityCalculatorRows = memo(function QuantityCalculatorRows({
           type="button"
           onClick={addRow}
           disabled={rows.length >= QUANTITY_CALCULATION_MAX_ROWS}
-          className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-500 disabled:text-slate-400 disabled:cursor-not-allowed transition cursor-pointer"
+          className="flex items-center gap-1 py-2 md:py-0 text-sm md:text-xs font-bold text-blue-600 hover:text-blue-500 disabled:text-slate-400 disabled:cursor-not-allowed transition cursor-pointer"
         >
           <Plus className="h-3.5 w-3.5" />
           Tambah Baris

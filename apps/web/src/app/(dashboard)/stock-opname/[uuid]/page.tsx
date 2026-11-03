@@ -21,7 +21,6 @@ import {
   STOCK_OPNAME_NOTE_MAX_LENGTH,
   roundQuantity,
   type StockOpnameCalculationRow,
-  type StockOpnameStackMovement,
   type UpdateStockOpnameInput,
 } from "@bulog-wms/schema";
 import {
@@ -33,7 +32,6 @@ import {
   CheckCircle,
   FileText,
   MapPin,
-  Tag,
   AlertTriangle,
   ChevronDown,
   ChevronRight,
@@ -45,6 +43,8 @@ import {
   StickyNote,
   History,
   RefreshCw,
+  Warehouse,
+  User,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
@@ -57,8 +57,6 @@ interface OpnameStack {
   variance: number | null;
   calculationRows?: StockOpnameCalculationRow[] | null;
   note?: string | null;
-  movementStatus?: StockOpnameStackMovement | null;
-  movementReasons?: string[];
   requiresConfirmation?: boolean;
   confirmedAt?: string | null;
   confirmedBy?: string | null;
@@ -79,10 +77,7 @@ interface LocationGroup {
   uom: string | null;
   erpQty: number;
   calculatedPhysical: number | null;
-  /** CHANGED when any SKU of the tumpukan moved since the previous opname */
-  movementStatus: StockOpnameStackMovement | null;
-  movementReasons: string[];
-  /** Count was prefilled from the previous opname and must be confirmed */
+  /** Count was prefilled from the previous opname; confirming it is optional */
   requiresConfirmation: boolean;
   /** Saved confirmation of the prefilled count */
   confirmed: boolean;
@@ -146,8 +141,6 @@ function groupByLocation(items: any[]): AreaGroup[] {
           uom: item.productUom,
           erpQty: 0,
           calculatedPhysical: null,
-          movementStatus: null,
-          movementReasons: [],
           requiresConfirmation: false,
           confirmed: false,
           confirmedBy: null,
@@ -182,21 +175,12 @@ function groupByLocation(items: any[]): AreaGroup[] {
         )
       : null;
 
-    const statuses = loc.entries.map((e) => e.stack.movementStatus ?? null);
-    loc.movementStatus = statuses.includes("CHANGED")
-      ? "CHANGED"
-      : statuses.length > 0 && statuses.every((s) => s === "UNCHANGED")
-        ? "UNCHANGED"
-        : null;
-    loc.movementReasons = Array.from(
-      new Set(loc.entries.flatMap((e) => e.stack.movementReasons ?? [])),
-    );
     const prefilled = loc.entries.filter((e) => e.stack.requiresConfirmation);
     loc.requiresConfirmation = prefilled.length > 0;
     loc.confirmed =
       loc.requiresConfirmation && prefilled.every((e) => !!e.stack.confirmedAt);
-    loc.confirmedBy = prefilled.find((e) => e.stack.confirmedBy)?.stack
-      .confirmedBy ?? null;
+    loc.confirmedBy =
+      prefilled.find((e) => e.stack.confirmedBy)?.stack.confirmedBy ?? null;
 
     const area = locationArea(loc.locationName);
     const list = areas.get(area) ?? [];
@@ -204,27 +188,14 @@ function groupByLocation(items: any[]): AreaGroup[] {
     areas.set(area, list);
   }
 
-  // Tumpukan that moved since the previous opname come first, unmoved ones last
-  const areaHasChange = (locs: LocationGroup[]) =>
-    locs.some((l) => l.movementStatus === "CHANGED");
   return Array.from(areas.entries())
-    .sort(
-      ([a, aLocs], [b, bLocs]) =>
-        Number(areaHasChange(bLocs)) - Number(areaHasChange(aLocs)) ||
-        collator.compare(a, b),
-    )
+    .sort(([a], [b]) => collator.compare(a, b))
     .map(([area, locs]) => ({
       area,
-      locations: locs.sort(
-        (a, b) =>
-          movementRank(a.movementStatus) - movementRank(b.movementStatus) ||
-          collator.compare(a.locationName, b.locationName),
+      locations: locs.sort((a, b) =>
+        collator.compare(a.locationName, b.locationName),
       ),
     }));
-}
-
-function movementRank(status: StockOpnameStackMovement | null): number {
-  return status === "CHANGED" ? 0 : status === "UNCHANGED" ? 2 : 1;
 }
 
 function varianceClass(value: number): string {
@@ -234,6 +205,46 @@ function varianceClass(value: number): string {
       ? "text-emerald-650"
       : "text-slate-500";
 }
+
+function formatDay(value: string): string {
+  return new Date(value).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+const LOCATION_GRID =
+  "md:grid md:grid-cols-[minmax(0,2.4fr)_repeat(4,minmax(0,1fr))] md:gap-4";
+
+function QtyCell({
+  label,
+  children,
+  emphasis = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  emphasis?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg px-3 py-2 md:p-0 md:rounded-none md:text-right ${
+        emphasis
+          ? "bg-blue-50/70 dark:bg-blue-950/20 md:bg-transparent md:dark:bg-transparent"
+          : "bg-slate-50 dark:bg-slate-800/40 md:bg-transparent md:dark:bg-transparent"
+      }`}
+    >
+      <div className="md:hidden text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </div>
+      <div className="text-sm font-bold">{children}</div>
+    </div>
+  );
+}
+
+const secondaryButton =
+  "flex items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-3.5 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed";
 
 export default function StockOpnameDetailPage() {
   const params = useParams();
@@ -272,7 +283,7 @@ export default function StockOpnameDetailPage() {
   // Rows as loaded, so untouched tumpukan (incl. legacy counts) are not re-sent
   const loadedRowsRef = useRef<Record<string, string[]>>({});
   const loadedNotesRef = useRef<Record<string, string>>({});
-  // "Masih sama" per prefilled tumpukan (location name)
+  // Optional "Masih sama" per prefilled tumpukan (location name)
   const [confirmations, setConfirmations] = useState<Record<string, boolean>>(
     {},
   );
@@ -332,20 +343,6 @@ export default function StockOpnameDetailPage() {
       isLocationEdited(loc.key),
     [confirmations, isLocationEdited],
   );
-
-  const movementSummary = useMemo(() => {
-    let changed = 0;
-    let unchanged = 0;
-    let awaitingConfirmation = 0;
-    for (const { locations } of areaGroups) {
-      for (const loc of locations) {
-        if (loc.movementStatus === "CHANGED") changed++;
-        if (loc.movementStatus === "UNCHANGED") unchanged++;
-        if (!isLocationConfirmed(loc)) awaitingConfirmation++;
-      }
-    }
-    return { changed, unchanged, awaitingConfirmation };
-  }, [areaGroups, isLocationConfirmed]);
 
   const handleRowsChange = useCallback(
     (locationKey: string, rows: string[]) => {
@@ -418,6 +415,7 @@ export default function StockOpnameDetailPage() {
   }
 
   const isDraft = detailData.status === "DRAFT";
+  const isBusy = isSaving || isSubmitting || isRefreshingStock || isDeleting;
 
   const toggleAreaExpand = (area: string) => {
     setExpandedAreas((prev) => ({ ...prev, [area]: !prev[area] }));
@@ -437,46 +435,56 @@ export default function StockOpnameDetailPage() {
       : null;
   };
 
+  const allLocations = areaGroups.flatMap((a) => a.locations);
+  const totalLocations = allLocations.length;
+  const countedLocations = allLocations.filter(
+    (loc) => locationPhysicalQty(loc) !== null,
+  ).length;
+  const prefilledLocations = allLocations.filter(
+    (loc) => loc.requiresConfirmation,
+  ).length;
+  const progressPercent = totalLocations
+    ? Math.round((countedLocations / totalLocations) * 100)
+    : 0;
+
   const buildSavePayload = (): UpdateStockOpnameInput => {
     const stacksPayload: NonNullable<UpdateStockOpnameInput["stacks"]> = [];
-    for (const { locations } of areaGroups) {
-      for (const loc of locations) {
-        const rows = calcRows[loc.key];
-        const note = stackNotes[loc.key] ?? "";
-        const confirmed = isLocationConfirmed(loc);
-        const confirmationChanged =
-          loc.requiresConfirmation && confirmed !== loc.confirmed;
-        if (
-          !rows ||
-          (rows === loadedRowsRef.current[loc.key] &&
-            note === loadedNotesRef.current[loc.key] &&
-            !confirmationChanged)
-        )
-          continue;
-        const total = summarizeCalculationRows(rows).total;
-        const confirmation = loc.requiresConfirmation ? { confirmed } : {};
-        // The tumpukan count is stored on its first SKU; other SKUs get 0, so
-        // the summed variance equals count - total ERP of the tumpukan
-        loc.entries.forEach(({ stack }, i) => {
-          stacksPayload.push(
-            i === 0
-              ? {
-                  uuid: stack.uuid,
-                  actualQty: total,
-                  calculationRows: rows.filter((r) => r.trim() !== ""),
-                  note: note.trim() || null,
-                  ...confirmation,
-                }
-              : {
-                  uuid: stack.uuid,
-                  actualQty: total === null ? null : 0,
-                  calculationRows: [],
-                  note: null,
-                  ...confirmation,
-                },
-          );
-        });
-      }
+    for (const loc of allLocations) {
+      const rows = calcRows[loc.key];
+      const note = stackNotes[loc.key] ?? "";
+      const confirmed = isLocationConfirmed(loc);
+      const confirmationChanged =
+        loc.requiresConfirmation && confirmed !== loc.confirmed;
+      if (
+        !rows ||
+        (rows === loadedRowsRef.current[loc.key] &&
+          note === loadedNotesRef.current[loc.key] &&
+          !confirmationChanged)
+      )
+        continue;
+      const total = summarizeCalculationRows(rows).total;
+      const confirmation = loc.requiresConfirmation ? { confirmed } : {};
+      // The tumpukan count is stored on its first SKU; other SKUs get 0, so
+      // the summed variance equals count - total ERP of the tumpukan
+      loc.entries.forEach(({ stack }, i) => {
+        stacksPayload.push(
+          i === 0
+            ? {
+                uuid: stack.uuid,
+                actualQty: total,
+                calculationRows: rows.filter((r) => r.trim() !== ""),
+                note: note.trim() || null,
+                ...confirmation,
+              }
+            : {
+                uuid: stack.uuid,
+                actualQty: total === null ? null : 0,
+                calculationRows: [],
+                note: null,
+                ...confirmation,
+              },
+        );
+      });
     }
     return {
       notes,
@@ -502,8 +510,7 @@ export default function StockOpnameDetailPage() {
   };
 
   const handleSubmitOpname = async () => {
-    if (hasInvalidExpression || movementSummary.awaitingConfirmation > 0)
-      return;
+    if (hasInvalidExpression) return;
     // Save first, then submit
     setIsSubmitting(true);
     const toastId = toast.loading(
@@ -529,7 +536,7 @@ export default function StockOpnameDetailPage() {
     if (hasInvalidExpression) return;
     if (
       !confirm(
-        "Perbarui Snapshot ERP dan Stok Rekonsiliasi draf ini ke stok terbaru? Hitungan, catatan, dan konfirmasi yang sudah diisi tetap disimpan. Isi otomatis yang belum dikonfirmasi akan dihapus bila tumpukannya ternyata bergerak.",
+        "Perbarui Snapshot ERP dan Stok Sistem draf ini ke stok terbaru? Hitungan fisik, catatan, dan konfirmasi yang sudah diisi tidak akan berubah.",
       )
     )
       return;
@@ -542,9 +549,6 @@ export default function StockOpnameDetailPage() {
       const details = [
         result?.newStacks ? `${result.newStacks} tumpukan baru` : null,
         result?.prefilled ? `${result.prefilled} diisi otomatis` : null,
-        result?.prefillsRemoved
-          ? `${result.prefillsRemoved} isi otomatis dihapus karena bergerak`
-          : null,
       ].filter(Boolean);
       toast.success(
         `Stok berhasil diperbarui${details.length ? ` (${details.join(", ")})` : ""}.`,
@@ -587,8 +591,36 @@ export default function StockOpnameDetailPage() {
     }
   };
 
+  const saveButton = (
+    <button
+      onClick={handleSaveDraft}
+      disabled={isBusy || hasInvalidExpression}
+      className="flex flex-1 md:flex-none items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-50/50 font-bold px-4 py-3 md:py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <Save className="h-4.5 w-4.5" />
+      {isSaving ? "Menyimpan..." : "Simpan Draf"}
+    </button>
+  );
+
+  const submitButton = (
+    <button
+      onClick={handleSubmitOpname}
+      disabled={isBusy || hasInvalidExpression}
+      className="flex flex-1 md:flex-none items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-3 md:py-2.5 rounded-xl shadow-lg hover:shadow-emerald-500/10 transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <CheckCircle className="h-4.5 w-4.5" />
+      {isSubmitting ? (
+        "Memproses..."
+      ) : (
+        <>
+          Selesaikan<span className="hidden md:inline"> Opname</span>
+        </>
+      )}
+    </button>
+  );
+
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6 pb-28 md:pb-12">
       {/* Breadcrumb Navigation */}
       <button
         onClick={() => router.push("/stock-opname")}
@@ -599,189 +631,216 @@ export default function StockOpnameDetailPage() {
       </button>
 
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xs gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xl md:text-2xl font-black text-slate-850 dark:text-slate-100">
-              {detailData.opnameNumber}
-            </span>
-            {isDraft ? (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
-                Draf Perhitungan
-              </span>
-            ) : (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-150 dark:border-emerald-900/30">
-                Final (Completed)
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3.5 w-3.5 shrink-0" />
-              Mulai:{" "}
-              {new Date(detailData.createdAt).toLocaleString("id-ID", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-            {detailData.completionDate && (
-              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle className="h-3.5 w-3.5 shrink-0" />
-                Selesai:{" "}
-                {new Date(detailData.completionDate).toLocaleString("id-ID", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            )}
-            <span>Pembuat: {detailData.createdBy}</span>
-          </div>
-        </div>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+        <div className="p-5 md:p-6 space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div className="min-w-0 space-y-1.5">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Stock Opname
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-mono text-xl md:text-2xl font-black text-slate-850 dark:text-slate-100 break-all">
+                  {detailData.opnameNumber}
+                </h1>
+                {isDraft ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
+                    Draf Perhitungan
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-150 dark:border-emerald-900/30">
+                    Selesai
+                  </span>
+                )}
+              </div>
+            </div>
 
-        {/* Action button bar */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={handlePrintPhysicalCountSheet}
-            className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm"
-          >
-            <Printer className="h-4.5 w-4.5 mr-2 text-slate-500" />
-            Cetak Lembar Hitung Fisik
-          </button>
-
-          {isDraft && (
-            <>
-              {canDelete && (
-                <button
-                  onClick={handleDeleteOpname}
-                  disabled={isSaving || isSubmitting || isDeleting}
-                  className="flex items-center justify-center bg-white border border-red-200 text-red-600 hover:bg-red-50/50 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Trash2 className="h-4.5 w-4.5 mr-2" />
-                  {isDeleting ? "Menghapus..." : "Hapus Draf"}
-                </button>
+            {/* Desktop actions */}
+            <div className="hidden md:flex flex-wrap items-center gap-2 lg:justify-end">
+              <button
+                onClick={handlePrintPhysicalCountSheet}
+                className={secondaryButton}
+              >
+                <Printer className="h-4.5 w-4.5 text-slate-500" />
+                Cetak Lembar Hitung
+              </button>
+              {isDraft && (
+                <>
+                  <button
+                    onClick={handleRefreshStock}
+                    disabled={isBusy || hasInvalidExpression}
+                    className={secondaryButton}
+                  >
+                    <RefreshCw
+                      className={`h-4.5 w-4.5 text-slate-500 ${isRefreshingStock ? "animate-spin" : ""}`}
+                    />
+                    {isRefreshingStock ? "Memperbarui..." : "Perbarui Stok"}
+                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={handleDeleteOpname}
+                      disabled={isBusy}
+                      title="Hapus Draf"
+                      className={`${secondaryButton} !text-red-600 !border-red-200 dark:!border-red-900/40`}
+                    >
+                      <Trash2 className="h-4.5 w-4.5" />
+                      {isDeleting ? "Menghapus..." : "Hapus"}
+                    </button>
+                  )}
+                  <span className="hidden lg:block w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1" />
+                  {saveButton}
+                  {submitButton}
+                </>
               )}
+            </div>
+          </div>
 
+          {/* Key info */}
+          <dl className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-3 min-w-0">
+              <dt className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <Warehouse className="h-3.5 w-3.5" />
+                Gudang
+              </dt>
+              <dd className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200 break-words">
+                {detailData.warehouseName}
+              </dd>
+              <dd className="text-xs text-slate-400 font-mono truncate">
+                {detailData.warehouseCode}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-3 min-w-0">
+              <dt className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <Calendar className="h-3.5 w-3.5" />
+                Tanggal Opname
+              </dt>
+              <dd className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200">
+                {formatDay(detailData.createdAt)}
+              </dd>
+              {detailData.completionDate && (
+                <dd className="text-xs text-emerald-600 dark:text-emerald-400">
+                  Selesai {formatDay(detailData.completionDate)}
+                </dd>
+              )}
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-3 min-w-0">
+              <dt className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <User className="h-3.5 w-3.5" />
+                Dibuat Oleh
+              </dt>
+              <dd className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
+                {detailData.createdBy}
+              </dd>
+              <dd className="text-xs text-slate-400">
+                {detailData.totalProducts} komoditas
+              </dd>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-3 min-w-0">
+              <dt className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <Layers className="h-3.5 w-3.5" />
+                Progres Hitung
+              </dt>
+              <dd className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200">
+                {countedLocations}/{totalLocations} tumpukan
+                <span className="ml-1 text-xs font-semibold text-slate-400">
+                  ({progressPercent}%)
+                </span>
+              </dd>
+              <dd className="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${progressPercent === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </dd>
+            </div>
+          </dl>
+
+          {/* Mobile secondary actions */}
+          <div
+            className={`md:hidden grid gap-2 ${isDraft ? (canDelete ? "grid-cols-3" : "grid-cols-2") : "grid-cols-1"}`}
+          >
+            <button
+              onClick={handlePrintPhysicalCountSheet}
+              className={`${secondaryButton} flex-col !gap-1 !text-xs`}
+            >
+              <Printer className="h-4.5 w-4.5 text-slate-500" />
+              Cetak
+            </button>
+            {isDraft && (
               <button
                 onClick={handleRefreshStock}
-                disabled={
-                  isSaving ||
-                  isSubmitting ||
-                  isRefreshingStock ||
-                  hasInvalidExpression
-                }
-                className="flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isBusy || hasInvalidExpression}
+                className={`${secondaryButton} flex-col !gap-1 !text-xs`}
               >
                 <RefreshCw
-                  className={`h-4.5 w-4.5 mr-2 text-slate-500 ${isRefreshingStock ? "animate-spin" : ""}`}
+                  className={`h-4.5 w-4.5 text-slate-500 ${isRefreshingStock ? "animate-spin" : ""}`}
                 />
                 {isRefreshingStock ? "Memperbarui..." : "Perbarui Stok"}
               </button>
-
+            )}
+            {isDraft && canDelete && (
               <button
-                onClick={handleSaveDraft}
-                disabled={isSaving || isSubmitting || hasInvalidExpression}
-                className="flex items-center justify-center bg-white border border-blue-200 text-blue-600 hover:bg-blue-50/50 font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleDeleteOpname}
+                disabled={isBusy}
+                className={`${secondaryButton} flex-col !gap-1 !text-xs !text-red-600 !border-red-200`}
               >
-                <Save className="h-4.5 w-4.5 mr-2" />
-                {isSaving ? "Menyimpan..." : "Simpan Draf"}
+                <Trash2 className="h-4.5 w-4.5" />
+                {isDeleting ? "Menghapus..." : "Hapus"}
               </button>
-
-              <button
-                onClick={handleSubmitOpname}
-                disabled={
-                  isSaving ||
-                  isSubmitting ||
-                  hasInvalidExpression ||
-                  movementSummary.awaitingConfirmation > 0
-                }
-                title={
-                  movementSummary.awaitingConfirmation > 0
-                    ? `${movementSummary.awaitingConfirmation} tumpukan isi otomatis belum dikonfirmasi`
-                    : undefined
-                }
-                className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg hover:shadow-emerald-500/10 transition cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <CheckCircle className="h-4.5 w-4.5 mr-2" />
-                {isSubmitting ? "Memproses..." : "Selesaikan Opname"}
-              </button>
-            </>
-          )}
+            )}
+          </div>
         </div>
+
+        {detailData.previousStockOpname && prefilledLocations > 0 && (
+          <div className="flex items-start gap-2.5 border-t border-blue-100 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-950/10 px-5 md:px-6 py-3 text-xs text-blue-900 dark:text-blue-300">
+            <History className="h-4 w-4 mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
+            <span>
+              {prefilledLocations} tumpukan yang tidak bergerak sudah diisi
+              otomatis dari hitungan terakhir{" "}
+              <span className="font-bold font-mono">
+                {detailData.previousStockOpname.opnameNumber}
+              </span>
+              .{isDraft && " Periksa dan ubah bila berbeda."}
+            </span>
+          </div>
+        )}
       </div>
 
       {isDraft && (
-        <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-4 flex items-start gap-3.5 shadow-xs">
+        <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
           <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-            <span className="font-bold">Panduan Counting:</span> Klik pada
-            lokasi (mis. GBB 01, GKP) untuk menampilkan tumpukannya. Buka
-            &quot;Perhitungan Kuantum Fisik&quot; untuk memasukkan hasil hitung
-            tumpukan (satu isian untuk semua SKU dalam tumpukan yang sama), bisa
-            berupa ekspresi seperti 20x2x5 atau (10+5)x2 dalam beberapa baris.
-            Lokasi tanpa baris terisi akan diabaikan dan tidak dimasukkan ke
-            dalam perhitungan selisih/varian.
+            <span className="font-bold">Panduan:</span> Buka lokasi (mis. GBB
+            01, GKP), lalu ketuk &quot;Isi Hitungan&quot; pada tumpukan. Satu
+            isian berlaku untuk semua SKU dalam tumpukan yang sama, bisa berupa
+            ekspresi seperti 20x2x5 atau (10+5)x2 dalam beberapa baris. Tumpukan
+            tanpa hitungan tidak dimasukkan ke perhitungan selisih.
           </div>
         </div>
       )}
 
       {isDraft && hasInvalidExpression && (
-        <div className="bg-red-50 dark:bg-red-950/10 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex items-start gap-3.5 text-xs font-semibold text-red-700 dark:text-red-400">
+        <div className="bg-red-50 dark:bg-red-950/10 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex items-start gap-3 text-xs font-semibold text-red-700 dark:text-red-400">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           Masih ada ekspresi perhitungan yang tidak valid. Perbaiki terlebih
           dahulu sebelum menyimpan atau menyelesaikan Stock Opname.
         </div>
       )}
 
-      {detailData.previousStockOpname && (
-        <div className="bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4 flex items-start gap-3.5 shadow-xs">
-          <History className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-          <div className="text-xs text-blue-900 dark:text-blue-300 leading-relaxed space-y-1">
-            <div>
-              Dibandingkan dengan opname terakhir{" "}
-              <span className="font-bold font-mono">
-                {detailData.previousStockOpname.opnameNumber}
-              </span>
-              :{" "}
-              <span className="font-bold text-red-700 dark:text-red-400">
-                {movementSummary.changed} tumpukan berubah
-              </span>{" "}
-              (ditampilkan paling atas, perlu dihitung ulang) dan{" "}
-              <span className="font-bold">
-                {movementSummary.unchanged} tumpukan tidak bergerak
-              </span>{" "}
-              (hitungan & catatan diisi otomatis dari opname terakhir).
-            </div>
-            {isDraft && movementSummary.awaitingConfirmation > 0 && (
-              <div className="font-bold text-amber-700 dark:text-amber-400">
-                {movementSummary.awaitingConfirmation} tumpukan isi otomatis
-                perlu dikonfirmasi &quot;Masih sama&quot; atau diperbarui
-                sebelum Stock Opname bisa diselesaikan.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Locations list card, grouped by area (GBB 01, GBB 02, GKP, ...) */}
+      {/* Locations, grouped by area (GBB 01, GBB 02, GKP, ...) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800/80">
+        <div className="px-4 md:px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
           <h2 className="text-base font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
             <Layers className="h-5 w-5 text-blue-600 shrink-0" />
-            Tabel Hitung per Lokasi (
-            {areaGroups.reduce((n, a) => n + a.locations.length, 0)} Tumpukan)
+            Hitung per Lokasi
+            <span className="text-sm font-semibold text-slate-400">
+              ({totalLocations} tumpukan)
+            </span>
           </h2>
         </div>
 
         {areaGroups.length === 0 && (
           <p className="px-6 py-8 text-center text-xs italic text-slate-400">
-            Tidak ada lokasi dengan Snapshot ERP atau Stok Rekonsiliasi lebih
-            dari 0.
+            Tidak ada lokasi dengan Snapshot ERP atau Stok Sistem lebih dari 0.
           </p>
         )}
 
@@ -791,12 +850,7 @@ export default function StockOpnameDetailPage() {
             const countedCount = locations.filter(
               (loc) => locationPhysicalQty(loc) !== null,
             ).length;
-            const changedCount = locations.filter(
-              (loc) => loc.movementStatus === "CHANGED",
-            ).length;
-            const awaitingCount = isDraft
-              ? locations.filter((loc) => !isLocationConfirmed(loc)).length
-              : 0;
+            const done = countedCount === locations.length;
 
             return (
               <div key={area}>
@@ -805,8 +859,8 @@ export default function StockOpnameDetailPage() {
                   type="button"
                   onClick={() => toggleAreaExpand(area)}
                   aria-expanded={isExpanded}
-                  className={`w-full flex items-center gap-2 px-6 py-4 text-left hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition cursor-pointer select-none ${
-                    isExpanded ? "bg-slate-50/20 dark:bg-slate-850/10" : ""
+                  className={`w-full flex items-center gap-2 px-4 md:px-6 py-4 text-left hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition cursor-pointer select-none ${
+                    isExpanded ? "bg-slate-50/60 dark:bg-slate-850/20" : ""
                   }`}
                 >
                   {isExpanded ? (
@@ -815,278 +869,247 @@ export default function StockOpnameDetailPage() {
                     <ChevronRight className="h-4.5 w-4.5 text-slate-500 shrink-0" />
                   )}
                   <MapPin className="h-4 w-4 text-blue-500 shrink-0" />
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
                     {area}
                   </span>
-                  {changedCount > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-150 dark:border-red-900/30">
-                      <RefreshCw className="h-3 w-3" />
-                      {changedCount} berubah
-                    </span>
-                  )}
-                  {awaitingCount > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-150 dark:border-amber-900/30">
-                      <AlertTriangle className="h-3 w-3" />
-                      {awaitingCount} perlu konfirmasi
-                    </span>
-                  )}
-                  <span className="ml-auto text-xs font-semibold text-slate-400">
-                    {countedCount}/{locations.length} tumpukan dihitung
+                  <span
+                    className={`ml-auto shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
+                      done
+                        ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-150 dark:border-emerald-900/30"
+                        : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    {done && <CheckCircle className="h-3 w-3" />}
+                    {countedCount}/{locations.length} dihitung
                   </span>
                 </button>
 
                 {isExpanded && (
-                  <div className="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
-                        <tr className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          <th className="px-6 py-3 w-[16%]">Tumpukan</th>
-                          <th className="px-6 py-3 w-[28%]">Komoditas</th>
-                          <th className="px-6 py-3 text-right w-[14%]">
-                            Snapshot ERP
-                          </th>
-                          <th className="px-6 py-3 text-right w-[14%]">
-                            Stok Rekonsiliasi
-                          </th>
-                          <th className="px-6 py-3 text-right w-[14%]">
-                            Hasil Hitung Fisik
-                          </th>
-                          <th className="px-6 py-3 text-right w-[14%]">
-                            Selisih
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-                        {locations.map((loc) => {
-                          const rows = calcRows[loc.key] ?? [""];
-                          const summary = summarizeCalculationRows(rows);
-                          const physicalQty = locationPhysicalQty(loc);
-                          const variance =
-                            physicalQty !== null
-                              ? roundQuantity(physicalQty - loc.erpQty)
-                              : null;
-                          const isCalcOpen = !!expandedCalculators[loc.key];
-                          const isMixed = loc.entries.length > 1;
-                          const isChanged = loc.movementStatus === "CHANGED";
-                          const isEdited =
-                            loc.requiresConfirmation &&
-                            isDraft &&
-                            isLocationEdited(loc.key);
-                          const isConfirmed = isDraft
-                            ? isLocationConfirmed(loc)
-                            : loc.confirmed;
-                          const rowTint = isChanged
-                            ? "bg-red-50/40 dark:bg-red-950/10"
-                            : loc.requiresConfirmation && !isConfirmed
-                              ? "bg-amber-50/40 dark:bg-amber-950/10"
-                              : "";
+                  <div className="border-t border-slate-100 dark:border-slate-800">
+                    {/* Desktop column headers */}
+                    <div
+                      className={`hidden ${LOCATION_GRID} px-6 py-2.5 bg-slate-50 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider`}
+                    >
+                      <span>Tumpukan / Komoditas</span>
+                      <span className="text-right">Snapshot ERP</span>
+                      <span className="text-right">Stok Sistem</span>
+                      <span className="text-right">Hitung Fisik</span>
+                      <span className="text-right">Selisih</span>
+                    </div>
 
-                          return (
-                            <React.Fragment key={loc.key}>
-                              <tr className={`align-top ${rowTint}`}>
-                                <td
-                                  className={`px-6 py-3.5 font-bold text-slate-800 dark:text-slate-200 ${
-                                    isChanged
-                                      ? "border-l-4 border-red-500"
-                                      : loc.requiresConfirmation && !isConfirmed
-                                        ? "border-l-4 border-amber-400"
-                                        : ""
-                                  }`}
-                                >
-                                  {loc.locationName}
-                                  <div className="mt-1.5 flex flex-wrap gap-1">
-                                    {isChanged && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400">
-                                        <RefreshCw className="h-3 w-3" />
-                                        Berubah — hitung ulang
-                                      </span>
-                                    )}
-                                    {loc.movementStatus === "UNCHANGED" && (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                                        Tidak bergerak
-                                      </span>
-                                    )}
-                                    {loc.requiresConfirmation &&
-                                      (isConfirmed ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400">
-                                          <CheckCircle className="h-3 w-3" />
-                                          {isEdited ? "Diperbarui" : "Terkonfirmasi"}
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
-                                          <AlertTriangle className="h-3 w-3" />
-                                          Perlu konfirmasi
-                                        </span>
-                                      ))}
-                                  </div>
-                                  {isChanged &&
-                                    loc.movementReasons.length > 0 && (
-                                      <ul className="mt-1.5 space-y-0.5 text-[10px] font-medium text-red-700/90 dark:text-red-400/90 list-disc pl-3.5">
-                                        {loc.movementReasons.map((r) => (
-                                          <li key={r}>{r}</li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                </td>
-                                <td className="px-6 py-3.5 space-y-1.5">
+                    <div className="md:divide-y divide-slate-100 dark:divide-slate-800 p-2 md:p-0 space-y-2 md:space-y-0">
+                      {locations.map((loc) => {
+                        const rows = calcRows[loc.key] ?? [""];
+                        const summary = summarizeCalculationRows(rows);
+                        const physicalQty = locationPhysicalQty(loc);
+                        const variance =
+                          physicalQty !== null
+                            ? roundQuantity(physicalQty - loc.erpQty)
+                            : null;
+                        const isCalcOpen = !!expandedCalculators[loc.key];
+                        const isMixed = loc.entries.length > 1;
+                        const isEdited =
+                          loc.requiresConfirmation &&
+                          isDraft &&
+                          isLocationEdited(loc.key);
+                        const isConfirmed = isDraft
+                          ? isLocationConfirmed(loc)
+                          : loc.confirmed;
+                        const filledRows = rows.filter(
+                          (r) => r.trim() !== "",
+                        ).length;
+
+                        return (
+                          <div
+                            key={loc.key}
+                            className="rounded-xl md:rounded-none border md:border-0 border-slate-200 dark:border-slate-800 p-3 md:px-6 md:py-4 space-y-3"
+                          >
+                            <div className={`${LOCATION_GRID} md:items-start`}>
+                              {/* Tumpukan + komoditas */}
+                              <div className="min-w-0 mb-3 md:mb-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 break-words">
+                                    {loc.locationName}
+                                  </span>
+                                  {physicalQty !== null && (
+                                    <CheckCircle className="md:hidden h-4.5 w-4.5 text-emerald-500 shrink-0" />
+                                  )}
+                                </div>
+                                <div className="mt-1 space-y-1">
                                   {loc.entries.map((e) => (
-                                    <div key={e.stack.uuid}>
-                                      <div className="font-semibold text-slate-700 dark:text-slate-300">
+                                    <div key={e.stack.uuid} className="text-xs">
+                                      <span className="font-semibold text-slate-600 dark:text-slate-300">
                                         {e.productName}
-                                      </div>
-                                      <div className="text-slate-400 font-mono text-[10px]">
+                                      </span>
+                                      <span className="ml-1.5 text-slate-400 font-mono text-[10px]">
                                         {e.productSku}
                                         {isMixed &&
                                           ` · ERP ${formatQuantity(e.stack.erpQty)} ${e.productUom ?? ""}`}
-                                      </div>
+                                      </span>
                                     </div>
                                   ))}
-                                </td>
-                                <td className="px-6 py-3.5 text-right font-bold text-slate-700 dark:text-slate-300">
-                                  {formatQuantity(loc.erpQty)}{" "}
-                                  <span className="text-slate-400 text-xs font-normal">
-                                    {loc.uom}
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 md:contents">
+                                <QtyCell label="Snapshot ERP">
+                                  <span className="text-slate-700 dark:text-slate-300">
+                                    {formatQuantity(loc.erpQty)}{" "}
+                                    <span className="text-slate-400 text-xs font-normal">
+                                      {loc.uom}
+                                    </span>
                                   </span>
-                                </td>
-                                <td className="px-6 py-3.5 text-right font-bold text-slate-500 dark:text-slate-400">
-                                  {loc.calculatedPhysical !== null ? (
-                                    <>
-                                      {formatQuantity(loc.calculatedPhysical)}{" "}
-                                      <span className="text-slate-400 text-xs font-normal">
-                                        {loc.uom}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    "-"
-                                  )}
-                                </td>
-                                <td className="px-6 py-3.5 text-right font-extrabold text-slate-800 dark:text-slate-200">
+                                </QtyCell>
+                                <QtyCell label="Stok Sistem">
+                                  <span className="text-slate-500 dark:text-slate-400">
+                                    {loc.calculatedPhysical !== null ? (
+                                      <>
+                                        {formatQuantity(loc.calculatedPhysical)}{" "}
+                                        <span className="text-slate-400 text-xs font-normal">
+                                          {loc.uom}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </span>
+                                </QtyCell>
+                                <QtyCell label="Hitung Fisik" emphasis>
                                   {physicalQty !== null ? (
-                                    <>
+                                    <span className="font-extrabold text-slate-800 dark:text-slate-200">
                                       {formatQuantity(physicalQty)}{" "}
                                       <span className="text-slate-400 text-xs font-normal">
                                         {loc.uom}
                                       </span>
-                                    </>
+                                    </span>
                                   ) : (
-                                    <span className="text-slate-350 dark:text-slate-650 italic font-normal text-xs">
+                                    <span className="text-slate-400 italic font-normal text-xs">
                                       Belum dihitung
                                     </span>
                                   )}
-                                </td>
-                                <td className="px-6 py-3.5 text-right font-black">
+                                </QtyCell>
+                                <QtyCell label="Selisih">
                                   {variance !== null ? (
-                                    <span className={varianceClass(variance)}>
+                                    <span
+                                      className={`font-black ${varianceClass(variance)}`}
+                                    >
                                       {formatSignedQuantity(variance)}
                                     </span>
                                   ) : (
                                     <span className="text-slate-300">-</span>
                                   )}
-                                </td>
-                              </tr>
-                              <tr className={rowTint}>
-                                <td colSpan={6} className="px-6 pb-3.5">
-                                  {loc.requiresConfirmation && (
-                                    <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-150 dark:border-amber-900/30 bg-amber-50/60 dark:bg-amber-950/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-                                      <History className="h-3.5 w-3.5 shrink-0" />
-                                      <span>
-                                        Hitungan & catatan diisi otomatis dari
-                                        opname terakhir karena tumpukan tidak
-                                        bergerak.
-                                      </span>
-                                      {isDraft ? (
-                                        <label className="ml-auto inline-flex items-center gap-1.5 font-bold cursor-pointer select-none">
-                                          <input
-                                            type="checkbox"
-                                            className="h-4 w-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed"
-                                            checked={isConfirmed}
-                                            disabled={isEdited}
-                                            onChange={(e) =>
-                                              setConfirmations((prev) => ({
-                                                ...prev,
-                                                [loc.key]: e.target.checked,
-                                              }))
-                                            }
-                                          />
-                                          {isEdited
-                                            ? "Diperbarui petugas"
-                                            : "Masih sama"}
-                                        </label>
-                                      ) : (
-                                        <span className="ml-auto font-bold">
-                                          {isConfirmed
-                                            ? `Dikonfirmasi${loc.confirmedBy ? ` oleh ${loc.confirmedBy}` : ""}`
-                                            : "Belum dikonfirmasi"}
-                                        </span>
-                                      )}
-                                    </div>
+                                </QtyCell>
+                              </div>
+                            </div>
+
+                            {loc.requiresConfirmation && (
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-950/10 px-3 py-2 text-xs text-blue-900 dark:text-blue-300">
+                                <History className="h-3.5 w-3.5 shrink-0" />
+                                <span>Diisi dari hitungan terakhir.</span>
+                                {isDraft ? (
+                                  <label className="ml-auto inline-flex items-center gap-2 py-1 font-bold cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      className="h-5 w-5 md:h-4 md:w-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed"
+                                      checked={isConfirmed}
+                                      disabled={isEdited}
+                                      onChange={(e) =>
+                                        setConfirmations((prev) => ({
+                                          ...prev,
+                                          [loc.key]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    {isEdited
+                                      ? "Diperbarui petugas"
+                                      : "Masih sama (opsional)"}
+                                  </label>
+                                ) : (
+                                  isConfirmed && (
+                                    <span className="ml-auto font-bold">
+                                      Dikonfirmasi
+                                      {loc.confirmedBy
+                                        ? ` oleh ${loc.confirmedBy}`
+                                        : ""}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            )}
+
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-800">
+                              <button
+                                type="button"
+                                onClick={() => toggleCalculator(loc.key)}
+                                aria-expanded={isCalcOpen}
+                                className="w-full flex items-center gap-2 px-3 py-3 md:py-2 text-sm md:text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg transition cursor-pointer"
+                              >
+                                {isCalcOpen ? (
+                                  <ChevronDown className="h-4 w-4 shrink-0" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0" />
+                                )}
+                                <Calculator className="h-4 w-4 text-blue-500 shrink-0" />
+                                {!isDraft
+                                  ? "Rincian Perhitungan"
+                                  : filledRows > 0
+                                    ? "Ubah Hitungan"
+                                    : "Isi Hitungan"}
+                                {filledRows > 0 && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({filledRows} baris)
+                                  </span>
+                                )}
+                                {summary.hasError && (
+                                  <span className="ml-auto inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                    Tidak valid
+                                  </span>
+                                )}
+                              </button>
+                              {isCalcOpen && (
+                                <div className="max-w-2xl px-2 md:px-3 pb-3 pt-1">
+                                  <QuantityCalculatorRows
+                                    rowsKey={loc.key}
+                                    rows={rows}
+                                    onChange={handleRowsChange}
+                                    uom={loc.uom}
+                                    disabled={!isDraft}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-start gap-2">
+                              <StickyNote className="h-4 w-4 mt-2.5 md:mt-2 text-amber-500 shrink-0" />
+                              {isDraft ? (
+                                <input
+                                  type="text"
+                                  value={stackNotes[loc.key] ?? ""}
+                                  maxLength={STOCK_OPNAME_NOTE_MAX_LENGTH}
+                                  onChange={(e) =>
+                                    setStackNotes((prev) => ({
+                                      ...prev,
+                                      [loc.key]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Catatan tumpukan (mis. karung rusak, tumpukan miring)..."
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2.5 md:py-1.5 text-base md:text-xs focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-slate-850 dark:border-slate-800 dark:text-slate-200"
+                                />
+                              ) : (
+                                <p className="py-1.5 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                                  {stackNotes[loc.key] || (
+                                    <span className="italic text-slate-400">
+                                      Tidak ada catatan tumpukan.
+                                    </span>
                                   )}
-                                  <div className="rounded-lg border border-slate-150 dark:border-slate-800">
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleCalculator(loc.key)}
-                                      aria-expanded={isCalcOpen}
-                                      className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg transition cursor-pointer"
-                                    >
-                                      {isCalcOpen ? (
-                                        <ChevronDown className="h-4 w-4 shrink-0" />
-                                      ) : (
-                                        <ChevronRight className="h-4 w-4 shrink-0" />
-                                      )}
-                                      <Calculator className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                      Perhitungan Kuantum Fisik
-                                      {summary.hasError && (
-                                        <span className="ml-auto inline-flex items-center gap-1 text-red-600 dark:text-red-400">
-                                          <AlertTriangle className="h-3.5 w-3.5" />
-                                          Ekspresi tidak valid
-                                        </span>
-                                      )}
-                                    </button>
-                                    {isCalcOpen && (
-                                      <div className="max-w-2xl px-3 pb-3 pt-1">
-                                        <QuantityCalculatorRows
-                                          rowsKey={loc.key}
-                                          rows={rows}
-                                          onChange={handleRowsChange}
-                                          uom={loc.uom}
-                                          disabled={!isDraft}
-                                        />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="mt-2 flex items-start gap-1.5">
-                                    <StickyNote className="h-3.5 w-3.5 mt-2 text-amber-500 shrink-0" />
-                                    {isDraft ? (
-                                      <input
-                                        type="text"
-                                        value={stackNotes[loc.key] ?? ""}
-                                        maxLength={STOCK_OPNAME_NOTE_MAX_LENGTH}
-                                        onChange={(e) =>
-                                          setStackNotes((prev) => ({
-                                            ...prev,
-                                            [loc.key]: e.target.value,
-                                          }))
-                                        }
-                                        placeholder={`Catatan tumpukan ${loc.locationName} (mis. karung rusak, tumpukan miring)...`}
-                                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-slate-850 dark:border-slate-800 dark:text-slate-200"
-                                      />
-                                    ) : (
-                                      <p className="py-1.5 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-                                        {stackNotes[loc.key] || (
-                                          <span className="italic text-slate-400">
-                                            Tidak ada catatan tumpukan.
-                                          </span>
-                                        )}
-                                      </p>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            </React.Fragment>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1109,7 +1132,7 @@ export default function StockOpnameDetailPage() {
               placeholder="Tuliskan temuan selisih, barang rusak, penomoran batch salah, catatan operasional, atau justifikasi rekonsiliasi stok di sini..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-3 text-base md:text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
             />
           ) : (
             <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-350 leading-relaxed whitespace-pre-wrap">
@@ -1159,6 +1182,14 @@ export default function StockOpnameDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Mobile sticky save / submit bar */}
+      {isDraft && (
+        <div className="md:hidden fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.06)]">
+          {saveButton}
+          {submitButton}
+        </div>
+      )}
     </div>
   );
 }

@@ -99,7 +99,6 @@ export function useStockOpnameDetail(uuid?: string) {
         uuid: string;
         newStacks: number;
         prefilled: number;
-        prefillsRemoved: number;
       }
     | undefined
   > => {
