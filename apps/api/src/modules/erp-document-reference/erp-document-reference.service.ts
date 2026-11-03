@@ -644,10 +644,6 @@ export class ErpDocumentReferenceService {
       state: query.state
         ? query.state.toLowerCase()
         : { in: ['assigned', 'confirmed'] },
-      OR: [
-        { partnerName: null },
-        { partnerName: { not: '4755 - Manager Pengolahan Kalsel' } },
-      ],
     };
 
     if (query.search) {
