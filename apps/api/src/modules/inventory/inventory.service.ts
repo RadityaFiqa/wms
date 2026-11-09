@@ -9,6 +9,19 @@ import { OdooClient } from '../odoo/odoo-client';
 import { OdooSessionManager } from '../odoo/odoo-session.manager';
 import PDFDocument from 'pdfkit';
 import { getReconciledStockForQuants } from '@/core/utils/stock-reconciliation';
+import { getSecondaryQty } from '@/core/utils/uom';
+import {
+  getCommodityCategory,
+  getProductPrograms,
+  isProductProgram,
+  PRODUCT_PROGRAMS,
+} from '@/core/utils/product-category';
+import type {
+  InventoryCommoditySummary,
+  InventoryListItem,
+  InventoryListSummary,
+  SecondaryUnit,
+} from '@bulog-wms/schema';
 
 @Injectable()
 export class InventoryService {
@@ -663,7 +676,12 @@ export class InventoryService {
    */
   async findAll(
     warehouseId: number,
-    query: { search?: string; page?: number; limit?: number },
+    query: {
+      search?: string;
+      page?: number;
+      limit?: number;
+      category?: string;
+    },
   ) {
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
@@ -682,18 +700,31 @@ export class InventoryService {
       },
     };
 
+    where.AND = [];
     if (query.search) {
-      where.AND = [
-        {
-          OR: [
-            { name: { contains: query.search, mode: 'insensitive' } },
-            { sku: { contains: query.search, mode: 'insensitive' } },
-          ],
-        },
-      ];
+      where.AND.push({
+        OR: [
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { sku: { contains: query.search, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (query.category) {
+      const category = query.category.trim().toUpperCase();
+      // A program (SPHP) can be anywhere in the name, a commodity is its first word
+      where.AND.push(
+        isProductProgram(category)
+          ? { name: { contains: category, mode: 'insensitive' } }
+          : {
+              OR: [
+                { name: { startsWith: `${category} `, mode: 'insensitive' } },
+                { name: { equals: category, mode: 'insensitive' } },
+              ],
+            },
+      );
     }
 
-    // 1. Query paginated list
+    // 1. Query paginated list (ordered by name, so products of one commodity stay together)
     const [total, data] = await Promise.all([
       this.prisma.inventory.count({ where }),
       this.prisma.inventory.findMany({
@@ -724,15 +755,27 @@ export class InventoryService {
 
       let totalQty = 0;
       let totalAvailable = 0;
+      let secondaryQuantity: number | null = null;
+      let secondaryUnit: SecondaryUnit | null = null;
       const uniqueLocationIds = new Set<number>();
 
       for (const q of quants) {
         totalQty += q.quantity;
         totalAvailable += q.availableQuantity;
         uniqueLocationIds.add(q.locationId);
+
+        const secondary = getSecondaryQty(
+          q.quantity,
+          q.secondaryUnitQty,
+          inv.uom,
+        );
+        if (secondary) {
+          secondaryUnit = secondary.unit;
+          secondaryQuantity = (secondaryQuantity ?? 0) + secondary.qty;
+        }
       }
 
-      return {
+      const item: InventoryListItem = {
         uuid: inv.uuid,
         sku: inv.sku,
         name: inv.name,
@@ -740,7 +783,11 @@ export class InventoryService {
         totalQuantity: totalQty,
         totalAvailable: totalAvailable,
         locationCount: uniqueLocationIds.size,
+        category: getCommodityCategory(inv.name),
+        secondaryQuantity,
+        secondaryUnit,
       };
+      return item;
     });
 
     // 2. Query summary statistics for the ENTIRE warehouse
@@ -752,7 +799,7 @@ export class InventoryService {
       },
     });
 
-    const [summaryLocations, quantAggregates] = await Promise.all([
+    const [summaryLocations, quantAggregates, stockQuants] = await Promise.all([
       this.prisma.location.count({
         where: { warehouseId },
       }),
@@ -766,14 +813,100 @@ export class InventoryService {
           availableQuantity: true,
         },
       }),
+      // Mixed UoMs can't be summed, so the stock is also totalled per secondary unit
+      this.prisma.quant.findMany({
+        where: { location: { warehouseId }, quantity: { gt: 0 } },
+        select: {
+          inventoryId: true,
+          locationId: true,
+          quantity: true,
+          availableQuantity: true,
+          secondaryUnitQty: true,
+          inventory: { select: { name: true, uom: true } },
+        },
+      }),
     ]);
 
-    const summary = {
+    const secondaryByUnit = new Map<SecondaryUnit, number>();
+    const commodityMap = new Map<
+      string,
+      {
+        products: Set<number>;
+        locations: Set<number>;
+        units: Set<string>;
+        quantity: number;
+        available: number;
+      }
+    >();
+    const programs = new Set<string>();
+
+    for (const q of stockQuants) {
+      const secondary = getSecondaryQty(
+        q.quantity,
+        q.secondaryUnitQty,
+        q.inventory.uom,
+      );
+      if (secondary) {
+        secondaryByUnit.set(
+          secondary.unit,
+          (secondaryByUnit.get(secondary.unit) || 0) + secondary.qty,
+        );
+      }
+
+      // Per commodity in Kg/L when possible, else in the product UoM
+      const category = getCommodityCategory(q.inventory.name);
+      const entry = commodityMap.get(category) || {
+        products: new Set<number>(),
+        locations: new Set<number>(),
+        units: new Set<string>(),
+        quantity: 0,
+        available: 0,
+      };
+      entry.products.add(q.inventoryId);
+      entry.locations.add(q.locationId);
+      if (secondary) {
+        entry.units.add(secondary.unit);
+        entry.quantity += secondary.qty;
+        entry.available += q.availableQuantity * (secondary.qty / q.quantity);
+      } else {
+        entry.units.add(q.inventory.uom || 'Unit');
+        entry.quantity += q.quantity;
+        entry.available += q.availableQuantity;
+      }
+      commodityMap.set(category, entry);
+
+      for (const program of getProductPrograms(q.inventory.name)) {
+        programs.add(program);
+      }
+    }
+
+    const commodities: InventoryCommoditySummary[] = Array.from(
+      commodityMap.entries(),
+    )
+      .map(([category, e]) => {
+        const unit = e.units.size === 1 ? Array.from(e.units)[0] : null;
+        return {
+          category,
+          productCount: e.products.size,
+          locationCount: e.locations.size,
+          unit,
+          quantity: unit ? e.quantity : null,
+          available: unit ? e.available : null,
+        };
+      })
+      .sort((a, b) => a.category.localeCompare(b.category));
+
+    const summary: InventoryListSummary = {
       totalProducts: activeProducts.length,
       totalLocations: summaryLocations,
       totalQuantity: quantAggregates._sum.quantity || 0,
       totalReserved: quantAggregates._sum.reservedQuantity || 0,
       totalAvailable: quantAggregates._sum.availableQuantity || 0,
+      secondaryTotals: (['Kg', 'L'] as const)
+        .filter((unit) => secondaryByUnit.has(unit))
+        .map((unit) => ({ unit, quantity: secondaryByUnit.get(unit)! })),
+      commodities,
+      programs: PRODUCT_PROGRAMS.filter((p) => programs.has(p)),
     };
 
     return {

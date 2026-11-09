@@ -17,6 +17,7 @@ import {
   Receipt,
   ReceiptText,
   HardHat,
+  LineChart,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -87,6 +88,17 @@ export const menuGroups: MenuGroup[] = [
         icon: BarChart3,
         color: "text-rose-600 bg-rose-50 border-rose-100 dark:bg-rose-950/20 dark:border-rose-900/30",
         btnText: "Buka Laporan",
+        permissionSubject: "Report",
+        permissionAction: "read",
+        priority: true,
+      },
+      {
+        name: "Visualization",
+        description: "Pantau tren barang masuk dan keluar, serta asal stok di tiap tumpukan.",
+        href: "/analytics",
+        icon: LineChart,
+        color: "text-indigo-600 bg-indigo-50 border-indigo-100 dark:bg-indigo-950/20 dark:border-indigo-900/30",
+        btnText: "Buka Visualization",
         permissionSubject: "Report",
         permissionAction: "read",
         priority: true,

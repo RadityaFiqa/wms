@@ -174,6 +174,10 @@ export const API_ROUTES = {
     detail: "/reports/stock-movement/detail",
     exportPdf: "/reports/stock-movement/export/pdf",
     exportCsv: "/reports/stock-movement/export/csv",
+    analytics: {
+      flowTrend: "/reports/analytics/flow-trend",
+      stockInbound: "/reports/analytics/stock-inbound",
+    },
   },
   digitalSignature: {
     categories: {

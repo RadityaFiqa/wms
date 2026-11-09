@@ -2,19 +2,24 @@ import { useCallback } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
+import type { InventoryListResponse } from "@bulog-wms/schema";
 
 export function useInventory(query?: {
   search?: string;
   page?: number;
   limit?: number;
+  /** Commodity (BERAS) or program (SPHP) */
+  category?: string;
 }) {
   const queryString = query
-    ? `?page=${query.page || 1}&limit=${query.limit || 10}&search=${query.search || ""}`
+    ? `?page=${query.page || 1}&limit=${query.limit || 10}&search=${encodeURIComponent(query.search || "")}&category=${encodeURIComponent(query.category || "")}`
     : "";
 
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading } = useSWR<InventoryListResponse>(
     query ? `${API_ROUTES.inventory.list}${queryString}` : null,
-    (url) => api.get(url).then((res) => res.data),
+    (url: string) => api.get<InventoryListResponse>(url).then((res) => res.data),
+    // Keep the warehouse summary on screen while another page or filter loads
+    { keepPreviousData: true },
   );
 
   const refresh = useCallback(() => {
