@@ -644,6 +644,9 @@ export class ReportsService {
         const matchingProducts = op.products.filter(
           (p) => p.inventoryId === prod.id,
         );
+        // One row per stack per ticket: product lines of the same ticket that land on the
+        // same stack and document are merged
+        const opRows = new Map<string, (typeof rawTransactionsList)[number]>();
         for (const opProd of matchingProducts) {
           const {
             docRef,
@@ -659,16 +662,24 @@ export class ReportsService {
             gateAllocationIndex,
             op.cardType,
           );
-          allocations.forEach((alloc, index) => {
-            rawTransactionsList.push({
-              txUuid: `${op.uuid}_${opProd.uuid || opProd.id}_${index}`,
+          for (const alloc of allocations) {
+            const referenceDocument =
+              alloc.referenceDocument || resolvedDocNumber;
+            const rowKey = `${alloc.locationId}|${referenceDocument}|${resolvedPartner}`;
+            const existing = opRows.get(rowKey);
+            if (existing) {
+              existing.quantity += alloc.qty;
+              continue;
+            }
+            opRows.set(rowKey, {
+              txUuid: `${op.uuid}_${alloc.locationId}_${opRows.size}`,
               opNumber: op.opNumber,
               driverName: op.driverName,
               licensePlate: op.licensePlate,
               clientPartner: resolvedPartner,
               cardType: op.cardType,
               quantity: alloc.qty,
-              referenceDocument: alloc.referenceDocument || resolvedDocNumber,
+              referenceDocument,
               status: op.status,
               effectiveDate:
                 op.cardType === 'OUT'
@@ -677,8 +688,9 @@ export class ReportsService {
               type: 'GATE_OPERATION',
               locationId: alloc.locationId,
             });
-          });
+          }
         }
+        rawTransactionsList.push(...opRows.values());
       }
 
       // Add independent completed ERP documents to rawTransactionsList
