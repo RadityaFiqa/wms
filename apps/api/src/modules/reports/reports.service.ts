@@ -12,6 +12,10 @@ import {
   formatDateInTimezone,
 } from '@/core/utils/date';
 import type { Prisma } from '@prisma/client';
+import {
+  matchGateProductsToStacks,
+  type GateAllocation,
+} from '@/modules/reports/gate-allocation.utils';
 
 const ACTIVE_GATE_STATUSES: Prisma.EnumVerificationStatusFilter['in'] = [
   'PENDING',
@@ -49,6 +53,23 @@ type MoveLineAllocation = {
   locationId: number;
   qty: number;
   referenceDocument: string;
+};
+
+type GateProductLike = {
+  id: number;
+  inventoryId: number;
+  quantity: number;
+  locationId: number | null;
+};
+
+type GateAllocationIndex = {
+  /** Allocation of each gate product linked to a done document with move lines */
+  byProductId: Map<
+    number,
+    { pickingTypeCode: string; allocations: GateAllocation[] }
+  >;
+  /** Key: `${documentNumber}_${inventoryId}` → qty per location to spread adjustments over */
+  adjustmentBase: Map<string, Map<number, number>>;
 };
 
 @Injectable()
@@ -321,6 +342,10 @@ export class ReportsService {
 
     const cumulativeLocationAdjustmentsMap = new Map<string, number>(); // Key: `${locationId}_${inventoryId}`
     const completedDocsAdjustments: any[] = [];
+    const gateAllocationIndex = this.buildGateAllocationIndex(
+      allCompletedDocs,
+      dbLocationIds,
+    );
 
     for (const doc of allCompletedDocs) {
       const pickingTypeCode = doc.pickingTypeCode;
@@ -343,7 +368,12 @@ export class ReportsService {
           locations: new Map<number, number>(),
         };
         current.total += gp.quantity;
-        for (const alloc of this.allocateGateProduct(gp, doc, dbLocationIds)) {
+        for (const alloc of this.allocateGateProduct(
+          gp,
+          doc,
+          dbLocationIds,
+          gateAllocationIndex,
+        )) {
           current.locations.set(
             alloc.locationId,
             (current.locations.get(alloc.locationId) || 0) + alloc.qty,
@@ -374,9 +404,15 @@ export class ReportsService {
           }
 
           if (adjustment !== 0) {
+            const adjustmentBase = this.getAdjustmentBase(
+              gateAllocationIndex,
+              doc.documentNumber,
+              invId,
+              gateInfo.locations,
+            );
             // Distribute to cumulative location map (for today's stock tracker)
-            if (gateInfo.locations.size > 0) {
-              const locList = Array.from(gateInfo.locations.entries()).map(
+            if (adjustmentBase.size > 0) {
+              const locList = Array.from(adjustmentBase.entries()).map(
                 ([id, qty]) => ({ id, qty }),
               );
               const distributed = this.distributeAdjustment(
@@ -407,6 +443,7 @@ export class ReportsService {
                 docDate,
                 docDateStr,
                 gateInfo,
+                adjustmentBase,
               });
             }
           }
@@ -469,6 +506,7 @@ export class ReportsService {
             opProd,
             docRef,
             dbLocationIds,
+            gateAllocationIndex,
             op.cardType,
           )) {
             activeLocationIds.add(alloc.locationId);
@@ -489,6 +527,9 @@ export class ReportsService {
       for (const adjInfo of completedDocsAdjustments) {
         if (adjInfo.invId !== prod.id) continue;
         for (const [locId] of adjInfo.gateInfo.locations.entries()) {
+          activeLocationIds.add(locId);
+        }
+        for (const [locId] of adjInfo.adjustmentBase.entries()) {
           activeLocationIds.add(locId);
         }
       }
@@ -615,6 +656,7 @@ export class ReportsService {
             opProd,
             docRef,
             dbLocationIds,
+            gateAllocationIndex,
             op.cardType,
           );
           allocations.forEach((alloc, index) => {
@@ -666,10 +708,10 @@ export class ReportsService {
         const erpQty = adjInfo.erpQty;
         const sumGateQty = adjInfo.sumGateQty;
         const adjustment = adjInfo.adjustment;
-        const gateInfo = adjInfo.gateInfo;
+        const adjustmentBase: Map<number, number> = adjInfo.adjustmentBase;
 
-        if (gateInfo.locations.size > 0) {
-          const locList = Array.from(gateInfo.locations.entries()).map(
+        if (adjustmentBase.size > 0) {
+          const locList = Array.from(adjustmentBase.entries()).map(
             ([id, qty]) => ({ id, qty }),
           );
           const distributed = this.distributeAdjustment(adjustment, locList);
@@ -1147,6 +1189,10 @@ export class ReportsService {
     const cumulativeLocationAdjustmentsMap = new Map<string, number>(); // Key: `${locationId}_${inventoryId}`
     const completedDocsAdjustments: any[] = [];
     const adjustmentTransactionsOnTargetDay: any[] = [];
+    const gateAllocationIndex = this.buildGateAllocationIndex(
+      allCompletedDocs,
+      dbLocationIds,
+    );
 
     for (const doc of allCompletedDocs) {
       const pickingTypeCode = doc.pickingTypeCode;
@@ -1168,7 +1214,12 @@ export class ReportsService {
 
       for (const gp of docProducts) {
         sumGateQty += gp.quantity;
-        for (const alloc of this.allocateGateProduct(gp, doc, dbLocationIds)) {
+        for (const alloc of this.allocateGateProduct(
+          gp,
+          doc,
+          dbLocationIds,
+          gateAllocationIndex,
+        )) {
           locQties.set(
             alloc.locationId,
             (locQties.get(alloc.locationId) || 0) + alloc.qty,
@@ -1185,9 +1236,15 @@ export class ReportsService {
         }
 
         if (adjustment !== 0) {
+          const adjustmentBase = this.getAdjustmentBase(
+            gateAllocationIndex,
+            doc.documentNumber,
+            inventory.id,
+            locQties,
+          );
           // Distribute to cumulative location map (for today's stock tracker)
-          if (locQties.size > 0) {
-            const locList = Array.from(locQties.entries()).map(([id, qty]) => ({
+          if (adjustmentBase.size > 0) {
+            const locList = Array.from(adjustmentBase.entries()).map(([id, qty]) => ({
               id,
               qty,
             }));
@@ -1216,6 +1273,7 @@ export class ReportsService {
               docDate,
               docDateStr,
               gateInfo,
+              adjustmentBase,
             });
 
             if (docDate >= start && docDate <= end) {
@@ -1361,6 +1419,7 @@ export class ReportsService {
           opProd,
           docRef,
           dbLocationIds,
+          gateAllocationIndex,
           op.cardType,
         )) {
           activeLocationIds.add(alloc.locationId);
@@ -1380,6 +1439,9 @@ export class ReportsService {
     // Also add locations of completed document gate operations for this product!
     for (const adjInfo of completedDocsAdjustments) {
       for (const [locId] of adjInfo.gateInfo.locations.entries()) {
+        activeLocationIds.add(locId);
+      }
+      for (const [locId] of adjInfo.adjustmentBase.entries()) {
         activeLocationIds.add(locId);
       }
     }
@@ -1469,6 +1531,7 @@ export class ReportsService {
           opProd,
           docRef,
           dbLocationIds,
+          gateAllocationIndex,
           op.cardType,
         );
         allocations.forEach((alloc, index) => {
@@ -1518,10 +1581,10 @@ export class ReportsService {
       const erpQty = adjInfo.erpQty;
       const sumGateQty = adjInfo.sumGateQty;
       const adjustment = adjInfo.adjustment;
-      const gateInfo = adjInfo.gateInfo;
+      const adjustmentBase: Map<number, number> = adjInfo.adjustmentBase;
 
-      if (gateInfo.locations.size > 0) {
-        const locList = Array.from(gateInfo.locations.entries()).map(
+      if (adjustmentBase.size > 0) {
+        const locList = Array.from(adjustmentBase.entries()).map(
           ([id, qty]) => ({ id, qty }),
         );
         const distributed = this.distributeAdjustment(adjustment, locList);
@@ -1752,6 +1815,31 @@ export class ReportsService {
     validLocationIds: Set<number>,
     direction?: 'IN' | 'OUT',
   ): MoveLineAllocation[] {
+    const allocations = this.getMoveLineStacks(
+      doc,
+      match,
+      validLocationIds,
+      direction,
+    );
+    const totalPickedQty = allocations.reduce((sum, a) => sum + a.qty, 0);
+    if (totalPickedQty <= 0) return [];
+
+    const scale =
+      Math.abs(totalPickedQty - qty) < 1e-6 ? 1 : qty / totalPickedQty;
+
+    return allocations.map((a) => ({ ...a, qty: a.qty * scale }));
+  }
+
+  /**
+   * Picked quantity per real stack location in a done ERP document's move lines, as
+   * recorded (not scaled). Returns [] when no move line maps to a known warehouse location.
+   */
+  private getMoveLineStacks(
+    doc: MoveLineDocument | null | undefined,
+    match: { inventoryId: number; itemId?: number },
+    validLocationIds: Set<number>,
+    direction?: 'IN' | 'OUT',
+  ): MoveLineAllocation[] {
     if (!doc || doc.state !== 'done' || !doc.moveLines?.length) return [];
 
     // Goods coming in land on the destination stack, goods going out leave the source stack.
@@ -1791,16 +1879,9 @@ export class ReportsService {
       grouped.set(locationId, current);
     }
 
-    const allocations = Array.from(grouped.values());
-    const totalPickedQty = allocations.reduce((sum, a) => sum + a.qty, 0);
-    if (totalPickedQty <= 0) return [];
-
-    const scale =
-      Math.abs(totalPickedQty - qty) < 1e-6 ? 1 : qty / totalPickedQty;
-
-    return allocations.map((a) => ({
+    return Array.from(grouped.values()).map((a) => ({
       locationId: a.locationId,
-      qty: a.qty * scale,
+      qty: a.qty,
       referenceDocument:
         a.pickings.size > 0
           ? `${doc.documentNumber} (${Array.from(a.pickings).join(', ')})`
@@ -1836,32 +1917,122 @@ export class ReportsService {
   }
 
   /**
+   * Matches all gate products of each done ERP document to the real stacks in its move
+   * lines (see matchGateProductsToStacks), so every gate product of one document shares the
+   * picked quantities instead of each being split proportionally over all stacks.
+   */
+  private buildGateAllocationIndex(
+    docs: (MoveLineDocument & {
+      operationProducts: GateProductLike[];
+      gateOperations: { products: GateProductLike[] }[];
+    })[],
+    validLocationIds: Set<number>,
+  ): GateAllocationIndex {
+    const index: GateAllocationIndex = {
+      byProductId: new Map(),
+      adjustmentBase: new Map(),
+    };
+
+    for (const doc of docs) {
+      if (
+        doc.pickingTypeCode !== 'incoming' &&
+        doc.pickingTypeCode !== 'outgoing'
+      ) {
+        continue;
+      }
+      const docProducts = [
+        ...doc.operationProducts,
+        ...doc.gateOperations.flatMap((op) => op.products),
+      ];
+      const inventoryIds = new Set(docProducts.map((p) => p.inventoryId));
+
+      for (const inventoryId of inventoryIds) {
+        const stacks = this.getMoveLineStacks(
+          doc,
+          { inventoryId },
+          validLocationIds,
+        );
+        if (stacks.length === 0) continue;
+
+        const products = docProducts.filter(
+          (p) => p.inventoryId === inventoryId,
+        );
+        const result = matchGateProductsToStacks(products, stacks);
+        for (const [productId, allocations] of result.byProductId) {
+          index.byProductId.set(productId, {
+            pickingTypeCode: doc.pickingTypeCode,
+            allocations,
+          });
+        }
+
+        // Physical adjustments (ERP qty vs gate qty) land where the gate did not match ERP
+        const base =
+          result.uncovered.size > 0 ? result.uncovered : result.overflow;
+        if (base.size > 0) {
+          index.adjustmentBase.set(
+            this.gateAllocationKey(doc.documentNumber, inventoryId),
+            base,
+          );
+        }
+      }
+    }
+
+    return index;
+  }
+
+  private gateAllocationKey(documentNumber: string, inventoryId: number) {
+    return `${documentNumber}_${inventoryId}`;
+  }
+
+  /**
+   * Locations to spread a done document's physical adjustment over: the stacks where gate
+   * and ERP differ when known, else the stacks the gate products were booked on.
+   */
+  private getAdjustmentBase(
+    index: GateAllocationIndex,
+    documentNumber: string,
+    inventoryId: number,
+    gateLocations: Map<number, number>,
+  ): Map<number, number> {
+    return (
+      index.adjustmentBase.get(
+        this.gateAllocationKey(documentNumber, inventoryId),
+      ) || gateLocations
+    );
+  }
+
+  /**
    * Locations of a gate operation product. When its ERP document is done and has move
    * lines, the real stack from the WMS picking/putaway wins over the location picked at the gate.
    * referenceDocument is null when the gate location is used.
    */
   private allocateGateProduct(
-    opProd: {
-      inventoryId: number;
-      quantity: number;
-      locationId: number | null;
-    },
+    opProd: GateProductLike,
     docRef: MoveLineDocument | null | undefined,
     validLocationIds: Set<number>,
+    index: GateAllocationIndex,
     direction?: 'IN' | 'OUT',
-  ): {
-    locationId: number;
-    qty: number;
-    referenceDocument: string | null;
-  }[] {
-    const allocations = this.getMoveLineAllocations(
+  ): GateAllocation[] {
+    const indexed = index.byProductId.get(opProd.id);
+    const docDirection =
+      indexed?.pickingTypeCode === 'incoming' ? 'IN' : 'OUT';
+    if (indexed && (!direction || direction === docDirection)) {
+      return indexed.allocations;
+    }
+
+    const stacks = this.getMoveLineStacks(
       docRef,
       { inventoryId: opProd.inventoryId },
-      opProd.quantity,
       validLocationIds,
       direction,
     );
-    if (allocations.length > 0) return allocations;
+    if (stacks.length > 0) {
+      return (
+        matchGateProductsToStacks([opProd], stacks).byProductId.get(
+          opProd.id,
+        ) || []
+      );
+    }
 
     return opProd.locationId
       ? [

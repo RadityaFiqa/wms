@@ -16,6 +16,7 @@ import {
   TrendingUp,
   MapPin,
   ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -382,6 +383,15 @@ export default function ReportsPage() {
                                       </div>
                                     </div>
 
+                                    {loc.closingStock < 0 && (
+                                      <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
+                                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                                        <span>
+                                          Stok akhir minus: ada barang keluar di gate yang belum tercatat di ERP untuk lokasi ini (stok ERP sudah habis). Cek tiket yang ditandai &quot;Belum ada dokumen ERP&quot;.
+                                        </span>
+                                      </div>
+                                    )}
+
                                     <div className="p-4 space-y-2">
                                       <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 flex items-center gap-1.5">
                                         <FileText className="h-4 w-4 text-blue-500 shrink-0" />
@@ -489,6 +499,12 @@ export default function ReportsPage() {
                                                       </td>
                                                       <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono text-[10px]">
                                                         {tx.referenceDocument || "-"}
+                                                        {tx.type === "GATE_OPERATION" && (!tx.referenceDocument || tx.referenceDocument === "-") && (
+                                                          <div className="mt-0.5 inline-flex items-center gap-1 font-sans text-[9px] font-bold text-amber-700 dark:text-amber-400">
+                                                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                                                            Belum ada dokumen ERP
+                                                          </div>
+                                                        )}
                                                       </td>
                                                       <td className={`px-3 py-2 text-right font-bold text-[11px] ${
                                                         isIncoming

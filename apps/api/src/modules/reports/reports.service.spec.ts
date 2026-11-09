@@ -4,6 +4,11 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { WarehouseContextService } from '../../core/warehouse-context/warehouse-context.service';
 import { BadRequestException } from '@nestjs/common';
 
+const emptyGateIndex = () => ({
+  byProductId: new Map(),
+  adjustmentBase: new Map(),
+});
+
 describe('ReportsService - Stock Mutation Running Balance', () => {
   let service: ReportsService;
   let prismaMock: any;
@@ -641,23 +646,19 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         },
       ],
     };
-    const opProd = { inventoryId: 101, quantity: 40, locationId: 30 };
+    const opProd = { id: 1, inventoryId: 101, quantity: 40, locationId: 30 };
 
-    it('splits the gate quantity over the picked stacks of a done document', () => {
+    it('takes the gate quantity whole from the picked stacks of a done document', () => {
       const result = (service as any).allocateGateProduct(
         opProd,
         docRef,
         new Set([21, 22, 30]),
+        emptyGateIndex(),
       );
       expect(result).toEqual([
         {
           locationId: 21,
-          qty: 30,
-          referenceDocument: 'WH/OUT/0002 (PICK/0009)',
-        },
-        {
-          locationId: 22,
-          qty: 10,
+          qty: 40,
           referenceDocument: 'WH/OUT/0002 (PICK/0009)',
         },
       ]);
@@ -668,6 +669,7 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
         opProd,
         { ...docRef, state: 'assigned' },
         new Set([21, 22, 30]),
+        emptyGateIndex(),
       );
       expect(result).toEqual([
         { locationId: 30, qty: 40, referenceDocument: null },
@@ -676,7 +678,12 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
 
     it('keeps the gate location when there is no document', () => {
       expect(
-        (service as any).allocateGateProduct(opProd, null, new Set([30])),
+        (service as any).allocateGateProduct(
+          opProd,
+          null,
+          new Set([30]),
+          emptyGateIndex(),
+        ),
       ).toEqual([{ locationId: 30, qty: 40, referenceDocument: null }]);
     });
 
@@ -686,8 +693,76 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
           { ...opProd, locationId: null },
           null,
           new Set([30]),
+          emptyGateIndex(),
         ),
       ).toEqual([]);
+    });
+  });
+
+  describe('buildGateAllocationIndex - gate products of one document share its stacks', () => {
+    // Gate: 370 @B01 + 30 @B02; ERP picked 270 @B01 + 130 @B02 (OUT-000016 case)
+    const doc = {
+      documentNumber: 'OUT/15250',
+      pickingTypeCode: 'outgoing',
+      state: 'done',
+      moveLines: [
+        {
+          documentReferenceItemId: 1,
+          inventoryId: 101,
+          sourceLocationId: 22,
+          destinationLocationId: 5,
+          pickingName: 'PICK/588036',
+          quantity: 130,
+        },
+        {
+          documentReferenceItemId: 1,
+          inventoryId: 101,
+          sourceLocationId: 21,
+          destinationLocationId: 5,
+          pickingName: 'PICK/588036',
+          quantity: 270,
+        },
+      ],
+      operationProducts: [
+        { id: 10, inventoryId: 101, quantity: 30, locationId: 22 },
+        { id: 11, inventoryId: 101, quantity: 370, locationId: 21 },
+      ],
+      gateOperations: [],
+    };
+
+    it('books whole quantities that add up to the move lines per stack', () => {
+      const index = (service as any).buildGateAllocationIndex(
+        [doc],
+        new Set([21, 22]),
+      );
+      const qtyOf = (productId: number) =>
+        Object.fromEntries(
+          index.byProductId
+            .get(productId)
+            .allocations.map((a: any) => [a.locationId, a.qty]),
+        );
+
+      expect(qtyOf(10)).toEqual({ 22: 30 });
+      expect(qtyOf(11)).toEqual({ 21: 270, 22: 100 });
+      expect(index.adjustmentBase.size).toBe(0);
+    });
+
+    it('spreads a partial realization adjustment over the stacks the gate did not cover', () => {
+      const index = (service as any).buildGateAllocationIndex(
+        [
+          {
+            ...doc,
+            operationProducts: [
+              { id: 11, inventoryId: 101, quantity: 300, locationId: 21 },
+            ],
+          },
+        ],
+        new Set([21, 22]),
+      );
+
+      expect(
+        Object.fromEntries(index.adjustmentBase.get('OUT/15250_101')),
+      ).toEqual({ 22: 100 });
     });
   });
 
@@ -775,9 +850,10 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
 
     it('uses the source location for a gate OUT', () => {
       const result = (service as any).allocateGateProduct(
-        { inventoryId: 101, quantity: 10, locationId: 30 },
+        { id: 1, inventoryId: 101, quantity: 10, locationId: 30 },
         internalDoc,
         new Set([21, 22]),
+        emptyGateIndex(),
         'OUT',
       );
       expect(result.map((r: any) => r.locationId)).toEqual([21]);
@@ -785,9 +861,10 @@ describe('ReportsService - Stock Mutation Running Balance', () => {
 
     it('uses the destination location for a gate IN', () => {
       const result = (service as any).allocateGateProduct(
-        { inventoryId: 101, quantity: 10, locationId: 30 },
+        { id: 1, inventoryId: 101, quantity: 10, locationId: 30 },
         internalDoc,
         new Set([21, 22]),
+        emptyGateIndex(),
         'IN',
       );
       expect(result.map((r: any) => r.locationId)).toEqual([22]);
