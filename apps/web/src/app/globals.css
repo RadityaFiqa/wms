@@ -2,17 +2,37 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+/*
+ * Theme tokens. The theme is driven only by the `.dark` class on <html>
+ * (set by the inline script in layout.tsx + ThemeProvider), never by the
+ * OS media query, so a user who picks light mode always gets light tokens.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #eef1f5;
+  --foreground: #1e293b;
   --card: #ffffff;
-  --card-foreground: #171717;
-  --muted: #f8fafc;
+  --card-foreground: #1e293b;
+  --muted: #f1f5f9;
   --muted-foreground: #64748b;
   --accent: #eff6ff;
   --accent-foreground: #2563eb;
-  --border: #e2e8f0;
-  --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --border: #d5dde7;
+  --shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.08);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0b0f19;
+  --foreground: #f1f5f9;
+  --card: #111827;
+  --card-foreground: #f1f5f9;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #1e3a8a;
+  --accent-foreground: #bfdbfe;
+  --border: #334155;
+  --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -22,161 +42,344 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0f19;
-    --foreground: #f8fafc;
-    --card: #111827;
-    --card-foreground: #f8fafc;
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
-    --accent: #1e3a8a;
-    --accent-foreground: #f8fafc;
-    --border: #334155;
-    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+/*
+ * Intermediate shades used across the app (e.g. slate-850, slate-450) that
+ * Tailwind does not ship. Without these the classes generate no CSS at all,
+ * leaving text/background uncolored. Values are interpolated in OKLCH
+ * between the neighbouring Tailwind shades.
+ */
+@theme {
+  --color-amber-150: oklch(94.3% 0.089 95.682);
+  --color-amber-205: oklch(92.2% 0.122 95.539);
+  --color-amber-250: oklch(90.2% 0.145 93.675);
+  --color-amber-350: oklch(85.3% 0.179 88.017);
+  --color-amber-450: oklch(79.8% 0.189 77.255);
+  --color-amber-455: oklch(79.6% 0.188 76.537);
+  --color-amber-505: oklch(76.4% 0.188 69.492);
+  --color-amber-750: oklch(51.4% 0.150 47.599);
+  --color-amber-955: oklch(27.9% 0.077 45.635);
+  --color-blue-105: oklch(93.0% 0.033 255.512);
+  --color-blue-150: oklch(90.7% 0.045 254.856);
+  --color-blue-450: oklch(66.5% 0.190 257.219);
+  --color-blue-455: oklch(66.1% 0.192 257.479);
+  --color-blue-505: oklch(61.9% 0.216 259.968);
+  --color-blue-550: oklch(58.5% 0.229 261.348);
+  --color-blue-605: oklch(54.3% 0.245 262.956);
+  --color-blue-606: oklch(54.3% 0.245 262.971);
+  --color-blue-650: oklch(51.7% 0.244 263.629);
+  --color-blue-655: oklch(51.4% 0.244 263.703);
+  --color-blue-750: oklch(45.6% 0.221 265.007);
+  --color-blue-955: oklch(28.2% 0.091 267.935);
+  --color-emerald-150: oklch(92.8% 0.072 163.601);
+  --color-emerald-250: oklch(87.5% 0.118 164.564);
+  --color-emerald-305: oklch(84.1% 0.145 164.890);
+  --color-emerald-450: oklch(73.0% 0.173 162.851);
+  --color-emerald-455: oklch(72.7% 0.173 162.814);
+  --color-emerald-55: oklch(97.6% 0.024 165.807);
+  --color-emerald-605: oklch(59.2% 0.144 163.344);
+  --color-emerald-650: oklch(55.2% 0.132 164.418);
+  --color-emerald-655: oklch(54.8% 0.130 164.538);
+  --color-emerald-705: oklch(50.4% 0.117 165.677);
+  --color-emerald-850: oklch(40.5% 0.086 167.927);
+  --color-emerald-955: oklch(26.2% 0.051 172.552);
+  --color-indigo-455: oklch(62.5% 0.210 277.035);
+  --color-indigo-505: oklch(58.1% 0.234 277.109);
+  --color-indigo-650: oklch(48.4% 0.251 276.995);
+  --color-indigo-750: oklch(42.8% 0.217 277.195);
+  --color-purple-150: oklch(92.4% 0.048 306.938);
+  --color-purple-55: oklch(97.4% 0.016 308.187);
+  --color-purple-955: oklch(29.1% 0.149 302.717);
+  --color-red-105: oklch(93.3% 0.034 17.748);
+  --color-red-150: oklch(91.0% 0.047 18.026);
+  --color-red-250: oklch(84.7% 0.088 18.952);
+  --color-red-455: oklch(66.7% 0.216 23.929);
+  --color-red-505: oklch(63.4% 0.237 25.431);
+  --color-red-550: oklch(60.7% 0.241 26.328);
+  --color-red-650: oklch(54.1% 0.229 27.421);
+  --color-red-655: oklch(53.7% 0.227 27.431);
+  --color-rose-455: oklch(67.5% 0.223 15.084);
+  --color-rose-650: oklch(55.0% 0.237 17.260);
+  --color-rose-955: oklch(27.1% 0.105 12.094);
+  --color-slate-105: oklch(96.6% 0.007 248.277);
+  --color-slate-150: oklch(94.8% 0.010 251.702);
+  --color-slate-205: oklch(92.6% 0.013 255.377);
+  --color-slate-250: oklch(89.9% 0.017 254.201);
+  --color-slate-350: oklch(78.7% 0.031 254.841);
+  --color-slate-355: oklch(77.8% 0.032 255.036);
+  --color-slate-405: oklch(69.7% 0.040 256.819);
+  --color-slate-450: oklch(62.9% 0.043 257.102);
+  --color-slate-455: oklch(62.1% 0.043 257.134);
+  --color-slate-505: oklch(54.9% 0.046 257.410);
+  --color-slate-55: oklch(98.2% 0.003 247.862);
+  --color-slate-550: oklch(50.0% 0.044 257.349);
+  --color-slate-555: oklch(49.5% 0.044 257.342);
+  --color-slate-605: oklch(44.2% 0.043 257.281);
+  --color-slate-650: oklch(40.9% 0.043 257.284);
+  --color-slate-655: oklch(40.5% 0.044 257.284);
+  --color-slate-705: oklch(36.7% 0.044 257.424);
+  --color-slate-750: oklch(32.5% 0.042 258.659);
+  --color-slate-755: oklch(32.1% 0.042 258.796);
+  --color-slate-805: oklch(27.5% 0.041 260.317);
+  --color-slate-808: oklch(27.3% 0.041 260.489);
+  --color-slate-850: oklch(24.4% 0.042 262.893);
+  --color-slate-905: oklch(20.0% 0.042 265.649);
+}
+
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: Arial, Helvetica, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Default input text color; any text-* utility on the element wins. */
+  input,
+  select,
+  textarea {
+    color: var(--foreground);
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #64748b;
+  }
+
+  .dark select option {
+    background-color: #1e293b;
+    color: #f1f5f9;
   }
 }
 
-.dark {
-  --background: #0b0f19;
-  --foreground: #f8fafc;
-  --card: #111827;
-  --card-foreground: #f8fafc;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #1e3a8a;
-  --accent-foreground: #f8fafc;
-  --border: #334155;
-  --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+/* ------------------------------------------------------------------ */
+/* Light mode readability                                              */
+/* ------------------------------------------------------------------ */
+/*
+ * slate-400 on white is ~2.5:1 contrast and is used for hundreds of labels.
+ * In light mode, nudge it (and the 450 shade) darker, unless the element
+ * already sets a hover/group-hover text color that must keep working.
+ */
+html:not(.dark) .text-slate-400:not([class*="hover:text-"]),
+html:not(.dark) .text-slate-450:not([class*="hover:text-"]) {
+  color: oklch(50% 0.045 257);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
+/* ------------------------------------------------------------------ */
+/* Dark mode fallbacks                                                 */
+/* ------------------------------------------------------------------ */
+/*
+ * These only apply to elements that have NO matching `dark:` utility, so
+ * components that define their own dark styles are left untouched.
+ */
 
-/* Ensure inputs, selects, and textareas default to light/dark text transition */
-input, select, textarea {
-  color: #1e293b;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-/* Global Dark Mode Styles */
-.dark body {
-  background-color: #0b0f19;
-  color: #f8fafc;
-}
-
-/* Dark mode inputs, selects, textareas */
-.dark input,
-.dark select,
-.dark textarea {
-  background-color: #1e293b !important;
-  border-color: #334155 !important;
-  color: #f8fafc !important;
-}
-
-.dark input:focus,
-.dark select:focus,
-.dark textarea:focus {
-  border-color: #3b82f6 !important;
-  background-color: #0f172a !important;
-  box-shadow: 0 0 0 1px #3b82f6 !important;
-}
-
-.dark input::placeholder,
-.dark textarea::placeholder {
-  color: #64748b;
-}
-
-.dark select option {
+/* Inputs without their own dark styling */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([class*="dark:bg-"]):not([class*="bg-transparent"]),
+.dark select:not([class*="dark:bg-"]):not([class*="bg-transparent"]),
+.dark textarea:not([class*="dark:bg-"]):not([class*="bg-transparent"]) {
   background-color: #1e293b;
-  color: #f8fafc;
 }
 
-/* Dark mode cards global support */
-.dark .bg-white {
-  background-color: #111827 !important;
-  border-color: #1f2937 !important;
+.dark input:not([class*="dark:border-"]),
+.dark select:not([class*="dark:border-"]),
+.dark textarea:not([class*="dark:border-"]) {
+  border-color: #334155;
 }
 
-/* Dark mode border overrides */
-.dark .border-slate-200,
-.dark .border-slate-100,
-.dark .border-slate-150,
-.dark .border-slate-250 {
-  border-color: #1f2937 !important;
+.dark input:not([class*="dark:text-"]),
+.dark select:not([class*="dark:text-"]),
+.dark textarea:not([class*="dark:text-"]) {
+  color: #f1f5f9;
 }
 
-.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #1f2937 !important;
+/* Surfaces */
+.dark .bg-white:not([class*="dark:bg-"]) {
+  background-color: #111827;
 }
 
-.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #1f2937 !important;
+.dark .bg-slate-50:not([class*="dark:bg-"]),
+.dark .bg-slate-100:not([class*="dark:bg-"]) {
+  background-color: #1e293b;
 }
 
-/* Text color visibility overrides for dark mode */
-.dark .text-slate-800 {
-  color: #e5e7eb !important;
-}
-.dark .text-slate-700 {
-  color: #d1d5db !important;
-}
-.dark .text-slate-900 {
-  color: #f9fafb !important;
-}
-.dark .text-slate-600 {
-  color: #9ca3af !important;
-}
-.dark .text-slate-500 {
-  color: #9ca3af !important;
-}
-.dark .text-slate-400 {
-  color: #6b7280 !important;
+.dark .bg-slate-50\/50:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/30:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/70:not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.4);
 }
 
-/* Hover background color overrides */
-.dark .hover\:bg-slate-50:hover,
-.dark .hover\:bg-slate-100:hover,
-.dark .hover\:bg-slate-50\/50:hover,
-.dark .hover\:bg-slate-100\/50:hover,
-.dark .hover\:bg-slate-50\/20:hover {
-  background-color: #1f2937 !important;
+/* Any opacity variant of the pale slate surfaces (e.g. bg-slate-100/80) */
+.dark .bg-slate-50\/5:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/10:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/20:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/25:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/30:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/40:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/50:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/60:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/70:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/75:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/80:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/90:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/95:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/5:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/10:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/20:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/25:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/30:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/40:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/50:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/60:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/70:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/75:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/80:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/90:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/95:not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.55);
 }
 
-/* Table header and zebra stripes overrides */
-.dark thead.bg-slate-50,
-.dark tr.bg-slate-50,
-.dark .bg-slate-50 {
-  background-color: #1f2937 !important;
+/* Borders */
+.dark .border-slate-100:not([class*="dark:border-"]),
+.dark .border-slate-150:not([class*="dark:border-"]),
+.dark .border-slate-200:not([class*="dark:border-"]),
+.dark .border-slate-205:not([class*="dark:border-"]),
+.dark .border-slate-250:not([class*="dark:border-"]) {
+  border-color: #1f2937;
 }
 
-.dark .bg-slate-50\/50 {
-  background-color: rgba(31, 41, 55, 0.4) !important;
+.dark .divide-slate-100:not([class*="dark:divide-"]) > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200:not([class*="dark:divide-"]) > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1f2937;
 }
 
-/* Scrollbars for dark mode */
-.dark ::-webkit-scrollbar {
+/* Text */
+.dark .text-slate-900:not([class*="dark:text-"]),
+.dark .text-slate-850:not([class*="dark:text-"]),
+.dark .text-slate-805:not([class*="dark:text-"]),
+.dark .text-slate-800:not([class*="dark:text-"]) {
+  color: #e5e7eb;
+}
+.dark .text-slate-750:not([class*="dark:text-"]),
+.dark .text-slate-700:not([class*="dark:text-"]) {
+  color: #d1d5db;
+}
+.dark .text-slate-650:not([class*="dark:text-"]),
+.dark .text-slate-605:not([class*="dark:text-"]),
+.dark .text-slate-600:not([class*="dark:text-"]),
+.dark .text-slate-550:not([class*="dark:text-"]),
+.dark .text-slate-500:not([class*="dark:text-"]) {
+  color: #9ca3af;
+}
+.dark .text-slate-455:not([class*="dark:text-"]),
+.dark .text-slate-450:not([class*="dark:text-"]),
+.dark .text-slate-400:not([class*="dark:text-"]) {
+  color: #8b95a5;
+}
+
+/* Hover backgrounds */
+.dark .hover\:bg-slate-50:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-55:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-100:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-50\/50:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-50\/70:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-100\/50:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-50\/20:not([class*="dark:hover:bg-"]):hover {
+  background-color: #1f2937;
+}
+
+/* Tinted surfaces (status chips, banners) without their own dark styling */
+
+.dark .bg-blue-50:not([class*="dark:bg-"]), .dark .bg-blue-100:not([class*="dark:bg-"]), .dark .bg-blue-50\/50:not([class*="dark:bg-"]), .dark .bg-blue-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-blue-500 / 14%); }
+.dark .border-blue-100:not([class*="dark:border-"]), .dark .border-blue-200:not([class*="dark:border-"]) { border-color: --theme(--color-blue-500 / 30%); }
+.dark .text-blue-700:not([class*="dark:text-"]), .dark .text-blue-800:not([class*="dark:text-"]), .dark .text-blue-900:not([class*="dark:text-"]) { color: --theme(--color-blue-300); }
+.dark .text-blue-600:not([class*="dark:text-"]) { color: --theme(--color-blue-400); }
+.dark .hover\:bg-blue-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-blue-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-blue-500 / 18%); }
+.dark .bg-emerald-50:not([class*="dark:bg-"]), .dark .bg-emerald-100:not([class*="dark:bg-"]), .dark .bg-emerald-50\/50:not([class*="dark:bg-"]), .dark .bg-emerald-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-emerald-500 / 14%); }
+.dark .border-emerald-100:not([class*="dark:border-"]), .dark .border-emerald-200:not([class*="dark:border-"]) { border-color: --theme(--color-emerald-500 / 30%); }
+.dark .text-emerald-700:not([class*="dark:text-"]), .dark .text-emerald-800:not([class*="dark:text-"]), .dark .text-emerald-900:not([class*="dark:text-"]) { color: --theme(--color-emerald-300); }
+.dark .text-emerald-600:not([class*="dark:text-"]) { color: --theme(--color-emerald-400); }
+.dark .hover\:bg-emerald-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-emerald-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-emerald-500 / 18%); }
+.dark .bg-red-50:not([class*="dark:bg-"]), .dark .bg-red-100:not([class*="dark:bg-"]), .dark .bg-red-50\/50:not([class*="dark:bg-"]), .dark .bg-red-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-red-500 / 14%); }
+.dark .border-red-100:not([class*="dark:border-"]), .dark .border-red-200:not([class*="dark:border-"]) { border-color: --theme(--color-red-500 / 30%); }
+.dark .text-red-700:not([class*="dark:text-"]), .dark .text-red-800:not([class*="dark:text-"]), .dark .text-red-900:not([class*="dark:text-"]) { color: --theme(--color-red-300); }
+.dark .text-red-600:not([class*="dark:text-"]) { color: --theme(--color-red-400); }
+.dark .hover\:bg-red-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-red-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-red-500 / 18%); }
+.dark .bg-amber-50:not([class*="dark:bg-"]), .dark .bg-amber-100:not([class*="dark:bg-"]), .dark .bg-amber-50\/50:not([class*="dark:bg-"]), .dark .bg-amber-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-amber-500 / 14%); }
+.dark .border-amber-100:not([class*="dark:border-"]), .dark .border-amber-200:not([class*="dark:border-"]) { border-color: --theme(--color-amber-500 / 30%); }
+.dark .text-amber-700:not([class*="dark:text-"]), .dark .text-amber-800:not([class*="dark:text-"]), .dark .text-amber-900:not([class*="dark:text-"]) { color: --theme(--color-amber-300); }
+.dark .text-amber-600:not([class*="dark:text-"]) { color: --theme(--color-amber-400); }
+.dark .hover\:bg-amber-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-amber-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-amber-500 / 18%); }
+.dark .bg-purple-50:not([class*="dark:bg-"]), .dark .bg-purple-100:not([class*="dark:bg-"]), .dark .bg-purple-50\/50:not([class*="dark:bg-"]), .dark .bg-purple-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-purple-500 / 14%); }
+.dark .border-purple-100:not([class*="dark:border-"]), .dark .border-purple-200:not([class*="dark:border-"]) { border-color: --theme(--color-purple-500 / 30%); }
+.dark .text-purple-700:not([class*="dark:text-"]), .dark .text-purple-800:not([class*="dark:text-"]), .dark .text-purple-900:not([class*="dark:text-"]) { color: --theme(--color-purple-300); }
+.dark .text-purple-600:not([class*="dark:text-"]) { color: --theme(--color-purple-400); }
+.dark .hover\:bg-purple-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-purple-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-purple-500 / 18%); }
+.dark .bg-rose-50:not([class*="dark:bg-"]), .dark .bg-rose-100:not([class*="dark:bg-"]), .dark .bg-rose-50\/50:not([class*="dark:bg-"]), .dark .bg-rose-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-rose-500 / 14%); }
+.dark .border-rose-100:not([class*="dark:border-"]), .dark .border-rose-200:not([class*="dark:border-"]) { border-color: --theme(--color-rose-500 / 30%); }
+.dark .text-rose-700:not([class*="dark:text-"]), .dark .text-rose-800:not([class*="dark:text-"]), .dark .text-rose-900:not([class*="dark:text-"]) { color: --theme(--color-rose-300); }
+.dark .text-rose-600:not([class*="dark:text-"]) { color: --theme(--color-rose-400); }
+.dark .hover\:bg-rose-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-rose-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-rose-500 / 18%); }
+.dark .bg-indigo-50:not([class*="dark:bg-"]), .dark .bg-indigo-100:not([class*="dark:bg-"]), .dark .bg-indigo-50\/50:not([class*="dark:bg-"]), .dark .bg-indigo-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-indigo-500 / 14%); }
+.dark .border-indigo-100:not([class*="dark:border-"]), .dark .border-indigo-200:not([class*="dark:border-"]) { border-color: --theme(--color-indigo-500 / 30%); }
+.dark .text-indigo-700:not([class*="dark:text-"]), .dark .text-indigo-800:not([class*="dark:text-"]), .dark .text-indigo-900:not([class*="dark:text-"]) { color: --theme(--color-indigo-300); }
+.dark .text-indigo-600:not([class*="dark:text-"]) { color: --theme(--color-indigo-400); }
+.dark .hover\:bg-indigo-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-indigo-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-indigo-500 / 18%); }
+.dark .bg-green-50:not([class*="dark:bg-"]), .dark .bg-green-100:not([class*="dark:bg-"]), .dark .bg-green-50\/50:not([class*="dark:bg-"]), .dark .bg-green-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-green-500 / 14%); }
+.dark .border-green-100:not([class*="dark:border-"]), .dark .border-green-200:not([class*="dark:border-"]) { border-color: --theme(--color-green-500 / 30%); }
+.dark .text-green-700:not([class*="dark:text-"]), .dark .text-green-800:not([class*="dark:text-"]), .dark .text-green-900:not([class*="dark:text-"]) { color: --theme(--color-green-300); }
+.dark .text-green-600:not([class*="dark:text-"]) { color: --theme(--color-green-400); }
+.dark .hover\:bg-green-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-green-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-green-500 / 18%); }
+.dark .bg-orange-50:not([class*="dark:bg-"]), .dark .bg-orange-100:not([class*="dark:bg-"]), .dark .bg-orange-50\/50:not([class*="dark:bg-"]), .dark .bg-orange-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-orange-500 / 14%); }
+.dark .border-orange-100:not([class*="dark:border-"]), .dark .border-orange-200:not([class*="dark:border-"]) { border-color: --theme(--color-orange-500 / 30%); }
+.dark .text-orange-700:not([class*="dark:text-"]), .dark .text-orange-800:not([class*="dark:text-"]), .dark .text-orange-900:not([class*="dark:text-"]) { color: --theme(--color-orange-300); }
+.dark .text-orange-600:not([class*="dark:text-"]) { color: --theme(--color-orange-400); }
+.dark .hover\:bg-orange-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-orange-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-orange-500 / 18%); }
+.dark .bg-yellow-50:not([class*="dark:bg-"]), .dark .bg-yellow-100:not([class*="dark:bg-"]), .dark .bg-yellow-50\/50:not([class*="dark:bg-"]), .dark .bg-yellow-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-yellow-500 / 14%); }
+.dark .border-yellow-100:not([class*="dark:border-"]), .dark .border-yellow-200:not([class*="dark:border-"]) { border-color: --theme(--color-yellow-500 / 30%); }
+.dark .text-yellow-700:not([class*="dark:text-"]), .dark .text-yellow-800:not([class*="dark:text-"]), .dark .text-yellow-900:not([class*="dark:text-"]) { color: --theme(--color-yellow-300); }
+.dark .text-yellow-600:not([class*="dark:text-"]) { color: --theme(--color-yellow-400); }
+.dark .hover\:bg-yellow-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-yellow-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-yellow-500 / 18%); }
+.dark .bg-sky-50:not([class*="dark:bg-"]), .dark .bg-sky-100:not([class*="dark:bg-"]), .dark .bg-sky-50\/50:not([class*="dark:bg-"]), .dark .bg-sky-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-sky-500 / 14%); }
+.dark .border-sky-100:not([class*="dark:border-"]), .dark .border-sky-200:not([class*="dark:border-"]) { border-color: --theme(--color-sky-500 / 30%); }
+.dark .text-sky-700:not([class*="dark:text-"]), .dark .text-sky-800:not([class*="dark:text-"]), .dark .text-sky-900:not([class*="dark:text-"]) { color: --theme(--color-sky-300); }
+.dark .text-sky-600:not([class*="dark:text-"]) { color: --theme(--color-sky-400); }
+.dark .hover\:bg-sky-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-sky-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-sky-500 / 18%); }
+.dark .bg-teal-50:not([class*="dark:bg-"]), .dark .bg-teal-100:not([class*="dark:bg-"]), .dark .bg-teal-50\/50:not([class*="dark:bg-"]), .dark .bg-teal-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-teal-500 / 14%); }
+.dark .border-teal-100:not([class*="dark:border-"]), .dark .border-teal-200:not([class*="dark:border-"]) { border-color: --theme(--color-teal-500 / 30%); }
+.dark .text-teal-700:not([class*="dark:text-"]), .dark .text-teal-800:not([class*="dark:text-"]), .dark .text-teal-900:not([class*="dark:text-"]) { color: --theme(--color-teal-300); }
+.dark .text-teal-600:not([class*="dark:text-"]) { color: --theme(--color-teal-400); }
+.dark .hover\:bg-teal-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-teal-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-teal-500 / 18%); }
+.dark .bg-cyan-50:not([class*="dark:bg-"]), .dark .bg-cyan-100:not([class*="dark:bg-"]), .dark .bg-cyan-50\/50:not([class*="dark:bg-"]), .dark .bg-cyan-50\/70:not([class*="dark:bg-"]) { background-color: --theme(--color-cyan-500 / 14%); }
+.dark .border-cyan-100:not([class*="dark:border-"]), .dark .border-cyan-200:not([class*="dark:border-"]) { border-color: --theme(--color-cyan-500 / 30%); }
+.dark .text-cyan-700:not([class*="dark:text-"]), .dark .text-cyan-800:not([class*="dark:text-"]), .dark .text-cyan-900:not([class*="dark:text-"]) { color: --theme(--color-cyan-300); }
+.dark .text-cyan-600:not([class*="dark:text-"]) { color: --theme(--color-cyan-400); }
+.dark .hover\:bg-cyan-50:not([class*="dark:hover:bg-"]):hover, .dark .hover\:bg-cyan-100:not([class*="dark:hover:bg-"]):hover { background-color: --theme(--color-cyan-500 / 18%); }
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars                                                          */
+/* ------------------------------------------------------------------ */
+::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-.dark ::-webkit-scrollbar-track {
-  background: #0b0f19;
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 .dark ::-webkit-scrollbar-thumb {
   background: #1f2937;
-  border-radius: 4px;
 }
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #374151;
-}
-
-/* Ensure sonner toast displays correctly in dark mode */
-.dark [data-sonner-toast] {
-  background-color: #111827 !important;
-  color: #f9fafb !important;
-  border-color: #1f2937 !important;
 }

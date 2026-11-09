@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
+import { ThemedToaster } from "@/components/ThemedToaster";
 import { AuthProvider } from "./providers";
 import { ThemeProvider } from "./theme-provider";
 import "./globals.css";
@@ -46,11 +46,11 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 transition-colors duration-200">
+      <body className="min-h-full flex flex-col bg-background text-foreground dark:bg-slate-950 dark:text-slate-50 transition-colors duration-200">
         <ThemeProvider>
           <AuthProvider>
             {children}
-            <Toaster position="top-right" richColors />
+            <ThemedToaster />
           </AuthProvider>
         </ThemeProvider>
       </body>

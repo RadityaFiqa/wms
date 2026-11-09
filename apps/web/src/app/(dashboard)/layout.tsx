@@ -114,7 +114,7 @@ export default function DashboardLayout({
   // If not initialized or not logged in, show full-screen skeleton
   if (!isInitialized || !user || !token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center space-y-4">
           <svg
             className="animate-spin h-10 w-10 text-blue-600"
@@ -295,7 +295,7 @@ export default function DashboardLayout({
   );
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background dark:bg-slate-950 transition-colors duration-200">
       {/* Desktop Sidebar (hidden on mobile) */}
       <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
         {sidebarContent}
