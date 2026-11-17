@@ -180,6 +180,8 @@ export const API_ROUTES = {
       stockFolders: "/reports/analytics/stock-folders",
       stockFolderDetail: (uuid: string) => `/reports/analytics/stock-folders/${uuid}`,
       stockFolderItems: "/reports/analytics/stock-folders/items",
+      stockInboundExportXlsx: "/reports/analytics/stock-inbound/export/xlsx",
+      stockInboundExportPdf: "/reports/analytics/stock-inbound/export/pdf",
     },
   },
   digitalSignature: {

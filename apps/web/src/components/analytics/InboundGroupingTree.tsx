@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/core";
 import { FolderPlus, GripVertical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import type { InboundGroup, InboundLot, InboundProduct } from "@bulog-wms/schema";
+import { filterInboundProducts, type InboundGroup, type InboundProduct } from "@bulog-wms/schema";
 import { formatGroupValue, formatProductName, formatQty } from "@/components/analytics/format";
 import InboundSenderList, {
   Chevron,
@@ -30,42 +30,6 @@ import {
 } from "@/components/analytics/InboundFolderSection";
 import { createStockFolder, moveStockFolderItem } from "@/hooks/useAnalytics";
 import { useAuthStore } from "@/store/auth";
-
-const includes = (value: string, q: string) => value.toLowerCase().includes(q);
-
-const lotMatches = (lot: InboundLot, q: string) =>
-  [lot.lotName || "", lot.pendingGate?.opNumber || "", ...lot.documents.map((d) => d.documentNumber)].some((v) =>
-    includes(v, q),
-  );
-
-/** Keeps the senders of a group that match the search; a matching parent keeps all its children */
-function filterGroup(group: InboundGroup, q: string): InboundGroup {
-  if (group.folder && includes(group.folder.name, q)) return group;
-  const senders = group.senders
-    .map((s) => {
-      if (includes(s.name, q)) return s;
-      const stacks = s.stacks
-        .map((st) => (includes(st.locationName, q) ? st : { ...st, lots: st.lots.filter((l) => lotMatches(l, q)) }))
-        .filter((st) => st.lots.length > 0);
-      return { ...s, stacks };
-    })
-    .filter((s) => s.stacks.length > 0);
-  return { ...group, senders };
-}
-
-function filterTree(products: InboundProduct[], search: string): InboundProduct[] {
-  const q = search.trim().toLowerCase();
-  if (!q) return products;
-  return products
-    .map((p) => {
-      if ([p.name, p.sku, p.category].some((v) => includes(v, q))) return p;
-      const groups = p.groups
-        .map((g) => filterGroup(g, q))
-        .filter((g) => g.senders.length > 0 || (g.folder && includes(g.folder.name, q)));
-      return { ...p, groups };
-    })
-    .filter((p) => p.groups.length > 0);
-}
 
 /** Inline "+ Folder" that turns into a name field */
 function NewFolderButton({ productUuid }: { productUuid: string }) {
@@ -165,7 +129,7 @@ export default function InboundGroupingTree({ products, search }: { products: In
     useSensor(KeyboardSensor),
   );
 
-  const visible = filterTree(products, search);
+  const visible = filterInboundProducts(products, search);
   const forceOpen = search.trim().length > 0;
 
   const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current as FolderDragData) ?? null);

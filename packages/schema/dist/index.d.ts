@@ -1639,14 +1639,14 @@ export declare const BuruhQuerySchema: z.ZodObject<{
     isActive: z.ZodOptional<z.ZodEnum<["true", "false"]>>;
     isMandor: z.ZodOptional<z.ZodEnum<["true", "false"]>>;
 }, "strip", z.ZodTypeAny, {
-    isActive?: "true" | "false" | undefined;
     search?: string | undefined;
+    isActive?: "true" | "false" | undefined;
     page?: string | number | undefined;
     limit?: string | number | undefined;
     isMandor?: "true" | "false" | undefined;
 }, {
-    isActive?: "true" | "false" | undefined;
     search?: string | undefined;
+    isActive?: "true" | "false" | undefined;
     page?: string | number | undefined;
     limit?: string | number | undefined;
     isMandor?: "true" | "false" | undefined;

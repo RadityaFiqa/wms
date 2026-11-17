@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ChartNoAxesCombined,
   Droplets,
+  FileSpreadsheet,
+  FileText,
   LayoutGrid,
   Layers,
   type LucideIcon,
@@ -20,7 +23,7 @@ import SummaryCard from "@/components/analytics/SummaryCard";
 import ProductFilterSelect from "@/components/analytics/ProductFilterSelect";
 import type { AnalyticsAccount, FlowGranularity, FlowTrendGroup } from "@bulog-wms/schema";
 import { useAuthStore } from "@/store/auth";
-import { useFlowTrend, useStockInbound } from "@/hooks/useAnalytics";
+import { useFlowTrend, useStockInbound, useStockInboundExport } from "@/hooks/useAnalytics";
 import FlowTrendChart from "@/components/analytics/FlowTrendChart";
 import ProductFlowBars from "@/components/analytics/ProductFlowBars";
 import InboundGroupingTree from "@/components/analytics/InboundGroupingTree";
@@ -53,12 +56,19 @@ const cardClass =
 
 const UNIT_ICONS: Record<string, LucideIcon> = { Kg: Weight, L: Droplets };
 
+const SECTIONS = [
+  { key: "stock", label: "Stok inbound grouping", icon: PackageSearch },
+  { key: "trend", label: "Tren masuk vs keluar", icon: TrendingUp },
+] as const;
+type SectionKey = (typeof SECTIONS)[number]["key"];
+
 /** Last period with movement, so the SKU table opens on something useful */
 const defaultPeriod = (group: FlowTrendGroup) =>
   [...group.points].reverse().find((p) => p.in > 0 || p.out > 0)?.period ?? group.points.at(-1)?.period ?? null;
 
 export default function AnalyticsPage() {
   const { activeWarehouse } = useAuthStore();
+  const [section, setSection] = useState<SectionKey>("stock");
 
   const [granularity, setGranularity] = useState<FlowGranularity>("month");
   const [months, setMonths] = useState("12");
@@ -92,6 +102,22 @@ export default function AnalyticsPage() {
     productUuid: productUuid || undefined,
   });
   const { stockInbound, isLoading: stockLoading, error: stockError } = useStockInbound();
+  const { exportStockInbound } = useStockInboundExport();
+  const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
+
+  const handleExport = async (format: "xlsx" | "pdf") => {
+    const label = format === "xlsx" ? "Excel" : "PDF";
+    setExporting(format);
+    const toastId = toast.loading(`Membuat berkas ${label}...`);
+    try {
+      await exportStockInbound(format, search);
+      toast.success(`Berkas ${label} berhasil diunduh.`, { id: toastId });
+    } catch {
+      toast.error(`Gagal mengekspor berkas ${label}.`, { id: toastId });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const skuOptions = useMemo(
     () =>
@@ -175,220 +201,283 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      {/* Flow trend, one chart per unit group found in the data */}
-      <div className={`${cardClass} space-y-4`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-50">
-              <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-              Tren masuk vs keluar
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Dari dokumen ERP selesai, tanpa transfer internal. Klik satu titik untuk melihat produk apa saja yang masuk dan
-              keluar.
-            </p>
-          </div>
-          {hasActiveFilter && (
+      {/* One section at a time, stock first, so neither needs scrolling past the other */}
+      <div
+        role="tablist"
+        aria-label="Bagian visualisasi"
+        className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800"
+      >
+        {SECTIONS.map(({ key, label, icon: Icon }) => {
+          const isActive = key === section;
+          return (
             <button
+              key={key}
+              id={`analytics-tab-${key}`}
               type="button"
-              onClick={resetFilters}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`analytics-panel-${key}`}
+              onClick={() => setSection(key)}
+              className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition cursor-pointer ${
+                isActive
+                  ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
             >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              Reset filter
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              {label}
             </button>
+          );
+        })}
+      </div>
+
+      {section === "stock" && (
+        <div id="analytics-panel-stock" role="tabpanel" aria-labelledby="analytics-tab-stock">
+        {/* Stock inbound grouping: commodity → sender → stack → lot */}
+        <div className={`${cardClass} space-y-3`}>
+          {/* Search and export buttons only sit beside the title when there is room for both */}
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-50">
+                <PackageSearch className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                Stok inbound grouping
+              </h2>
+              <p className="text-xs text-slate-400">
+                Stok saat ini per produk, dikelompokkan menurut pengirim atau pengolahan dari dokumen masuk ERP. Buka untuk
+                melihat tumpukan, lot, dan dokumennya.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Cari produk, folder, pengirim, tumpukan, lot"
+                  className="w-full sm:w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              {/* Exports follow the search, like the tree below */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleExport("xlsx")}
+                  disabled={!stockInbound || exporting !== null}
+                  className="flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer sm:flex-none"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                  {exporting === "xlsx" ? "Mengekspor..." : "Ekspor Excel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport("pdf")}
+                  disabled={!stockInbound || exporting !== null}
+                  className="flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-xs transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer sm:flex-none"
+                >
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  {exporting === "pdf" ? "Mengekspor..." : "Unduh PDF"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {stockError ? (
+            <p className="py-16 text-center text-sm text-red-500">Gagal memuat stok. Coba muat ulang halaman.</p>
+          ) : !stockInbound && stockLoading ? (
+            <div className="h-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+          ) : stockInbound ? (
+            <>
+              <PendingGateSummary products={stockInbound.products} />
+              <InboundGroupingTree products={stockInbound.products} search={search} />
+            </>
+          ) : null}
+        </div>
+        </div>
+      )}
+
+      {section === "trend" && (
+        <div id="analytics-panel-trend" role="tabpanel" aria-labelledby="analytics-tab-trend">
+        {/* Flow trend, one chart per unit group found in the data */}
+        <div className={`${cardClass} space-y-4`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-50">
+                <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                Tren masuk vs keluar
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Dari dokumen ERP selesai, tanpa transfer internal. Klik satu titik untuk melihat produk apa saja yang masuk dan
+                keluar.
+              </p>
+            </div>
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Reset filter
+              </button>
+            )}
+          </div>
+
+          {/* Filters: what to look at (product, commodity, type), then how (period, range) */}
+          <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2 lg:grid-cols-6 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor="analytics-product-filter" className={labelClass}>Produk</label>
+              <ProductFilterSelect
+                options={skuOptions}
+                value={productUuid}
+                onChange={setProductUuid}
+                isLoading={trendLoading}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="analytics-category" className={labelClass}>Komoditas</label>
+              <select
+                id="analytics-category"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setProductUuid("");
+                }}
+                className={selectClass}
+              >
+                <option value="">Semua komoditas</option>
+                {flowTrend && flowTrend.programs.length > 0 && (
+                  <optgroup label="Program">
+                    {flowTrend.programs.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {flowTrend && (
+                  <optgroup label="Komoditas">
+                    {flowTrend.categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="analytics-account" className={labelClass}>Jenis</label>
+              <select
+                id="analytics-account"
+                value={account}
+                onChange={(e) => setAccount(e.target.value as AnalyticsAccount | "")}
+                className={selectClass}
+              >
+                <option value="">PSO + Komersil</option>
+                <option value="PSO">PSO</option>
+                <option value="Komersil">Komersil</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="analytics-granularity" className={labelClass}>Tampilkan per</label>
+              <select
+                id="analytics-granularity"
+                value={granularity}
+                onChange={(e) => setGranularity(e.target.value as FlowGranularity)}
+                className={selectClass}
+              >
+                {GRANULARITIES.map((g) => (
+                  <option key={g.key} value={g.key}>{g.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="analytics-range" className={labelClass}>Rentang waktu</label>
+              <select id="analytics-range" value={months} onChange={(e) => setMonths(e.target.value)} className={selectClass}>
+                {RANGES.map((r) => (
+                  <option key={r.key} value={r.key}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {trendError ? (
+            <p className="py-16 text-center text-sm text-red-500">Gagal memuat tren. Coba muat ulang halaman.</p>
+          ) : !flowTrend && trendLoading ? (
+            <div className="h-64 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+          ) : groups.length === 0 ? (
+            <p className="py-16 text-center text-sm text-slate-400">Tidak ada barang masuk atau keluar untuk filter ini.</p>
+          ) : (
+            <div className={trendLoading ? "opacity-60 transition-opacity" : ""}>
+              {/* One tab per unit group found in the data */}
+              <div role="tablist" aria-label="Kelompok satuan" className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+                {groups.map((g) => {
+                  const isActive = g.key === activeGroup?.key;
+                  const Icon = UNIT_ICONS[g.key] ?? Layers;
+                  return (
+                    <button
+                      key={g.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setActiveGroupKey(g.key)}
+                      className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition cursor-pointer ${
+                        isActive
+                          ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                          : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      {g.label === g.displayUnit ? g.label : `${g.label} (${g.displayUnit})`}
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          isActive
+                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                            : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                        }`}
+                      >
+                        {g.skus.length} produk
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeGroup && (() => {
+                const group = activeGroup;
+                const selected =
+                  selectedPeriods[group.key] && group.points.some((p) => p.period === selectedPeriods[group.key])
+                    ? selectedPeriods[group.key]
+                    : defaultPeriod(group);
+                return (
+                  <div role="tabpanel">
+                    <div className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <span>
+                        Total masuk <b className="text-emerald-600 dark:text-emerald-400">{formatGroupValue(group.totals.in, group)}</b>
+                        {" · "}keluar <b className="text-orange-600 dark:text-orange-400">{formatGroupValue(group.totals.out, group)}</b>
+                      </span>
+                    </div>
+                    <div className="space-y-4">
+                      <FlowTrendChart
+                        group={group}
+                        granularity={flowTrend!.granularity}
+                        selectedPeriod={selected}
+                        onSelectPeriod={(period) => setSelectedPeriods((prev) => ({ ...prev, [group.key]: period }))}
+                      />
+                      {selected && (
+                        <ProductFlowBars
+                          key={`${group.key}-${selected}`}
+                          group={group}
+                          granularity={flowTrend!.granularity}
+                          period={selected}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </div>
 
-        {/* Filters: what to look at (product, commodity, type), then how (period, range) */}
-        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2 lg:grid-cols-6 dark:border-slate-800 dark:bg-slate-800/30">
-          <div className="space-y-1 sm:col-span-2">
-            <label htmlFor="analytics-product-filter" className={labelClass}>Produk</label>
-            <ProductFilterSelect
-              options={skuOptions}
-              value={productUuid}
-              onChange={setProductUuid}
-              isLoading={trendLoading}
-            />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="analytics-category" className={labelClass}>Komoditas</label>
-            <select
-              id="analytics-category"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value);
-                setProductUuid("");
-              }}
-              className={selectClass}
-            >
-              <option value="">Semua komoditas</option>
-              {flowTrend && flowTrend.programs.length > 0 && (
-                <optgroup label="Program">
-                  {flowTrend.programs.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </optgroup>
-              )}
-              {flowTrend && (
-                <optgroup label="Komoditas">
-                  {flowTrend.categories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="analytics-account" className={labelClass}>Jenis</label>
-            <select
-              id="analytics-account"
-              value={account}
-              onChange={(e) => setAccount(e.target.value as AnalyticsAccount | "")}
-              className={selectClass}
-            >
-              <option value="">PSO + Komersil</option>
-              <option value="PSO">PSO</option>
-              <option value="Komersil">Komersil</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="analytics-granularity" className={labelClass}>Tampilkan per</label>
-            <select
-              id="analytics-granularity"
-              value={granularity}
-              onChange={(e) => setGranularity(e.target.value as FlowGranularity)}
-              className={selectClass}
-            >
-              {GRANULARITIES.map((g) => (
-                <option key={g.key} value={g.key}>{g.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="analytics-range" className={labelClass}>Rentang waktu</label>
-            <select id="analytics-range" value={months} onChange={(e) => setMonths(e.target.value)} className={selectClass}>
-              {RANGES.map((r) => (
-                <option key={r.key} value={r.key}>{r.label}</option>
-              ))}
-            </select>
-          </div>
         </div>
-
-        {trendError ? (
-          <p className="py-16 text-center text-sm text-red-500">Gagal memuat tren. Coba muat ulang halaman.</p>
-        ) : !flowTrend && trendLoading ? (
-          <div className="h-64 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
-        ) : groups.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-400">Tidak ada barang masuk atau keluar untuk filter ini.</p>
-        ) : (
-          <div className={trendLoading ? "opacity-60 transition-opacity" : ""}>
-            {/* One tab per unit group found in the data */}
-            <div role="tablist" aria-label="Kelompok satuan" className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-              {groups.map((g) => {
-                const isActive = g.key === activeGroup?.key;
-                const Icon = UNIT_ICONS[g.key] ?? Layers;
-                return (
-                  <button
-                    key={g.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setActiveGroupKey(g.key)}
-                    className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition cursor-pointer ${
-                      isActive
-                        ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                        : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                    {g.label === g.displayUnit ? g.label : `${g.label} (${g.displayUnit})`}
-                    <span
-                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                        isActive
-                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
-                          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                      }`}
-                    >
-                      {g.skus.length} produk
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {activeGroup && (() => {
-              const group = activeGroup;
-              const selected =
-                selectedPeriods[group.key] && group.points.some((p) => p.period === selectedPeriods[group.key])
-                  ? selectedPeriods[group.key]
-                  : defaultPeriod(group);
-              return (
-                <div role="tabpanel">
-                  <div className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>
-                      Total masuk <b className="text-emerald-600 dark:text-emerald-400">{formatGroupValue(group.totals.in, group)}</b>
-                      {" · "}keluar <b className="text-orange-600 dark:text-orange-400">{formatGroupValue(group.totals.out, group)}</b>
-                    </span>
-                  </div>
-                  <div className="space-y-4">
-                    <FlowTrendChart
-                      group={group}
-                      granularity={flowTrend!.granularity}
-                      selectedPeriod={selected}
-                      onSelectPeriod={(period) => setSelectedPeriods((prev) => ({ ...prev, [group.key]: period }))}
-                    />
-                    {selected && (
-                      <ProductFlowBars
-                        key={`${group.key}-${selected}`}
-                        group={group}
-                        granularity={flowTrend!.granularity}
-                        period={selected}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
-
-      {/* Stock inbound grouping: commodity → sender → stack → lot */}
-      <div className={`${cardClass} space-y-3`}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-50">
-              <PackageSearch className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-              Stok inbound grouping
-            </h2>
-            <p className="text-xs text-slate-400">
-              Stok saat ini per produk, dikelompokkan menurut pengirim atau pengolahan dari dokumen masuk ERP. Buka untuk
-              melihat tumpukan, lot, dan dokumennya.
-            </p>
-          </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Cari produk, folder, pengirim, tumpukan, lot"
-              className="w-full sm:w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
-
-        {stockError ? (
-          <p className="py-16 text-center text-sm text-red-500">Gagal memuat stok. Coba muat ulang halaman.</p>
-        ) : !stockInbound && stockLoading ? (
-          <div className="h-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
-        ) : stockInbound ? (
-          <>
-            <PendingGateSummary products={stockInbound.products} />
-            <InboundGroupingTree products={stockInbound.products} search={search} />
-          </>
-        ) : null}
-      </div>
+      )}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
@@ -82,4 +83,40 @@ export async function deleteStockFolder(uuid: string) {
 export async function moveStockFolderItem(input: MoveStockFolderItemInput) {
   await api.put(API_ROUTES.reports.analytics.stockFolderItems, input);
   await refreshStockInbound();
+}
+
+const STOCK_INBOUND_EXPORTS = {
+  xlsx: {
+    url: API_ROUTES.reports.analytics.stockInboundExportXlsx,
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  pdf: {
+    url: API_ROUTES.reports.analytics.stockInboundExportPdf,
+    type: "application/pdf",
+  },
+} as const;
+
+/** Downloads the stock inbound grouping as a spreadsheet or PDF, with the same search as the tree */
+export function useStockInboundExport() {
+  const exportStockInbound = useCallback(
+    async (format: keyof typeof STOCK_INBOUND_EXPORTS, search?: string) => {
+      const { url, type } = STOCK_INBOUND_EXPORTS[format];
+      const res = await api.get(`${url}${toQueryString({ search: search?.trim() })}`, {
+        responseType: "blob",
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type }));
+      const now = new Date();
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.setAttribute("download", `stok-inbound-${date}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    },
+    [],
+  );
+
+  return { exportStockInbound };
 }

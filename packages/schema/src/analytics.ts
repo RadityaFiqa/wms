@@ -231,3 +231,65 @@ export interface StockInboundResponse {
   productCount: number;
   products: InboundProduct[];
 }
+
+export const StockInboundExportQuerySchema = z.object({
+  /** Same search as the grouping tree: product, folder, sender, stack, lot, document or gate */
+  search: z.string().trim().max(100).optional(),
+});
+export type StockInboundExportQueryInput = z.infer<
+  typeof StockInboundExportQuerySchema
+>;
+
+// indexOf instead of includes: this package compiles against the ES5 lib
+const containsText = (value: string, q: string) =>
+  value.toLowerCase().indexOf(q) !== -1;
+
+const inboundLotMatches = (lot: InboundLot, q: string) =>
+  [
+    lot.lotName || "",
+    lot.pendingGate ? lot.pendingGate.opNumber : "",
+    ...lot.documents.map((d) => d.documentNumber),
+  ].some((v) => containsText(v, q));
+
+/** Keeps the senders of a group that match the search; a matching parent keeps all its children */
+function filterInboundGroup(group: InboundGroup, q: string): InboundGroup {
+  if (group.folder && containsText(group.folder.name, q)) return group;
+  const senders = group.senders
+    .map((s) => {
+      if (containsText(s.name, q)) return s;
+      const stacks = s.stacks
+        .map((st) =>
+          containsText(st.locationName, q)
+            ? st
+            : { ...st, lots: st.lots.filter((l) => inboundLotMatches(l, q)) },
+        )
+        .filter((st) => st.lots.length > 0);
+      return { ...s, stacks };
+    })
+    .filter((s) => s.stacks.length > 0);
+  return { ...group, senders };
+}
+
+/**
+ * Keeps only the branches of the inbound grouping that match the search; a matching
+ * parent keeps all its children. Shared by the grouping tree and its exports.
+ */
+export function filterInboundProducts(
+  products: InboundProduct[],
+  search: string | undefined,
+): InboundProduct[] {
+  const q = (search || "").trim().toLowerCase();
+  if (!q) return products;
+  return products
+    .map((p) => {
+      if ([p.name, p.sku, p.category].some((v) => containsText(v, q))) return p;
+      const groups = p.groups
+        .map((g) => filterInboundGroup(g, q))
+        .filter(
+          (g) =>
+            g.senders.length > 0 || (g.folder && containsText(g.folder.name, q)),
+        );
+      return { ...p, groups };
+    })
+    .filter((p) => p.groups.length > 0);
+}

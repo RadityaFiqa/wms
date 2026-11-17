@@ -10,17 +10,21 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   CreateStockFolderSchema,
   FlowTrendQuerySchema,
   MoveStockFolderItemSchema,
   RenameStockFolderSchema,
+  StockInboundExportQuerySchema,
   type CreateStockFolderInput,
   type FlowTrendQueryInput,
   type MoveStockFolderItemInput,
   type RenameStockFolderInput,
+  type StockInboundExportQueryInput,
 } from '@bulog-wms/schema';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '@/core/warehouse-context/warehouse.guard';
@@ -30,6 +34,13 @@ import { WarehouseContextService } from '@/core/warehouse-context/warehouse-cont
 import { ZodValidationPipe } from '@/core/pipes/zod-validation.pipe';
 import { ReportsAnalyticsService } from '@/modules/reports/reports-analytics.service';
 import { StockFolderService } from '@/modules/reports/stock-folder.service';
+import {
+  ReportsAnalyticsExportService,
+  type ExportFile,
+} from '@/modules/reports/reports-analytics-export.service';
+
+const XLSX_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @Controller('reports/analytics')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
@@ -37,6 +48,7 @@ export class ReportsAnalyticsController {
   constructor(
     private readonly service: ReportsAnalyticsService,
     private readonly stockFolders: StockFolderService,
+    private readonly exportService: ReportsAnalyticsExportService,
     private readonly warehouseContext: WarehouseContextService,
   ) {}
 
@@ -92,6 +104,43 @@ export class ReportsAnalyticsController {
   @CheckPolicies((ability) => ability.can('update', 'Report'))
   removeStockFolder(@Param('uuid') uuid: string) {
     return this.stockFolders.remove(this.requireWarehouseId(), uuid);
+  }
+
+  @Get('stock-inbound/export/xlsx')
+  @CheckPolicies((ability) => ability.can('read', 'Report'))
+  async exportStockInboundXlsx(
+    @Query(new ZodValidationPipe(StockInboundExportQuerySchema))
+    query: StockInboundExportQueryInput,
+    @Res() res: Response,
+  ) {
+    const file = await this.exportService.generateStockInboundXlsx(
+      this.requireWarehouseId(),
+      query.search,
+    );
+    this.sendFile(res, file, XLSX_CONTENT_TYPE);
+  }
+
+  @Get('stock-inbound/export/pdf')
+  @CheckPolicies((ability) => ability.can('read', 'Report'))
+  async exportStockInboundPdf(
+    @Query(new ZodValidationPipe(StockInboundExportQuerySchema))
+    query: StockInboundExportQueryInput,
+    @Res() res: Response,
+  ) {
+    const file = await this.exportService.generateStockInboundPdf(
+      this.requireWarehouseId(),
+      query.search,
+    );
+    this.sendFile(res, file, 'application/pdf');
+  }
+
+  private sendFile(res: Response, file: ExportFile, contentType: string) {
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename=${file.filename}`,
+      'Content-Length': file.buffer.length,
+    });
+    res.end(file.buffer);
   }
 
   private requireWarehouseId() {
