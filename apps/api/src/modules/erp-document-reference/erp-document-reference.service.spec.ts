@@ -706,6 +706,44 @@ describe('ErpDocumentReferenceService - getPendingPickups', () => {
       expect(onFallback).toHaveBeenCalled();
     });
 
+    it('requests picking_ref so it is kept in rawPayload', () => {
+      expect(STOCK_PICKING_SPECIFICATION).toHaveProperty('picking_ref');
+      expect(STOCK_PICKING_BASE_SPECIFICATION).toHaveProperty('picking_ref');
+    });
+
+    it('drops picking_ref last when Odoo rejects it too', async () => {
+      const invalid = (field: string) =>
+        new Error(
+          `Odoo RPC Error: Invalid field '${field}' on model 'stock.picking'`,
+        );
+      const read = jest
+        .fn()
+        .mockRejectedValueOnce(invalid('putaway_ids'))
+        .mockRejectedValueOnce(invalid('picking_ref'))
+        .mockResolvedValueOnce(['ok']);
+      const onFallback = jest.fn();
+
+      await expect(
+        readStockPickingWithFallback(read, onFallback),
+      ).resolves.toEqual(['ok']);
+      expect(read).toHaveBeenCalledTimes(3);
+      const last = read.mock.calls[2][0];
+      expect(last).not.toHaveProperty('picking_ref');
+      expect(last).not.toHaveProperty('putaway_ids');
+      expect(last).toHaveProperty('ref_fax');
+      expect(onFallback).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up after the last fallback', async () => {
+      const read = jest
+        .fn()
+        .mockRejectedValue(new Error("Invalid field 'name' on stock.picking"));
+      await expect(readStockPickingWithFallback(read)).rejects.toThrow(
+        'Invalid field',
+      );
+      expect(read).toHaveBeenCalledTimes(3);
+    });
+
     it('rethrows other Odoo errors', async () => {
       const read = jest.fn().mockRejectedValue(new Error('Session expired'));
       await expect(readStockPickingWithFallback(read)).rejects.toThrow(

@@ -49,10 +49,20 @@ const WMS_OPERATION_SPECIFICATION = {
 };
 
 /**
- * stock.picking specification without the WMS operation relations, used as a
- * fallback when the Odoo instance rejects picking_ids / putaway_ids.
+ * Extra stock.picking fields that are only kept in the document's rawPayload.
+ * Not every Odoo instance has them, so they are dropped when Odoo rejects them.
+ * The display_name sub-spec gives { id, display_name } for a many2one and is
+ * ignored for a plain field.
  */
-export const STOCK_PICKING_BASE_SPECIFICATION = {
+const OPTIONAL_PICKING_SPECIFICATION = {
+  picking_ref: { fields: { display_name: {} } },
+};
+
+/**
+ * stock.picking specification without the WMS operation relations and the
+ * optional fields, the last fallback when Odoo rejects any of them.
+ */
+const STOCK_PICKING_CORE_SPECIFICATION = {
   id: {},
   name: {},
   state: {},
@@ -85,6 +95,15 @@ export const STOCK_PICKING_BASE_SPECIFICATION = {
 };
 
 /**
+ * stock.picking specification without the WMS operation relations, used as a
+ * fallback when the Odoo instance rejects picking_ids / putaway_ids.
+ */
+export const STOCK_PICKING_BASE_SPECIFICATION = {
+  ...STOCK_PICKING_CORE_SPECIFICATION,
+  ...OPTIONAL_PICKING_SPECIFICATION,
+};
+
+/**
  * Shared web_read / web_search_read specification for stock.picking.
  */
 export const STOCK_PICKING_SPECIFICATION = {
@@ -97,19 +116,25 @@ const isInvalidFieldError = (err: any): boolean =>
   /Invalid field|KeyError/i.test(err?.message || '');
 
 /**
- * Reads stock.picking with the full specification, retrying with the base
- * specification when Odoo rejects one of the WMS operation fields, so a field
- * mismatch never blocks the whole document sync.
+ * Reads stock.picking with the full specification, retrying without the WMS
+ * operation fields and then without the optional fields when Odoo rejects one
+ * of them, so a field mismatch never blocks the whole document sync.
  */
 export async function readStockPickingWithFallback<T>(
   read: (specification: Record<string, any>) => Promise<T>,
   onFallback?: (err: any) => void,
 ): Promise<T> {
-  try {
-    return await read(STOCK_PICKING_SPECIFICATION);
-  } catch (err: any) {
-    if (!isInvalidFieldError(err)) throw err;
-    onFallback?.(err);
-    return read(STOCK_PICKING_BASE_SPECIFICATION);
+  const attempts = [
+    STOCK_PICKING_SPECIFICATION,
+    STOCK_PICKING_BASE_SPECIFICATION,
+    STOCK_PICKING_CORE_SPECIFICATION,
+  ];
+  for (let i = 0; ; i++) {
+    try {
+      return await read(attempts[i]);
+    } catch (err: any) {
+      if (!isInvalidFieldError(err) || i === attempts.length - 1) throw err;
+      onFallback?.(err);
+    }
   }
 }

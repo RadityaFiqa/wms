@@ -412,7 +412,7 @@ export class OdooSyncService {
 
   private logWmsFieldFallback(err: any) {
     this.logger.warn(
-      `[UNIFIED-SYNC-JOB] Odoo rejected WMS picking/putaway fields, retrying without them: ${err.message}`,
+      `[UNIFIED-SYNC-JOB] Odoo rejected a stock.picking field (WMS operations or picking_ref), retrying with fewer fields: ${err.message}`,
     );
   }
 
