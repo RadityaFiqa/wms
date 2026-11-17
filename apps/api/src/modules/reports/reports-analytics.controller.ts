@@ -15,11 +15,17 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  BanpangFolderNameSchema,
+  BanpangRealizationQuerySchema,
   CreateStockFolderSchema,
   FlowTrendQuerySchema,
   MoveStockFolderItemSchema,
   RenameStockFolderSchema,
   StockInboundExportQuerySchema,
+  MoveBanpangSalesOrderSchema,
+  type BanpangFolderNameInput,
+  type BanpangRealizationQueryInput,
+  type MoveBanpangSalesOrderInput,
   type CreateStockFolderInput,
   type FlowTrendQueryInput,
   type MoveStockFolderItemInput,
@@ -34,6 +40,8 @@ import { WarehouseContextService } from '@/core/warehouse-context/warehouse-cont
 import { ZodValidationPipe } from '@/core/pipes/zod-validation.pipe';
 import { ReportsAnalyticsService } from '@/modules/reports/reports-analytics.service';
 import { StockFolderService } from '@/modules/reports/stock-folder.service';
+import { BanpangRealizationService } from '@/modules/reports/banpang-realization.service';
+import { BanpangFolderService } from '@/modules/reports/banpang-folder.service';
 import {
   ReportsAnalyticsExportService,
   type ExportFile,
@@ -49,6 +57,8 @@ export class ReportsAnalyticsController {
     private readonly service: ReportsAnalyticsService,
     private readonly stockFolders: StockFolderService,
     private readonly exportService: ReportsAnalyticsExportService,
+    private readonly banpang: BanpangRealizationService,
+    private readonly banpangFolders: BanpangFolderService,
     private readonly warehouseContext: WarehouseContextService,
   ) {}
 
@@ -65,6 +75,54 @@ export class ReportsAnalyticsController {
   @CheckPolicies((ability) => ability.can('read', 'Report'))
   getStockInbound() {
     return this.service.getStockInbound(this.requireWarehouseId());
+  }
+
+  @Get('banpang-realization')
+  @CheckPolicies((ability) => ability.can('read', 'Report'))
+  getBanpangRealization(
+    @Query(new ZodValidationPipe(BanpangRealizationQuerySchema))
+    query: BanpangRealizationQueryInput,
+  ) {
+    return this.banpang.getRealization(this.requireWarehouseId(), query);
+  }
+
+  @Post('banpang-folders')
+  @CheckPolicies((ability) => ability.can('update', 'Report'))
+  createBanpangFolder(
+    @Body(new ZodValidationPipe(BanpangFolderNameSchema))
+    body: BanpangFolderNameInput,
+    @Req() req: { user?: { id: number } },
+  ) {
+    return this.banpangFolders.create(
+      this.requireWarehouseId(),
+      body,
+      req.user?.id,
+    );
+  }
+
+  @Put('banpang-folders/items')
+  @CheckPolicies((ability) => ability.can('update', 'Report'))
+  moveBanpangSalesOrder(
+    @Body(new ZodValidationPipe(MoveBanpangSalesOrderSchema))
+    body: MoveBanpangSalesOrderInput,
+  ) {
+    return this.banpangFolders.move(this.requireWarehouseId(), body);
+  }
+
+  @Patch('banpang-folders/:uuid')
+  @CheckPolicies((ability) => ability.can('update', 'Report'))
+  renameBanpangFolder(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(BanpangFolderNameSchema))
+    body: BanpangFolderNameInput,
+  ) {
+    return this.banpangFolders.rename(this.requireWarehouseId(), uuid, body);
+  }
+
+  @Delete('banpang-folders/:uuid')
+  @CheckPolicies((ability) => ability.can('update', 'Report'))
+  removeBanpangFolder(@Param('uuid') uuid: string) {
+    return this.banpangFolders.remove(this.requireWarehouseId(), uuid);
   }
 
   @Post('stock-folders')

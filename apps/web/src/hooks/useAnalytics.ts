@@ -4,10 +4,15 @@ import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
 import { useAuthStore } from "@/store/auth";
 import type {
+  BanpangFolder,
+  BanpangFolderNameInput,
+  BanpangRealizationQueryInput,
+  BanpangRealizationResponse,
   CreateStockFolderInput,
   FlowTrendQueryInput,
   FlowTrendResponse,
   InboundFolder,
+  MoveBanpangSalesOrderInput,
   MoveStockFolderItemInput,
   RenameStockFolderInput,
   StockInboundResponse,
@@ -56,6 +61,54 @@ export function useStockInbound() {
   );
 
   return { stockInbound: data, error, isLoading };
+}
+
+/** Done outgoing documents of Badan Pangan Nasional, grouped by SO and kecamatan */
+export function useBanpangRealization(query: BanpangRealizationQueryInput) {
+  const warehouseUuid = useAuthStore((s) => s.activeWarehouse?.uuid);
+  const url = `${API_ROUTES.reports.analytics.banpangRealization}${toQueryString({
+    startDate: query.startDate,
+    endDate: query.endDate,
+  })}`;
+  const { data, error, isLoading } = useSWR<BanpangRealizationResponse>(
+    query.startDate && query.endDate ? [url, warehouseUuid] : null,
+    fetcher,
+    { keepPreviousData: true },
+  );
+
+  return { realization: data, error, isLoading };
+}
+
+// Banpang folders live in the realization response, so every change refetches it
+const refreshBanpangRealization = () =>
+  mutate(
+    (key) =>
+      Array.isArray(key) &&
+      typeof key[0] === "string" &&
+      key[0].startsWith(API_ROUTES.reports.analytics.banpangRealization),
+  );
+
+export async function createBanpangFolder(input: BanpangFolderNameInput) {
+  const res = await api.post<BanpangFolder>(API_ROUTES.reports.analytics.banpangFolders, input);
+  await refreshBanpangRealization();
+  return res.data;
+}
+
+export async function renameBanpangFolder(uuid: string, input: BanpangFolderNameInput) {
+  const res = await api.patch<BanpangFolder>(API_ROUTES.reports.analytics.banpangFolderDetail(uuid), input);
+  await refreshBanpangRealization();
+  return res.data;
+}
+
+export async function deleteBanpangFolder(uuid: string) {
+  await api.delete(API_ROUTES.reports.analytics.banpangFolderDetail(uuid));
+  await refreshBanpangRealization();
+}
+
+/** Moves a sales order into a folder, or out (folderUuid null) */
+export async function moveBanpangSalesOrder(input: MoveBanpangSalesOrderInput) {
+  await api.put(API_ROUTES.reports.analytics.banpangFolderItems, input);
+  await refreshBanpangRealization();
 }
 
 // Folders live in the stock inbound response, so every change refetches it

@@ -5,6 +5,8 @@ import { ReportsAnalyticsController } from './reports-analytics.controller';
 import { ReportsAnalyticsService } from './reports-analytics.service';
 import { StockFolderService } from './stock-folder.service';
 import { ReportsAnalyticsExportService } from './reports-analytics-export.service';
+import { BanpangRealizationService } from './banpang-realization.service';
+import { BanpangFolderService } from './banpang-folder.service';
 
 @Module({
   controllers: [ReportsController, ReportsAnalyticsController],
@@ -13,6 +15,8 @@ import { ReportsAnalyticsExportService } from './reports-analytics-export.servic
     ReportsAnalyticsService,
     StockFolderService,
     ReportsAnalyticsExportService,
+    BanpangRealizationService,
+    BanpangFolderService,
   ],
   exports: [ReportsService],
 })

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { FolderPlus, GripVertical, Loader2 } from "lucide-react";
+import { GripVertical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { filterInboundProducts, type InboundGroup, type InboundProduct } from "@bulog-wms/schema";
 import { formatGroupValue, formatProductName, formatQty } from "@/components/analytics/format";
@@ -26,79 +26,11 @@ import {
   apiErrorMessage,
   formatPct,
   InboundFolderSection,
+  NewFolderButton,
   UngroupedSection,
 } from "@/components/analytics/InboundFolderSection";
 import { createStockFolder, moveStockFolderItem } from "@/hooks/useAnalytics";
 import { useAuthStore } from "@/store/auth";
-
-/** Inline "+ Folder" that turns into a name field */
-function NewFolderButton({ productUuid }: { productUuid: string }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const close = () => {
-    setAdding(false);
-    setName("");
-  };
-
-  const submit = async () => {
-    const value = name.trim();
-    if (!value) return close();
-    setSaving(true);
-    try {
-      await createStockFolder({ productUuid, name: value });
-      close();
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Gagal membuat folder."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      void submit();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    }
-  };
-
-  if (!adding) {
-    return (
-      <button
-        type="button"
-        onClick={() => setAdding(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-500 hover:border-blue-400 hover:text-blue-600 dark:border-slate-600 dark:text-slate-400 dark:hover:text-blue-400"
-      >
-        <FolderPlus className="h-3.5 w-3.5" />
-        Folder
-      </button>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <input
-        autoFocus
-        value={name}
-        maxLength={60}
-        disabled={saving}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={onKeyDown}
-        onBlur={() => {
-          if (!saving && !name.trim()) close();
-        }}
-        placeholder="Nama folder, Enter untuk simpan"
-        aria-label="Nama folder baru"
-        className="w-56 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-      />
-      {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
-    </span>
-  );
-}
 
 /** "HGL KALSEL 62% · Belum dikelompokkan 38%" under the product name */
 function FolderShareLine({ groups }: { groups: InboundGroup[] }) {
@@ -208,7 +140,7 @@ export default function InboundGroupingTree({ products, search }: { products: In
               <div className="mb-3 ml-5 space-y-2">
                 {canEdit && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <NewFolderButton productUuid={p.productUuid} />
+                    <NewFolderButton onCreate={(name) => createStockFolder({ productUuid: p.productUuid, name })} />
                     {hasFolders && (
                       <span className="text-[11px] text-slate-400">
                         Seret <GripVertical className="inline h-3 w-3 align-[-2px]" /> pengirim atau lot ke folder.

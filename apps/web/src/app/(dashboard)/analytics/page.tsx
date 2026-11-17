@@ -13,6 +13,7 @@ import {
   Layers,
   type LucideIcon,
   Weight,
+  Landmark,
   PackageSearch,
   RotateCcw,
   Search,
@@ -27,6 +28,7 @@ import { useFlowTrend, useStockInbound, useStockInboundExport } from "@/hooks/us
 import FlowTrendChart from "@/components/analytics/FlowTrendChart";
 import ProductFlowBars from "@/components/analytics/ProductFlowBars";
 import InboundGroupingTree from "@/components/analytics/InboundGroupingTree";
+import BanpangRealizationSection from "@/components/analytics/BanpangRealizationSection";
 import PendingGateSummary from "@/components/analytics/PendingGateSummary";
 import { formatGroupNumber, formatGroupValue } from "@/components/analytics/format";
 
@@ -59,6 +61,7 @@ const UNIT_ICONS: Record<string, LucideIcon> = { Kg: Weight, L: Droplets };
 const SECTIONS = [
   { key: "stock", label: "Stok inbound grouping", icon: PackageSearch },
   { key: "trend", label: "Tren masuk vs keluar", icon: TrendingUp },
+  { key: "banpang", label: "Banpang Realization", icon: Landmark },
 ] as const;
 type SectionKey = (typeof SECTIONS)[number]["key"];
 
@@ -476,6 +479,12 @@ export default function AnalyticsPage() {
           )}
         </div>
 
+        </div>
+      )}
+
+      {section === "banpang" && (
+        <div id="analytics-panel-banpang" role="tabpanel" aria-labelledby="analytics-tab-banpang">
+          <BanpangRealizationSection cardClass={cardClass} />
         </div>
       )}
     </div>

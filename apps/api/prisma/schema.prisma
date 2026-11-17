@@ -41,6 +41,7 @@ model User {
   tagihanFilesUploaded      TagihanFile[]
   buruhsCreated             Buruh[]
   stockGroupFoldersCreated  StockGroupFolder[]
+  banpangFoldersCreated     BanpangFolder[]
 
   @@index([email])
   @@index([uuid])
@@ -171,6 +172,8 @@ model Warehouse {
   buruhs                 Buruh[]
   stockGroupFolders      StockGroupFolder[]
   stockGroupFolderItems  StockGroupFolderItem[]
+  banpangFolders         BanpangFolder[]
+  banpangFolderItems     BanpangFolderItem[]
 
   @@index([uuid])
   @@index([code])
@@ -1189,5 +1192,37 @@ model StockGroupFolderItem {
 
   @@unique([warehouseId, inventoryId, senderName, lotName])
   @@index([warehouseId, inventoryId])
+  @@index([folderId])
+}
+
+/// Manual folders grouping the sales orders of the Banpang realization, per warehouse
+model BanpangFolder {
+  id          Int                 @id @default(autoincrement())
+  uuid        String              @unique @default(uuid())
+  warehouseId Int
+  name        String
+  sortOrder   Int                 @default(0)
+  createdById Int?
+  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime            @updatedAt @db.Timestamptz(3)
+  warehouse   Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdBy   User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items       BanpangFolderItem[]
+
+  @@unique([warehouseId, name])
+  @@index([warehouseId])
+}
+
+/// Sales order placed in a Banpang folder; sales orders without a row are ungrouped
+model BanpangFolderItem {
+  id          Int           @id @default(autoincrement())
+  warehouseId Int
+  soNumber    String
+  folderId    Int
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  folder      BanpangFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, soNumber])
   @@index([folderId])
 }

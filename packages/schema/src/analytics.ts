@@ -293,3 +293,101 @@ export function filterInboundProducts(
     })
     .filter((p) => p.groups.length > 0);
 }
+
+// ----- Banpang realization: done outgoing documents of Badan Pangan Nasional -----
+
+export const BanpangRealizationQuerySchema = z
+  .object({
+    /** Range on the document's done date, in the warehouse timezone */
+    startDate: DateString,
+    endDate: DateString,
+  })
+  .refine((q) => q.startDate <= q.endDate, {
+    message: "Tanggal mulai tidak boleh setelah tanggal akhir",
+    path: ["startDate"],
+  });
+export type BanpangRealizationQueryInput = z.infer<
+  typeof BanpangRealizationQuerySchema
+>;
+
+/** Done quantity of one product, in its UoM and in Kg when the UoM is a weight */
+export interface BanpangProductQty {
+  productUuid: string;
+  sku: string;
+  name: string;
+  uom: string;
+  qty: number;
+  /** null when the UoM is not a weight (e.g. Lembar) */
+  kg: number | null;
+}
+
+export interface BanpangSummary {
+  documentCount: number;
+  /** Sum of the Kg of all products */
+  kg: number;
+  products: BanpangProductQty[];
+  firstDoneAt: string | null;
+  lastDoneAt: string | null;
+}
+
+export interface BanpangDocument {
+  documentUuid: string;
+  documentNumber: string;
+  dateDone: string | null;
+  kg: number;
+  products: BanpangProductQty[];
+}
+
+/** Destination of the deliveries, from the ERP picking_ref (a kecamatan) */
+export interface BanpangDestination {
+  /** picking_ref, or "Tanpa kecamatan" when the ERP has none */
+  name: string;
+  summary: BanpangSummary;
+  documents: BanpangDocument[];
+}
+
+export interface BanpangSalesOrder {
+  /** Origin of the outgoing documents, or "Tanpa SO" when the ERP has none */
+  soNumber: string;
+  summary: BanpangSummary & { destinationCount: number };
+  destinations: BanpangDestination[];
+}
+
+/** Manual folder grouping sales orders, made by dragging sales orders into it */
+export interface BanpangFolder {
+  uuid: string;
+  name: string;
+}
+
+export interface BanpangGroup {
+  /** null for the sales orders not in any folder */
+  folder: BanpangFolder | null;
+  summary: BanpangSummary & {
+    salesOrderCount: number;
+    destinationCount: number;
+    /** Share of the realized Kg in the range, 0–100 */
+    sharePct: number;
+  };
+  salesOrders: BanpangSalesOrder[];
+}
+
+export interface BanpangRealizationResponse {
+  totals: BanpangSummary & {
+    salesOrderCount: number;
+    destinationCount: number;
+  };
+  /** Folders in their order (also when empty in the range), then the ungrouped sales orders */
+  groups: BanpangGroup[];
+}
+
+export const BanpangFolderNameSchema = z.object({ name: FolderName });
+export type BanpangFolderNameInput = z.infer<typeof BanpangFolderNameSchema>;
+
+/** Moves a sales order into a folder, or out of any folder (folderUuid null) */
+export const MoveBanpangSalesOrderSchema = z.object({
+  soNumber: z.string().trim().min(1, "Nomor SO wajib diisi").max(200),
+  folderUuid: z.string().uuid("Folder tidak valid").nullable(),
+});
+export type MoveBanpangSalesOrderInput = z.infer<
+  typeof MoveBanpangSalesOrderSchema
+>;
