@@ -177,6 +177,9 @@ export const API_ROUTES = {
     analytics: {
       flowTrend: "/reports/analytics/flow-trend",
       stockInbound: "/reports/analytics/stock-inbound",
+      stockFolders: "/reports/analytics/stock-folders",
+      stockFolderDetail: (uuid: string) => `/reports/analytics/stock-folders/${uuid}`,
+      stockFolderItems: "/reports/analytics/stock-folders/items",
     },
   },
   digitalSignature: {

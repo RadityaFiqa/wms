@@ -24,6 +24,7 @@ import { useFlowTrend, useStockInbound } from "@/hooks/useAnalytics";
 import FlowTrendChart from "@/components/analytics/FlowTrendChart";
 import ProductFlowBars from "@/components/analytics/ProductFlowBars";
 import InboundGroupingTree from "@/components/analytics/InboundGroupingTree";
+import PendingGateSummary from "@/components/analytics/PendingGateSummary";
 import { formatGroupNumber, formatGroupValue } from "@/components/analytics/format";
 
 const toDateString = (d: Date) =>
@@ -155,7 +156,12 @@ export default function AnalyticsPage() {
           tone="blue"
           value={stockInbound ? (mainStock ? formatGroupNumber(mainStock.displayQty, mainStock) : "0") : null}
           unit={mainStock?.displayUnit}
-          details={otherStock.map((t) => `+ ${formatGroupValue(t.displayQty, t)}`)}
+          details={[
+            ...otherStock.map((t) => `+ ${formatGroupValue(t.displayQty, t)}`),
+            ...(stockInbound?.totals ?? [])
+              .filter((t) => t.pendingDisplayQty !== 0)
+              .map((t) => `termasuk ${formatGroupValue(t.pendingDisplayQty, t)} belum diadministrasikan`),
+          ]}
         />
         <SummaryCard label="Masuk bulan ini" icon={ArrowDownToLine} tone="emerald" {...monthCard("in")} />
         <SummaryCard label="Keluar bulan ini" icon={ArrowUpFromLine} tone="orange" {...monthCard("out")} />
@@ -366,7 +372,7 @@ export default function AnalyticsPage() {
             <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Cari produk, pengirim, tumpukan, lot"
+              placeholder="Cari produk, folder, pengirim, tumpukan, lot"
               className="w-full sm:w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-blue-500"
             />
           </div>
@@ -377,7 +383,10 @@ export default function AnalyticsPage() {
         ) : !stockInbound && stockLoading ? (
           <div className="h-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
         ) : stockInbound ? (
-          <InboundGroupingTree products={stockInbound.products} search={search} />
+          <>
+            <PendingGateSummary products={stockInbound.products} />
+            <InboundGroupingTree products={stockInbound.products} search={search} />
+          </>
         ) : null}
       </div>
     </div>

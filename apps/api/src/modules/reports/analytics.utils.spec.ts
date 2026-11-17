@@ -60,6 +60,13 @@ describe('getUnitGroup', () => {
     expect(sheet.toDisplay).toBe(1);
   });
 
+  it('keeps weight in Kg when asked', () => {
+    const kg = getUnitGroup('Pack 50 KG', { weightInKg: true });
+    expect(kg.group.key).toBe('Kg');
+    expect(kg.group.displayUnit).toBe('Kg');
+    expect(kg.toDisplay).toBe(50);
+  });
+
   it('orders Kg, then L, then other units', () => {
     const keys = [{ key: 'Lembar' }, { key: 'L' }, { key: 'Kg' }]
       .sort(compareUnitGroups)

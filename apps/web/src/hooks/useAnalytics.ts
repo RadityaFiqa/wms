@@ -1,10 +1,14 @@
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 import { api } from "@/lib/axios";
 import { API_ROUTES } from "@/lib/api-routes";
 import { useAuthStore } from "@/store/auth";
 import type {
+  CreateStockFolderInput,
   FlowTrendQueryInput,
   FlowTrendResponse,
+  InboundFolder,
+  MoveStockFolderItemInput,
+  RenameStockFolderInput,
   StockInboundResponse,
 } from "@bulog-wms/schema";
 
@@ -47,7 +51,35 @@ export function useStockInbound() {
   const { data, error, isLoading } = useSWR<StockInboundResponse>(
     [API_ROUTES.reports.analytics.stockInbound, warehouseUuid],
     fetcher,
+    { keepPreviousData: true },
   );
 
   return { stockInbound: data, error, isLoading };
+}
+
+// Folders live in the stock inbound response, so every change refetches it
+const refreshStockInbound = () =>
+  mutate((key) => Array.isArray(key) && key[0] === API_ROUTES.reports.analytics.stockInbound);
+
+export async function createStockFolder(input: CreateStockFolderInput) {
+  const res = await api.post<InboundFolder>(API_ROUTES.reports.analytics.stockFolders, input);
+  await refreshStockInbound();
+  return res.data;
+}
+
+export async function renameStockFolder(uuid: string, input: RenameStockFolderInput) {
+  const res = await api.patch<InboundFolder>(API_ROUTES.reports.analytics.stockFolderDetail(uuid), input);
+  await refreshStockInbound();
+  return res.data;
+}
+
+export async function deleteStockFolder(uuid: string) {
+  await api.delete(API_ROUTES.reports.analytics.stockFolderDetail(uuid));
+  await refreshStockInbound();
+}
+
+/** Moves a whole sender (lotName null) or one lot into a folder, or out (folderUuid null) */
+export async function moveStockFolderItem(input: MoveStockFolderItemInput) {
+  await api.put(API_ROUTES.reports.analytics.stockFolderItems, input);
+  await refreshStockInbound();
 }

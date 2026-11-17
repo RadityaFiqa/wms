@@ -24,7 +24,7 @@ export const StockOriginCategoryEnum = z.enum([
 export type StockOriginCategory = z.infer<typeof StockOriginCategoryEnum>;
 
 /**
- * A unit group found in the data. Kg products are shown in Ton, L products in KL;
+ * A unit group found in the data. Kg products are shown in Ton (Kg in the stock inbound tree), L products in KL;
  * anything else (Lembar, Unit) keeps its own UoM.
  */
 export interface AnalyticsUnitGroup {
@@ -34,7 +34,7 @@ export interface AnalyticsUnitGroup {
   label: string;
   /** Base unit of the data: Kg, L or the UoM */
   baseUnit: string;
-  /** Unit the values are expressed in: Ton, KL or the UoM */
+  /** Unit the values are expressed in: Ton, Kg, KL or the UoM */
   displayUnit: string;
 }
 
@@ -99,7 +99,7 @@ export interface FlowTrendResponse {
   skuOptions: (FlowTrendSku & { category: string; programs: string[] })[];
 }
 
-// ----- Stock inbound grouping: product → sender → stack → lot -----
+// ----- Stock inbound grouping: product → folder → sender → stack → lot -----
 
 export interface InboundDocument {
   documentUuid: string;
@@ -107,13 +107,30 @@ export interface InboundDocument {
   dateDone: string | null;
 }
 
+/**
+ * Gate line not yet administered: its ERP document is missing or not done, so the goods
+ * moved physically but are not in the ERP stock yet
+ */
+export interface InboundPendingGate {
+  gateOperationUuid: string;
+  opNumber: string;
+  cardType: "IN" | "OUT";
+  /** When the gate operation was recorded */
+  date: string;
+}
+
 export interface InboundLot {
   lotName: string | null;
-  /** Share of the stack quantity attributed to this sender, in the product UoM */
+  /**
+   * Share of the stack quantity attributed to this sender, in the product UoM; negative
+   * for a pending outgoing gate line
+   */
   qty: number;
   /** Same share in the product's display unit */
   displayQty: number;
   documents: InboundDocument[];
+  /** Set when the row is a gate line not yet administered instead of ERP stock */
+  pendingGate: InboundPendingGate | null;
 }
 
 export interface InboundStack {
@@ -123,11 +140,66 @@ export interface InboundStack {
   lots: InboundLot[];
 }
 
+/** Manual folder inside a product, made by dragging senders or lots into it */
+export interface InboundFolder {
+  uuid: string;
+  name: string;
+}
+
+export interface InboundGroupSummary {
+  /** Stock in the product's display unit */
+  displayQty: number;
+  /** Share of the product stock, 0–100 */
+  sharePct: number;
+  senderCount: number;
+  stackCount: number;
+  lotCount: number;
+  /** Latest done date of the incoming documents of its lots */
+  lastReceivedAt: string | null;
+  /** Part of displayQty from gate lines not yet administered, and how many gates */
+  pendingDisplayQty: number;
+  pendingGateCount: number;
+}
+
+export interface InboundGroup {
+  /** null for the senders and lots not in any folder */
+  folder: InboundFolder | null;
+  summary: InboundGroupSummary;
+  senders: InboundSender[];
+}
+
+const FolderName = z
+  .string()
+  .trim()
+  .min(1, "Nama folder wajib diisi")
+  .max(60, "Nama folder maksimal 60 karakter");
+
+export const CreateStockFolderSchema = z.object({
+  productUuid: z.string().uuid("Produk tidak valid"),
+  name: FolderName,
+});
+export type CreateStockFolderInput = z.infer<typeof CreateStockFolderSchema>;
+
+export const RenameStockFolderSchema = z.object({ name: FolderName });
+export type RenameStockFolderInput = z.infer<typeof RenameStockFolderSchema>;
+
+/** Moves a whole sender (lotName null) or one of its lots into a folder, or out (folderUuid null) */
+export const MoveStockFolderItemSchema = z.object({
+  productUuid: z.string().uuid("Produk tidak valid"),
+  senderName: z.string().trim().min(1, "Pengirim wajib diisi").max(200),
+  lotName: z.string().trim().min(1).max(200).nullable().default(null),
+  folderUuid: z.string().uuid("Folder tidak valid").nullable(),
+});
+export type MoveStockFolderItemInput = z.infer<typeof MoveStockFolderItemSchema>;
+
 export interface InboundSender {
   /** Partner name without its numeric code; "Tidak tercatat" when no document matched */
   name: string;
   originCategory: StockOriginCategory;
   displayQty: number;
+  /** Part of displayQty from gate lines not yet administered, and how many gates */
+  pendingDisplayQty: number;
+  pendingGateCount: number;
   stacks: InboundStack[];
 }
 
@@ -139,17 +211,22 @@ export interface InboundProduct {
   category: string;
   uom: string;
   unit: AnalyticsUnitGroup;
-  /** Stock in the product UoM */
+  /** Physical stock in the product UoM */
   qty: number;
-  /** Stock in the unit group's display unit (Ton, KL or the UoM) */
+  /** Physical stock (ERP + not yet administered) in the unit group's display unit */
   displayQty: number;
+  /** Part of qty / displayQty from gate lines not yet administered (IN − OUT) */
+  pendingQty: number;
+  pendingDisplayQty: number;
   stackCount: number;
-  senders: InboundSender[];
+  senderCount: number;
+  /** Manual folders in their order, then the senders not in any folder (folder null) */
+  groups: InboundGroup[];
 }
 
 export interface StockInboundResponse {
-  /** Current stock per unit group */
-  totals: (AnalyticsUnitGroup & { displayQty: number })[];
+  /** Current physical stock per unit group, with the part not yet administered */
+  totals: (AnalyticsUnitGroup & { displayQty: number; pendingDisplayQty: number })[];
   stackCount: number;
   productCount: number;
   products: InboundProduct[];

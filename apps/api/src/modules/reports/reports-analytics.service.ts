@@ -10,6 +10,7 @@ import type {
   FlowTrendResponse,
   FlowTrendSku,
   InboundDocument,
+  InboundLot,
   InboundProduct,
   InboundSender,
   InboundStack,
@@ -17,6 +18,7 @@ import type {
   StockOriginCategory,
 } from '@bulog-wms/schema';
 import { PrismaService } from '@/core/prisma/prisma.service';
+import { PENDING_GATE_PRODUCT_WHERE } from '@/core/utils/stock-reconciliation';
 import { WarehouseContextService } from '@/core/warehouse-context/warehouse-context.service';
 import {
   formatDateInTimezone,
@@ -35,11 +37,16 @@ import {
   round3,
 } from '@/modules/reports/analytics.utils';
 import { listPeriods, shiftMonth } from '@/modules/reports/analytics-periods';
+import { StockFolderService } from '@/modules/reports/stock-folder.service';
+import {
+  groupSendersByFolder,
+  NOT_RECORDED_SENDER,
+} from '@/modules/reports/stock-folder.utils';
 
 // Commodity category of an ERP item, same rule as getCommodityCategory
 const ITEM_CATEGORY_SQL = Prisma.sql`upper(split_part(regexp_replace(i."productName", '^\\s*\\[[^]]*\\]\\s*', ''), ' ', 1))`;
 
-const NOT_RECORDED = 'Tidak tercatat';
+const NOT_RECORDED = NOT_RECORDED_SENDER;
 
 type FlowRow = {
   period: string;
@@ -61,12 +68,15 @@ type OriginRow = {
   origin: string | null;
   sourceLocationName: string | null;
   dateDone: Date | null;
+  destinationLocationId: number | null;
   qty: number;
 };
 
 type LotOrigin = {
   sender: string;
   originCategory: StockOriginCategory;
+  /** Stack the lot was received into */
+  locationId: number | null;
   qty: number;
   document: InboundDocument;
 };
@@ -92,6 +102,7 @@ export class ReportsAnalyticsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly warehouseContext: WarehouseContextService,
+    private readonly folders: StockFolderService,
   ) {}
 
   /**
@@ -247,69 +258,124 @@ export class ReportsAnalyticsService {
   /**
    * Current stock grouped product → sender (partner of the done incoming document that
    * received the lot) → stack → lot. A lot received from several senders is split by
-   * the quantity each one delivered.
+   * the quantity each one delivered into that stack; when the lot never came in directly
+   * there (moved internally), by what each one delivered into the warehouse. Senders
+   * and lots are then split over the product's manual folders. Totals are in Ton, the
+   * product tree in Kg.
    */
   async getStockInbound(warehouseId: number): Promise<StockInboundResponse> {
-    const quants = await this.prisma.quant.findMany({
-      where: { quantity: { gt: 0 }, location: { warehouseId } },
-      include: {
-        location: { select: { uuid: true, displayName: true } },
-        inventory: { select: { uuid: true, sku: true, name: true, uom: true } },
-      },
-    });
+    const [quants, pendingLines] = await Promise.all([
+      this.prisma.quant.findMany({
+        where: { quantity: { gt: 0 }, location: { warehouseId } },
+        include: {
+          location: { select: { uuid: true, displayName: true } },
+          inventory: {
+            select: { uuid: true, sku: true, name: true, uom: true },
+          },
+        },
+      }),
+      this.getPendingGateLines(warehouseId),
+    ]);
 
-    const originsByLot = await this.getLotOrigins(warehouseId, quants);
+    const [originsByLot, foldersByProduct] = await Promise.all([
+      this.getLotOrigins(warehouseId, [
+        ...quants,
+        ...pendingLines.filter((l) => l.lotName),
+      ]),
+      this.folders.getByProduct(warehouseId),
+    ]);
 
-    const products = new Map<number, InboundProduct>();
+    type ProductAccumulator = Omit<InboundProduct, 'groups' | 'senderCount'> & {
+      senders: InboundSender[];
+    };
+    type ProductRef = {
+      uuid: string;
+      sku: string;
+      name: string;
+      uom: string | null;
+    };
+    type LocationRef = { id: number; uuid: string; displayName: string };
+    type SenderShare = {
+      originCategory: StockOriginCategory;
+      share: number;
+      docs: InboundDocument[];
+    };
+
+    const products = new Map<number, ProductAccumulator>();
     const productStacks = new Map<number, Set<number>>();
     const totals = new Map<
       string,
-      AnalyticsUnitGroup & { displayQty: number }
+      AnalyticsUnitGroup & { displayQty: number; pendingDisplayQty: number }
     >();
     const locationIds = new Set<number>();
 
-    for (const q of quants) {
-      const { group, toDisplay } = getUnitGroup(q.inventory.uom);
-      locationIds.add(q.locationId);
+    /** Adds a quantity (negative for pending OUT) to the totals and the product */
+    const addToProduct = (
+      inventoryId: number,
+      inventory: ProductRef,
+      location: LocationRef,
+      qty: number,
+      pending: boolean,
+    ) => {
+      const totalUnit = getUnitGroup(inventory.uom);
+      const { group, toDisplay } = getUnitGroup(inventory.uom, {
+        weightInKg: true,
+      });
+      locationIds.add(location.id);
 
-      const total = totals.get(group.key) || { ...group, displayQty: 0 };
-      total.displayQty += q.quantity * toDisplay;
-      totals.set(group.key, total);
+      const total = totals.get(totalUnit.group.key) || {
+        ...totalUnit.group,
+        displayQty: 0,
+        pendingDisplayQty: 0,
+      };
+      total.displayQty += qty * totalUnit.toDisplay;
+      if (pending) total.pendingDisplayQty += qty * totalUnit.toDisplay;
+      totals.set(totalUnit.group.key, total);
 
-      let product = products.get(q.inventoryId);
+      let product = products.get(inventoryId);
       if (!product) {
         product = {
-          productUuid: q.inventory.uuid,
-          sku: q.inventory.sku,
-          name: q.inventory.name,
-          category: getCommodityCategory(q.inventory.name),
-          uom: q.inventory.uom || 'Unit',
+          productUuid: inventory.uuid,
+          sku: inventory.sku,
+          name: inventory.name,
+          category: getCommodityCategory(inventory.name),
+          uom: inventory.uom || 'Unit',
           unit: group,
           qty: 0,
           displayQty: 0,
+          pendingQty: 0,
+          pendingDisplayQty: 0,
           stackCount: 0,
           senders: [],
         };
-        products.set(q.inventoryId, product);
-        productStacks.set(q.inventoryId, new Set());
+        products.set(inventoryId, product);
+        productStacks.set(inventoryId, new Set());
       }
-      product.qty += q.quantity;
-      product.displayQty += q.quantity * toDisplay;
-      productStacks.get(q.inventoryId)!.add(q.locationId);
+      product.qty += qty;
+      product.displayQty += qty * toDisplay;
+      if (pending) {
+        product.pendingQty += qty;
+        product.pendingDisplayQty += qty * toDisplay;
+      }
+      productStacks.get(inventoryId)!.add(location.id);
+      return { product, toDisplay };
+    };
 
-      // Split the stack quantity over the senders of its lot
-      const origins = q.lotName
-        ? originsByLot.get(`${q.inventoryId}|${q.lotName}`) || []
+    /** Senders of a lot in a stack and the share each one delivered */
+    const senderShares = (
+      inventoryId: number,
+      lotName: string | null,
+      locationId: number,
+    ) => {
+      const lotOrigins = lotName
+        ? originsByLot.get(`${inventoryId}|${lotName}`) || []
         : [];
+      // A lot can come back into a stack later (e.g. returns), so prefer what was
+      // received into this stack over the warehouse-wide receipts
+      const intoStack = lotOrigins.filter((o) => o.locationId === locationId);
+      const origins = intoStack.length > 0 ? intoStack : lotOrigins;
       const receivedTotal = origins.reduce((sum, o) => sum + o.qty, 0);
-      const bySender = new Map<
-        string,
-        {
-          originCategory: StockOriginCategory;
-          share: number;
-          docs: InboundDocument[];
-        }
-      >();
+      const bySender = new Map<string, SenderShare>();
       if (receivedTotal > 0) {
         for (const o of origins) {
           const entry = bySender.get(o.sender) || {
@@ -318,7 +384,11 @@ export class ReportsAnalyticsService {
             docs: [],
           };
           entry.share += o.qty / receivedTotal;
-          entry.docs.push(o.document);
+          if (
+            !entry.docs.some((d) => d.documentUuid === o.document.documentUuid)
+          ) {
+            entry.docs.push(o.document);
+          }
           bySender.set(o.sender, entry);
         }
       } else {
@@ -328,43 +398,102 @@ export class ReportsAnalyticsService {
           docs: [],
         });
       }
+      return bySender;
+    };
 
-      for (const [senderName, entry] of bySender) {
+    const addLot = (
+      product: ProductAccumulator,
+      senderName: string,
+      originCategory: StockOriginCategory,
+      location: LocationRef,
+      lot: InboundLot,
+    ) => {
+      let sender = product.senders.find((s) => s.name === senderName);
+      if (!sender) {
+        sender = {
+          name: senderName,
+          originCategory,
+          displayQty: 0,
+          pendingDisplayQty: 0,
+          pendingGateCount: 0,
+          stacks: [],
+        };
+        product.senders.push(sender);
+      }
+      sender.displayQty += lot.displayQty;
+
+      let stack = sender.stacks.find((s) => s.locationUuid === location.uuid);
+      if (!stack) {
+        stack = {
+          locationUuid: location.uuid,
+          locationName: location.displayName,
+          displayQty: 0,
+          lots: [],
+        };
+        sender.stacks.push(stack);
+      }
+      stack.displayQty += lot.displayQty;
+      stack.lots.push({
+        ...lot,
+        qty: round3(lot.qty),
+        displayQty: round3(lot.displayQty),
+      });
+    };
+
+    for (const q of quants) {
+      const location = { id: q.locationId, ...q.location };
+      const { product, toDisplay } = addToProduct(
+        q.inventoryId,
+        q.inventory,
+        location,
+        q.quantity,
+        false,
+      );
+      // Split the stack quantity over the senders of its lot
+      const shares = senderShares(q.inventoryId, q.lotName, q.locationId);
+      for (const [senderName, entry] of shares) {
         const qty = q.quantity * entry.share;
-        const displayQty = qty * toDisplay;
-
-        let sender = product.senders.find((s) => s.name === senderName);
-        if (!sender) {
-          sender = {
-            name: senderName,
-            originCategory: entry.originCategory,
-            displayQty: 0,
-            stacks: [],
-          };
-          product.senders.push(sender);
-        }
-        sender.displayQty += displayQty;
-
-        let stack = sender.stacks.find(
-          (s) => s.locationUuid === q.location.uuid,
-        );
-        if (!stack) {
-          stack = {
-            locationUuid: q.location.uuid,
-            locationName: q.location.displayName,
-            displayQty: 0,
-            lots: [],
-          };
-          sender.stacks.push(stack);
-        }
-        stack.displayQty += displayQty;
-        stack.lots.push({
+        addLot(product, senderName, entry.originCategory, location, {
           lotName: q.lotName,
-          qty: round3(qty),
-          displayQty: round3(displayQty),
+          qty,
+          displayQty: qty * toDisplay,
           documents: entry.docs.sort((a, b) =>
             (b.dateDone || '').localeCompare(a.dateDone || ''),
           ),
+          pendingGate: null,
+        });
+      }
+    }
+
+    // Gate lines not yet administered: IN under the gate's sender, OUT taken off the
+    // senders of the lot it left from
+    for (const line of pendingLines) {
+      const signed =
+        line.gate.cardType === 'OUT' ? -line.quantity : line.quantity;
+      const { product, toDisplay } = addToProduct(
+        line.inventoryId,
+        line.inventory,
+        line.location,
+        signed,
+        true,
+      );
+      const shares: Map<string, SenderShare> =
+        line.gate.cardType === 'IN'
+          ? new Map([
+              [
+                line.senderName,
+                { originCategory: line.originCategory, share: 1, docs: [] },
+              ],
+            ])
+          : senderShares(line.inventoryId, line.lotName, line.location.id);
+      for (const [senderName, entry] of shares) {
+        const qty = signed * entry.share;
+        addLot(product, senderName, entry.originCategory, line.location, {
+          lotName: line.lotName,
+          qty,
+          displayQty: qty * toDisplay,
+          documents: [],
+          pendingGate: line.gate,
         });
       }
     }
@@ -394,22 +523,135 @@ export class ReportsAnalyticsService {
     return {
       totals: Array.from(totals.values())
         .sort(compareUnitGroups)
-        .map((t) => ({ ...t, displayQty: round3(t.displayQty) })),
+        .map((t) => ({
+          ...t,
+          displayQty: round3(t.displayQty),
+          pendingDisplayQty: round3(t.pendingDisplayQty),
+        })),
       stackCount: locationIds.size,
       productCount: products.size,
       products: Array.from(products.entries())
-        .map(([inventoryId, p]) => ({
-          ...p,
-          qty: round3(p.qty),
-          displayQty: round3(p.displayQty),
-          stackCount: productStacks.get(inventoryId)!.size,
-          senders: sortSenders(p.senders),
-        }))
+        .map(([inventoryId, { senders, ...p }]): InboundProduct => {
+          const productFolders = foldersByProduct.get(inventoryId);
+          return {
+            ...p,
+            qty: round3(p.qty),
+            displayQty: round3(p.displayQty),
+            pendingQty: round3(p.pendingQty),
+            pendingDisplayQty: round3(p.pendingDisplayQty),
+            stackCount: productStacks.get(inventoryId)!.size,
+            senderCount: senders.length,
+            groups: groupSendersByFolder(
+              sortSenders(senders),
+              productFolders?.folders ?? [],
+              productFolders?.placements ?? new Map<string, number | null>(),
+              p.displayQty,
+            ),
+          };
+        })
         .sort(
           (a, b) =>
             compareUnitGroups(a.unit, b.unit) || b.displayQty - a.displayQty,
         ),
     };
+  }
+
+  /**
+   * Gate lines not yet administered in this warehouse (same rule as the reconciliation
+   * page), with the stack they went into or out of and, for IN, their sender.
+   */
+  private async getPendingGateLines(warehouseId: number) {
+    const rows = await this.prisma.gateOperationProduct.findMany({
+      where: {
+        ...PENDING_GATE_PRODUCT_WHERE,
+        gateOperation: {
+          warehouseId,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+        },
+      },
+      select: {
+        inventoryId: true,
+        quantity: true,
+        inventory: { select: { uuid: true, sku: true, name: true, uom: true } },
+        location: {
+          select: {
+            id: true,
+            uuid: true,
+            displayName: true,
+            warehouseId: true,
+          },
+        },
+        quant: {
+          select: {
+            lotName: true,
+            location: {
+              select: {
+                id: true,
+                uuid: true,
+                displayName: true,
+                warehouseId: true,
+              },
+            },
+          },
+        },
+        documentReference: { select: { partnerName: true } },
+        gateOperation: {
+          select: {
+            uuid: true,
+            opNumber: true,
+            cardType: true,
+            clientPartner: true,
+            createdAt: true,
+            documentReference: { select: { partnerName: true } },
+          },
+        },
+      },
+    });
+
+    return rows.flatMap((row) => {
+      const location = row.location ?? row.quant?.location;
+      // A line without a stack in this warehouse cannot be placed in the tree
+      if (
+        !location ||
+        location.warehouseId !== warehouseId ||
+        row.quantity <= 0
+      ) {
+        return [];
+      }
+      const gate = row.gateOperation;
+      const partnerName =
+        gate.clientPartner ||
+        row.documentReference?.partnerName ||
+        gate.documentReference?.partnerName ||
+        null;
+      const cardType: 'IN' | 'OUT' = gate.cardType === 'OUT' ? 'OUT' : 'IN';
+      return [
+        {
+          inventoryId: row.inventoryId,
+          lotName: row.quant?.lotName ?? null,
+          quantity: row.quantity,
+          inventory: row.inventory,
+          location: {
+            id: location.id,
+            uuid: location.uuid,
+            displayName: location.displayName,
+          },
+          senderName: cleanPartnerName(partnerName) || 'Lainnya',
+          originCategory: classifyOrigin({
+            partnerName,
+            purchaseName: null,
+            origin: null,
+            sourceLocationName: null,
+          }),
+          gate: {
+            gateOperationUuid: gate.uuid,
+            opNumber: gate.opNumber,
+            cardType,
+            date: gate.createdAt.toISOString(),
+          },
+        },
+      ];
+    });
   }
 
   private aggregateFlow(
@@ -507,6 +749,7 @@ export class ReportsAnalyticsService {
         d.origin AS "origin",
         d."sourceLocationName" AS "sourceLocationName",
         d."dateDone" AS "dateDone",
+        ml."destinationLocationId" AS "destinationLocationId",
         SUM(ml.quantity)::float8 AS "qty"
       FROM "DocumentReferenceMoveLine" ml
       JOIN "DocumentReference" d ON d.id = ml."documentReferenceId"
@@ -515,7 +758,7 @@ export class ReportsAnalyticsService {
         AND d."pickingTypeCode" = 'incoming'
         AND ml."inventoryId" = ANY(${inventoryIds}::int[])
         AND ml."lotName" = ANY(${lotNames}::text[])
-      GROUP BY ml."inventoryId", ml."lotName", d.id
+      GROUP BY ml."inventoryId", ml."lotName", d.id, ml."destinationLocationId"
     `;
 
     for (const row of rows) {
@@ -524,6 +767,7 @@ export class ReportsAnalyticsService {
       list.push({
         sender: cleanPartnerName(row.partnerName) || 'Lainnya',
         originCategory: classifyOrigin(row),
+        locationId: row.destinationLocationId,
         qty: Number(row.qty),
         document: {
           documentUuid: row.uuid,

@@ -40,6 +40,7 @@ model User {
   tagihansCreated           Tagihan[]
   tagihanFilesUploaded      TagihanFile[]
   buruhsCreated             Buruh[]
+  stockGroupFoldersCreated  StockGroupFolder[]
 
   @@index([email])
   @@index([uuid])
@@ -168,6 +169,8 @@ model Warehouse {
   documentPurchaseOrders DocumentPurchaseOrder[]
   tagihans               Tagihan[]
   buruhs                 Buruh[]
+  stockGroupFolders      StockGroupFolder[]
+  stockGroupFolderItems  StockGroupFolderItem[]
 
   @@index([uuid])
   @@index([code])
@@ -256,6 +259,8 @@ model Inventory {
   gateOperationProducts    GateOperationProduct[]
   quants                   Quant[]
   stockOpnameItems         StockOpnameItem[]
+  stockGroupFolders        StockGroupFolder[]
+  stockGroupFolderItems    StockGroupFolderItem[]
 
   @@index([uuid])
   @@index([sku])
@@ -1146,4 +1151,43 @@ model Buruh {
   @@index([warehouseId, isMandor])
   @@index([warehouseId, sortOrder])
   @@map("Buruh")
+}
+
+/// Manual folder inside a product in the stock inbound grouping
+model StockGroupFolder {
+  id          Int                    @id @default(autoincrement())
+  uuid        String                 @unique @default(uuid())
+  warehouseId Int
+  inventoryId Int
+  name        String
+  sortOrder   Int                    @default(0)
+  createdById Int?
+  createdAt   DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime               @updatedAt @db.Timestamptz(3)
+  warehouse   Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  inventory   Inventory              @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  createdBy   User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items       StockGroupFolderItem[]
+
+  @@unique([warehouseId, inventoryId, name])
+  @@index([warehouseId, inventoryId])
+}
+
+/// Placement of a sender (lotName "") or one of its lots in a folder; folderId null keeps
+/// a lot out of the folder its sender is in
+model StockGroupFolderItem {
+  id          Int               @id @default(autoincrement())
+  warehouseId Int
+  inventoryId Int
+  senderName  String
+  lotName     String            @default("")
+  folderId    Int?
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+  warehouse   Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  inventory   Inventory         @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  folder      StockGroupFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, inventoryId, senderName, lotName])
+  @@index([warehouseId, inventoryId])
+  @@index([folderId])
 }

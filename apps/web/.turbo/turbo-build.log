@@ -1,5 +1,5 @@
 
-> @bulog-wms/web@0.1.0 build C:\Users\Win 11\Documents\wms\apps\web
+> @bulog-wms/web@0.1.0 build C:\Users\raditya\Documents\Coding\WMS\apps\web
 > node copy-worker.js && next build
 
 Successfully copied pdf.worker.min.mjs to public/
@@ -7,20 +7,23 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 15.2s
+✓ Compiled successfully in 26.0s
   Running TypeScript ...
-  Finished TypeScript in 10.7s ...
-  Collecting page data using 5 workers ...
-  Generating static pages using 5 workers (0/32) ...
-  Generating static pages using 5 workers (8/32) 
-  Generating static pages using 5 workers (16/32) 
-  Generating static pages using 5 workers (24/32) 
-✓ Generating static pages using 5 workers (32/32) in 661ms
+  Finished TypeScript in 27.9s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/33) ...
+Warning: Please use the `legacy` build in Node.js environments.
+Warning: Please use the `legacy` build in Node.js environments.
+  Generating static pages using 7 workers (8/33) 
+  Generating static pages using 7 workers (16/33) 
+  Generating static pages using 7 workers (24/33) 
+✓ Generating static pages using 7 workers (33/33) in 4.6s
   Finalizing page optimization ...
 
 Route (app)
 ┌ ○ /
 ├ ○ /_not-found
+├ ○ /analytics
 ├ ○ /audit-logs
 ├ ○ /document-generator
 ├ ○ /document-generator/history

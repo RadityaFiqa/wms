@@ -57,6 +57,7 @@ const KG_GROUP: AnalyticsUnitGroup = {
   baseUnit: 'Kg',
   displayUnit: 'Ton',
 };
+const KG_BASE_GROUP: AnalyticsUnitGroup = { ...KG_GROUP, displayUnit: 'Kg' };
 const L_GROUP: AnalyticsUnitGroup = {
   key: 'L',
   label: 'Volume',
@@ -65,15 +66,22 @@ const L_GROUP: AnalyticsUnitGroup = {
 };
 
 /**
- * Unit group of a UoM and the factor to its display unit: Kg products in Ton, L products
- * in KL, anything else (Lembar, Unit) counted in its own UoM.
+ * Unit group of a UoM and the factor to its display unit: Kg products in Ton (or Kg with
+ * `weightInKg`), L products in KL, anything else (Lembar, Unit) counted in its own UoM.
  */
-export function getUnitGroup(uom: string | null | undefined): {
+export function getUnitGroup(
+  uom: string | null | undefined,
+  { weightInKg = false }: { weightInKg?: boolean } = {},
+): {
   group: AnalyticsUnitGroup;
   toDisplay: number;
 } {
   const { unit, factor } = parseUom(uom);
-  if (unit === 'Kg') return { group: KG_GROUP, toDisplay: factor / 1000 };
+  if (unit === 'Kg') {
+    return weightInKg
+      ? { group: KG_BASE_GROUP, toDisplay: factor }
+      : { group: KG_GROUP, toDisplay: factor / 1000 };
+  }
   if (unit === 'L') return { group: L_GROUP, toDisplay: factor / 1000 };
   const name = (uom || 'Unit').replace(/\.$/, '').trim() || 'Unit';
   return {

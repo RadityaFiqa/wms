@@ -11,9 +11,9 @@ export const formatDecimal = (value: number) => decimal.format(value);
 /** 13.430 */
 export const formatQty = (value: number) => integer.format(value);
 
-/** Ton/KL with one decimal, other units (Lembar) as whole counts, without the unit */
-export function formatGroupNumber(value: number, group: Pick<AnalyticsUnitGroup, "key">) {
-  const scaled = group.key === "Kg" || group.key === "L";
+/** Ton/KL with one decimal, other units (Kg, Lembar) as whole counts, without the unit */
+export function formatGroupNumber(value: number, group: Pick<AnalyticsUnitGroup, "displayUnit">) {
+  const scaled = group.displayUnit === "Ton" || group.displayUnit === "KL";
   return scaled ? formatDecimal(value) : formatQty(Math.round(value));
 }
 
