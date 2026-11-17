@@ -12,7 +12,6 @@ import {
   DollarSign,
   CheckCircle2,
   Clock,
-  ChevronDown,
   ChevronRight,
   ChevronLeft,
   Eye,
@@ -140,37 +139,37 @@ export default function TagihanListPage() {
     switch (t) {
       case "LOADING":
         return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-400">
+          <span className="inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-400">
             LOADING (OUT)
           </span>
         );
       case "UNLOADING":
         return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
+          <span className="inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
             UNLOADING (IN)
           </span>
         );
       case "REBAGGING":
         return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400">
+          <span className="inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400">
             REBAGGING
           </span>
         );
       case "REPROSES":
         return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/30 dark:border-indigo-900/40 dark:text-indigo-400">
+          <span className="inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/30 dark:border-indigo-900/40 dark:text-indigo-400">
             REPROSES
           </span>
         );
       case "OVERSTAPEL":
         return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/30 dark:border-purple-900/40 dark:text-purple-400">
+          <span className="inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/30 dark:border-purple-900/40 dark:text-purple-400">
             OVERSTAPEL (INT)
           </span>
         );
       default:
         return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-50 text-slate-700 border border-slate-200">
+          <span className="inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-50 text-slate-700 border border-slate-200">
             {t || "-"}
           </span>
         );
@@ -180,7 +179,7 @@ export default function TagihanListPage() {
   const getStatusBadge = (st: any) => {
     if (!st) {
       return (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+        <span className="inline-block whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
           Draft
         </span>
       );
@@ -198,7 +197,7 @@ export default function TagihanListPage() {
 
     return (
       <span
-        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+        className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
           colorClasses[color] || colorClasses.blue
         }`}
       >
@@ -234,7 +233,7 @@ export default function TagihanListPage() {
         {canCreateTagihan && (
           <Link
             href="/finance/tagihan/create"
-            className="inline-flex items-center px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition cursor-pointer self-start sm:self-auto gap-2"
+            className="inline-flex items-center whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition cursor-pointer self-start sm:self-auto gap-2"
           >
             <Plus className="h-4 w-4" />
             Buat Tagihan Baru
@@ -243,25 +242,25 @@ export default function TagihanListPage() {
       </div>
 
       {/* Summary Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Total Tagihan (Rp) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl text-emerald-600 border border-emerald-100/40 dark:border-emerald-900/30">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4 min-w-0">
+          <div className="shrink-0 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl text-emerald-600 border border-emerald-100/40 dark:border-emerald-900/30">
             <DollarSign className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Total Nilai Tagihan
             </span>
-            <strong className="text-lg font-black text-slate-800 dark:text-slate-100 font-mono">
+            <strong className="block text-lg font-black text-slate-800 dark:text-slate-100 font-mono break-all">
               {formatCurrency(summary.totalAmount)}
             </strong>
           </div>
         </div>
 
         {/* Total Dokumen Tagihan */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl text-blue-600 border border-blue-100/40 dark:border-blue-900/30">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4 min-w-0">
+          <div className="shrink-0 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl text-blue-600 border border-blue-100/40 dark:border-blue-900/30">
             <Layers className="h-6 w-6" />
           </div>
           <div>
@@ -275,8 +274,8 @@ export default function TagihanListPage() {
         </div>
 
         {/* Loading & Unloading */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl text-purple-600 border border-purple-100/40 dark:border-purple-900/30">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4 min-w-0">
+          <div className="shrink-0 p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl text-purple-600 border border-purple-100/40 dark:border-purple-900/30">
             <FileCheck2 className="h-6 w-6" />
           </div>
           <div>
@@ -290,8 +289,8 @@ export default function TagihanListPage() {
         </div>
 
         {/* Rebagging & Reproses */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl text-amber-600 border border-amber-100/40 dark:border-amber-900/30">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex items-center space-x-4 min-w-0">
+          <div className="shrink-0 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl text-amber-600 border border-amber-100/40 dark:border-amber-900/30">
             <Clock className="h-6 w-6" />
           </div>
           <div>
@@ -418,15 +417,16 @@ export default function TagihanListPage() {
       {/* Tagihan Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto relative">
-          <table className="w-full text-left border-collapse text-xs min-w-[950px]">
+          <table className="w-full text-left border-collapse text-xs min-w-[960px]">
             <thead className="bg-slate-50/95 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800">
               <tr className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4 w-[16%]">Tanggal / Waktu</th>
-                <th className="px-6 py-4 w-[14%]">Tipe</th>
-                <th className="px-6 py-4 w-[24%]">No. Dokumen / SDI</th>
-                <th className="px-6 py-4 text-right w-[18%]">Total Tagihan</th>
-                <th className="px-6 py-4 text-center w-[14%]">Status</th>
-                <th className="px-6 py-4 text-center w-[14%]">Detail & Aksi</th>
+                <th className="px-4 py-4 whitespace-nowrap">Tanggal / Waktu</th>
+                <th className="px-4 py-4 whitespace-nowrap">Tipe</th>
+                <th className="px-4 py-4 whitespace-nowrap">No. Dokumen / SDI</th>
+                <th className="px-4 py-4 min-w-[160px] w-full">Keterangan</th>
+                <th className="px-4 py-4 text-right whitespace-nowrap">Total Tagihan</th>
+                <th className="px-4 py-4 text-center whitespace-nowrap">Status</th>
+                <th className="px-4 py-4 text-center whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -442,6 +442,9 @@ export default function TagihanListPage() {
                     <td className="px-6 py-4">
                       <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-36"></div>
                     </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-40"></div>
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-24 ml-auto"></div>
                     </td>
@@ -456,7 +459,7 @@ export default function TagihanListPage() {
               ) : !tagihansData?.data || tagihansData.data.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-6 py-16 text-center text-slate-400 dark:text-slate-500 font-semibold"
                   >
                     <div className="flex flex-col items-center justify-center space-y-3">
@@ -546,50 +549,51 @@ function TagihanTableRow({
   return (
     <>
       <tr
-        className={`hover:bg-slate-50/70 dark:hover:bg-slate-850/50 border-b border-slate-100 dark:border-slate-800 transition ${
+        onClick={() => setIsExpanded((prev) => !prev)}
+        title={isExpanded ? "Sembunyikan Dokumen Terkait" : "Lihat Dokumen Terkait"}
+        className={`cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-850/50 border-b border-slate-100 dark:border-slate-800 transition ${
           isExpanded ? "bg-slate-50/40 dark:bg-slate-900/60" : ""
         }`}
       >
-        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-400">
+        <td className="px-4 py-4 font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
           {formattedDate}
         </td>
 
-        <td className="px-6 py-4">{getTypeBadge(tagihan.type)}</td>
+        <td className="px-4 py-4">{getTypeBadge(tagihan.type)}</td>
 
-        <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
-              title="Lihat Dokumen Terkait"
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </button>
-            <span className="font-mono text-emerald-700 dark:text-emerald-400 select-all">
+        <td className="px-4 py-4 font-bold text-slate-900 dark:text-slate-100">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="font-mono text-emerald-700 dark:text-emerald-400">
               {tagihan.documentNumber}
             </span>
             {totalRelated > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500">
+              <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500">
                 {totalRelated} Dok
               </span>
             )}
           </div>
         </td>
 
-        <td className="px-6 py-4 text-right font-mono font-black text-slate-900 dark:text-slate-100">
+        <td className="px-4 py-4 text-slate-600 dark:text-slate-400">
+          {tagihan.notes ? (
+            <p className="line-clamp-2 whitespace-pre-line break-words" title={tagihan.notes}>
+              {tagihan.notes}
+            </p>
+          ) : (
+            <span className="text-slate-300 dark:text-slate-600">-</span>
+          )}
+        </td>
+
+        <td className="px-4 py-4 text-right font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
           {formatCurrency(tagihan.totalAmount)}
         </td>
 
-        <td className="px-6 py-4 text-center">{getStatusBadge(tagihan.status)}</td>
+        <td className="px-4 py-4 text-center">{getStatusBadge(tagihan.status)}</td>
 
-        <td className="px-6 py-4 text-center">
+        <td className="px-4 py-4 text-center">
           <Link
             href={`/finance/tagihan/${tagihan.uuid}`}
+            onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-emerald-500 hover:text-emerald-600 transition font-bold text-xs"
           >
             <Eye className="h-3.5 w-3.5" />
@@ -601,7 +605,7 @@ function TagihanTableRow({
       {/* Collapsible Related Documents Row */}
       {isExpanded && (
         <tr className="bg-slate-50/50 dark:bg-slate-950/40 border-b border-slate-200 dark:border-slate-800">
-          <td colSpan={6} className="px-8 py-4">
+          <td colSpan={7} className="px-8 py-4">
             <div className="space-y-3">
               <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Collapsible Related Documents ({totalRelated} Dokumen Terkait)
@@ -609,7 +613,7 @@ function TagihanTableRow({
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* 1. ERP Commodity Documents */}
-                <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                <div className="shrink-0 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <FileCheck2 className="h-4 w-4 text-emerald-600" />
@@ -646,7 +650,7 @@ function TagihanTableRow({
                 </div>
 
                 {/* 2. Non-Commodity Documents */}
-                <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                <div className="shrink-0 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <Receipt className="h-4 w-4 text-amber-600" />
@@ -683,7 +687,7 @@ function TagihanTableRow({
                 </div>
 
                 {/* 3. Manual Documents */}
-                <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                <div className="shrink-0 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <FileText className="h-4 w-4 text-purple-600" />
