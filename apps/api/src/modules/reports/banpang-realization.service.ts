@@ -9,6 +9,8 @@ import { WarehouseContextService } from '@/core/warehouse-context/warehouse-cont
 import { getLocalEndOfDay, getLocalStartOfDay } from '@/core/utils/date';
 import {
   BANPANG_PARTNER_NAME,
+  DONE_STATE,
+  EXCLUDED_STATES,
   groupBanpangRealization,
   normalizePickingRef,
 } from '@/modules/reports/banpang-realization.utils';
@@ -23,39 +25,45 @@ export class BanpangRealizationService {
   ) {}
 
   /**
-   * Done outgoing ERP documents of Badan Pangan Nasional in the date range, grouped
-   * by sales order and destination (picking_ref). Returns are left out.
+   * Outgoing ERP documents of Badan Pangan Nasional in the date range, except
+   * cancelled and draft ones, grouped by sales order and destination (picking_ref).
+   * Documents not done yet are placed on their scheduled date with their demand.
+   * Returns are left out.
    */
   async getRealization(
     warehouseId: number,
     query: BanpangRealizationQueryInput,
   ): Promise<BanpangRealizationResponse> {
     const timezone = this.warehouseContext.getTimezone();
+    const range = {
+      gte: getLocalStartOfDay(query.startDate, timezone),
+      lte: getLocalEndOfDay(query.endDate, timezone),
+    };
     const [folders, documents] = await Promise.all([
       this.folders.getFolders(warehouseId),
       this.prisma.documentReference.findMany({
         where: {
           warehouseId,
           pickingTypeCode: 'outgoing',
-          state: 'done',
+          state: { notIn: EXCLUDED_STATES },
           partnerName: { contains: BANPANG_PARTNER_NAME, mode: 'insensitive' },
-          dateDone: {
-            gte: getLocalStartOfDay(query.startDate, timezone),
-            lte: getLocalEndOfDay(query.endDate, timezone),
-          },
+          OR: [{ dateDone: range }, { dateDone: null, scheduledDate: range }],
         },
         select: {
           id: true,
           uuid: true,
           documentNumber: true,
+          state: true,
           origin: true,
           dateDone: true,
+          scheduledDate: true,
           items: {
             select: {
               inventoryId: true,
               productName: true,
               uom: true,
               quantity: true,
+              productQty: true,
             },
           },
         },
@@ -88,9 +96,10 @@ export class BanpangRealizationService {
       documents.map((d) => ({
         uuid: d.uuid,
         documentNumber: d.documentNumber,
+        state: d.state,
         origin: d.origin,
         pickingRef: refById.get(d.id) ?? null,
-        dateDone: d.dateDone,
+        date: d.dateDone ?? d.scheduledDate,
         items: d.items.map((item) => {
           const inventory = inventoryById.get(item.inventoryId);
           return {
@@ -99,7 +108,8 @@ export class BanpangRealizationService {
             sku: inventory?.sku ?? '-',
             name: inventory?.name ?? item.productName,
             uom: item.uom,
-            qty: item.quantity,
+            // Not done yet: the done quantity is still 0, so count the demand
+            qty: d.state === DONE_STATE ? item.quantity : item.productQty,
           };
         }),
       })),

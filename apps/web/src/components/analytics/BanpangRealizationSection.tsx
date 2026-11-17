@@ -36,7 +36,7 @@ import type {
   BanpangGroup,
   BanpangProductQty,
   BanpangRealizationResponse,
-  BanpangSalesOrder,
+  BanpangRow,
   BanpangSummary,
 } from "@bulog-wms/schema";
 import SummaryCard from "@/components/analytics/SummaryCard";
@@ -76,11 +76,19 @@ function qtyPerUom(products: BanpangProductQty[]) {
 
 /** "1 Nov 2026" or "1 Nov 2026 – 16 Nov 2026" */
 function formatRange(summary: BanpangSummary) {
-  if (!summary.firstDoneAt) return "-";
-  const first = formatDateId(summary.firstDoneAt);
-  const last = formatDateId(summary.lastDoneAt);
+  if (!summary.firstDate) return "-";
+  const first = formatDateId(summary.firstDate);
+  const last = formatDateId(summary.lastDate);
   return first === last ? first : `${first} – ${last}`;
 }
+
+/** "12 dokumen" or "12 dokumen (2 belum selesai)" */
+const formatDocumentCount = (summary: BanpangSummary) =>
+  `${summary.documentCount} dokumen${
+    summary.pendingDocumentCount > 0 ? ` (${summary.pendingDocumentCount} belum selesai)` : ""
+  }`;
+
+const isDone = (state: string) => state === "done";
 
 /** "450 Pack 10 KG BERAS MEDIUM …" per product, for the summary lines */
 function ProductLines({ products }: { products: BanpangProductQty[] }) {
@@ -98,22 +106,22 @@ function ProductLines({ products }: { products: BanpangProductQty[] }) {
   );
 }
 
-/** What a drag carries: a whole sales order and the folder it comes from */
-interface SalesOrderDragData {
+/** What a drag carries: one kecamatan + sales order row and the folder it comes from */
+interface RowDragData {
   soNumber: string;
+  destination: string;
   fromFolderUuid: string | null;
 }
 
-const salesOrderMatches = (so: BanpangSalesOrder, q: string) =>
-  so.soNumber.toLowerCase().includes(q) ||
-  so.destinations.some(
-    (d) => d.name.toLowerCase().includes(q) || d.documents.some((doc) => doc.documentNumber.toLowerCase().includes(q)),
-  );
+const rowMatches = (row: BanpangRow, q: string) =>
+  row.destination.toLowerCase().includes(q) ||
+  row.soNumber.toLowerCase().includes(q) ||
+  row.documents.some((doc) => doc.documentNumber.toLowerCase().includes(q));
 
 /**
- * Keeps the sales orders that match the search, narrowed to their matching kecamatan;
- * a matching folder name or SO number keeps everything under it. Without a search,
- * empty folders stay so they remain drop targets.
+ * Keeps the rows that match the search (kecamatan, SO or document number); a matching
+ * folder name keeps the whole folder. Without a search, empty folders stay so they
+ * remain drop targets.
  */
 function filterGroups(groups: BanpangGroup[], search: string): BanpangGroup[] {
   const q = search.trim().toLowerCase();
@@ -121,28 +129,17 @@ function filterGroups(groups: BanpangGroup[], search: string): BanpangGroup[] {
   return groups
     .map((g) => {
       if (g.folder && g.folder.name.toLowerCase().includes(q)) return g;
-      const salesOrders = g.salesOrders
-        .filter((so) => salesOrderMatches(so, q))
-        .map((so) =>
-          so.soNumber.toLowerCase().includes(q)
-            ? so
-            : {
-                ...so,
-                destinations: so.destinations.filter(
-                  (d) =>
-                    d.name.toLowerCase().includes(q) ||
-                    d.documents.some((doc) => doc.documentNumber.toLowerCase().includes(q)),
-                ),
-              },
-        );
-      return { ...g, salesOrders };
+      return { ...g, rows: g.rows.filter((r) => rowMatches(r, q)) };
     })
-    .filter((g) => g.salesOrders.length > 0 || (g.folder && g.folder.name.toLowerCase().includes(q)));
+    .filter((g) => g.rows.length > 0 || (g.folder && g.folder.name.toLowerCase().includes(q)));
 }
 
-/** Grip that starts dragging a sales order; sits inside a <summary>, so clicks must not toggle it */
-function DragHandle({ data }: { data: SalesOrderDragData }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `so::${data.soNumber}`, data });
+/** Grip that starts dragging a row; sits inside a <summary>, so clicks must not toggle it */
+function DragHandle({ data }: { data: RowDragData }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `row::${data.soNumber}::${data.destination}`,
+    data,
+  });
   return (
     <button
       type="button"
@@ -153,7 +150,7 @@ function DragHandle({ data }: { data: SalesOrderDragData }) {
       className={`-ml-1 shrink-0 cursor-grab touch-none rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing dark:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 ${
         isDragging ? "opacity-40" : ""
       }`}
-      aria-label={`Seret ${data.soNumber} ke folder`}
+      aria-label={`Seret ${data.destination} ${data.soNumber} ke folder`}
       title="Seret ke folder"
     >
       <GripVertical className="h-4 w-4" />
@@ -161,22 +158,23 @@ function DragHandle({ data }: { data: SalesOrderDragData }) {
   );
 }
 
-/** Drop target of a folder (or of "Belum dikelompokkan"); lights up while a sales order from elsewhere is dragged */
+/** Drop target of a folder (or of "Belum dikelompokkan"); lights up while a row from elsewhere is dragged */
 function useFolderDrop(folderUuid: string | null) {
   const { active } = useDndContext();
   const { setNodeRef, isOver } = useDroppable({ id: `banpang-drop::${folderUuid ?? "none"}`, data: { folderUuid } });
-  const dragged = active?.data.current as SalesOrderDragData | undefined;
-  const accepts = !!dragged && "soNumber" in dragged && dragged.fromFolderUuid !== folderUuid;
+  const dragged = active?.data.current as RowDragData | undefined;
+  const accepts = !!dragged && "destination" in dragged && dragged.fromFolderUuid !== folderUuid;
   return { setNodeRef, accepts, isOver: accepts && isOver };
 }
 
-function SalesOrderRow({
-  so,
+/** One kecamatan + sales order: collapsible to its documents */
+function RealizationRow({
+  row,
   folderUuid,
   canDrag,
   forceOpen,
 }: {
-  so: BanpangSalesOrder;
+  row: BanpangRow;
   folderUuid: string | null;
   canDrag: boolean;
   forceOpen: boolean;
@@ -185,80 +183,77 @@ function SalesOrderRow({
     <details className="group/product" open={forceOpen || undefined}>
       <summary className={`${summaryClass} py-3`}>
         <Chevron level="product" />
-        {canDrag && <DragHandle data={{ soNumber: so.soNumber, fromFolderUuid: folderUuid }} />}
+        {canDrag && (
+          <DragHandle data={{ soNumber: row.soNumber, destination: row.destination, fromFolderUuid: folderUuid }} />
+        )}
+        <MapPin className="h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-sm font-bold text-slate-800 dark:text-slate-100">{so.soNumber}</div>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{row.destination}</span>
+            <span className="font-mono text-xs font-semibold text-slate-500 dark:text-slate-400">{row.soNumber}</span>
+          </div>
           <div className="text-[11px] text-slate-400">
-            {so.summary.destinationCount} kecamatan · {so.summary.documentCount} dokumen · {formatRange(so.summary)}
+            {formatDocumentCount(row.summary)} · {formatRange(row.summary)}
           </div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            <ProductLines products={so.summary.products} />
+            <ProductLines products={row.summary.products} />
           </div>
         </div>
         <span className="ml-auto shrink-0 pl-3 text-right text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100">
-          {formatKg(so.summary.kg)}
+          {formatKg(row.summary.kg)}
         </span>
       </summary>
 
-      <div className="mb-2 ml-5 divide-y divide-slate-100 border-l border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-        {so.destinations.map((d) => (
-          <details key={d.name} className="group/sender" open={forceOpen || undefined}>
-            <summary className={`${summaryClass} py-2.5 pl-3 text-sm`}>
-              <Chevron level="sender" />
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold text-slate-700 dark:text-slate-200">{d.name}</div>
-                <div className="text-[11px] text-slate-400">
-                  {d.summary.documentCount} dokumen · {formatRange(d.summary)}
-                </div>
-              </div>
-              <span className="ml-auto shrink-0 pl-3 text-right font-bold tabular-nums text-slate-700 dark:text-slate-200">
-                {formatKg(d.summary.kg)}
-              </span>
-            </summary>
-
-            <div className="mb-2 ml-8 overflow-x-auto">
-              <table className="w-full min-w-[480px] border-collapse text-[11px]">
-                <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400">
-                    <th className="py-1 pr-2">Dokumen</th>
-                    <th className="py-1 px-2">Tanggal selesai</th>
-                    <th className="py-1 px-2">Produk</th>
-                    <th className="py-1 pl-2 text-right">Qty</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {d.documents.map((doc) => (
-                    <tr key={doc.documentUuid} className="align-top">
-                      <td className="whitespace-nowrap py-1.5 pr-2">
-                        <Link
-                          href={`/erp-documents/${doc.documentUuid}`}
-                          className="font-mono text-blue-600 hover:underline dark:text-blue-400"
-                        >
-                          {doc.documentNumber}
-                        </Link>
-                      </td>
-                      <td className="whitespace-nowrap py-1.5 px-2 text-slate-500">{formatDateId(doc.dateDone)}</td>
-                      {/* max-w-0 + w-full lets the product name truncate instead of widening the table */}
-                      <td className="w-full max-w-0 py-1.5 px-2 text-slate-500">
-                        <ProductLines products={doc.products} />
-                      </td>
-                      <td className="whitespace-nowrap py-1.5 pl-2 text-right font-bold tabular-nums text-slate-700 dark:text-slate-200">
-                        {formatKg(doc.kg)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        ))}
+      <div className="mb-2 ml-8 overflow-x-auto">
+        <table className="w-full min-w-[480px] border-collapse text-[11px]">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400">
+              <th className="py-1 pr-2">Dokumen</th>
+              <th className="py-1 px-2">Tanggal</th>
+              <th className="py-1 px-2">Produk</th>
+              <th className="py-1 pl-2 text-right">Qty</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {row.documents.map((doc) => (
+              <tr key={doc.documentUuid} className="align-top">
+                <td className="whitespace-nowrap py-1.5 pr-2">
+                  <Link
+                    href={`/erp-documents/${doc.documentUuid}`}
+                    className="font-mono text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    {doc.documentNumber}
+                  </Link>
+                </td>
+                <td className="whitespace-nowrap py-1.5 px-2 text-slate-500">
+                  {formatDateId(doc.date)}
+                  {/* Not done yet: dated by its schedule, counted with its demand */}
+                  {!isDone(doc.state) && (
+                    <span
+                      className="ml-1.5 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300"
+                      title={`Status ERP: ${doc.state}. Tanggal jadwal dan qty rencana.`}
+                    >
+                      Belum selesai
+                    </span>
+                  )}
+                </td>
+                {/* max-w-0 + w-full lets the product name truncate instead of widening the table */}
+                <td className="w-full max-w-0 py-1.5 px-2 text-slate-500">
+                  <ProductLines products={doc.products} />
+                </td>
+                <td className="whitespace-nowrap py-1.5 pl-2 text-right font-bold tabular-nums text-slate-700 dark:text-slate-200">
+                  {formatKg(doc.kg)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </details>
   );
 }
 
-function SalesOrderRows({
+function RealizationRows({
   group,
   canDrag,
   forceOpen,
@@ -269,10 +264,10 @@ function SalesOrderRows({
 }) {
   return (
     <div className="divide-y divide-slate-100 dark:divide-slate-800">
-      {group.salesOrders.map((so) => (
-        <SalesOrderRow
-          key={so.soNumber}
-          so={so}
+      {group.rows.map((row) => (
+        <RealizationRow
+          key={`${row.destination}::${row.soNumber}`}
+          row={row}
           folderUuid={group.folder?.uuid ?? null}
           canDrag={canDrag}
           forceOpen={forceOpen}
@@ -286,8 +281,8 @@ function GroupSummaryLine({ group }: { group: BanpangGroup }) {
   const { summary } = group;
   return (
     <span className="block text-[11px] text-slate-400">
-      {summary.salesOrderCount} SO · {summary.destinationCount} kecamatan · {summary.documentCount} dokumen
-      {summary.firstDoneAt && <> · {formatRange(summary)}</>}
+      {summary.destinationCount} kecamatan · {summary.salesOrderCount} SO · {formatDocumentCount(summary)}
+      {summary.firstDate && <> · {formatRange(summary)}</>}
     </span>
   );
 }
@@ -332,7 +327,7 @@ function BanpangFolderSection({ group, canEdit, forceOpen }: { group: BanpangGro
   };
 
   const remove = async () => {
-    if (!confirm(`Hapus folder "${folder.name}"? SO di dalamnya kembali ke "Belum dikelompokkan".`)) return;
+    if (!confirm(`Hapus folder "${folder.name}"? Isinya kembali ke "Belum dikelompokkan".`)) return;
     setBusy(true);
     try {
       await deleteBanpangFolder(folder.uuid);
@@ -410,12 +405,12 @@ function BanpangFolderSection({ group, canEdit, forceOpen }: { group: BanpangGro
       </summary>
 
       <div className="px-3 pb-3">
-        {group.salesOrders.length === 0 ? (
+        {group.rows.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-200 py-4 text-center text-xs text-slate-400 dark:border-slate-700">
-            Belum ada SO pada rentang tanggal ini. Seret SO ke sini.
+            Belum ada kecamatan · SO pada rentang tanggal ini. Seret ke sini.
           </p>
         ) : (
-          <SalesOrderRows group={group} canDrag={canEdit} forceOpen={forceOpen} />
+          <RealizationRows group={group} canDrag={canEdit} forceOpen={forceOpen} />
         )}
       </div>
     </details>
@@ -431,14 +426,14 @@ function UngroupedSection({ group, canEdit, forceOpen }: { group: BanpangGroup; 
         <Inbox className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
         <div className="min-w-0">
           <div className="text-sm font-bold text-slate-600 dark:text-slate-300">Belum dikelompokkan</div>
-          {group.salesOrders.length > 0 && <GroupSummaryLine group={group} />}
+          {group.rows.length > 0 && <GroupSummaryLine group={group} />}
         </div>
-        {group.salesOrders.length > 0 && <GroupTotal group={group} />}
+        {group.rows.length > 0 && <GroupTotal group={group} />}
       </div>
-      {group.salesOrders.length === 0 ? (
-        <p className="py-2 text-center text-xs text-slate-400">Semua SO pada rentang ini sudah masuk folder.</p>
+      {group.rows.length === 0 ? (
+        <p className="py-2 text-center text-xs text-slate-400">Semua kecamatan · SO pada rentang ini sudah masuk folder.</p>
       ) : (
-        <SalesOrderRows group={group} canDrag={canEdit} forceOpen={forceOpen} />
+        <RealizationRows group={group} canDrag={canEdit} forceOpen={forceOpen} />
       )}
     </div>
   );
@@ -446,7 +441,7 @@ function UngroupedSection({ group, canEdit, forceOpen }: { group: BanpangGroup; 
 
 function SalesOrderList({ data, search }: { data: BanpangRealizationResponse; search: string }) {
   const canEdit = useAuthStore((s) => s.hasPermission("update", "Report"));
-  const [dragging, setDragging] = useState<SalesOrderDragData | null>(null);
+  const [dragging, setDragging] = useState<RowDragData | null>(null);
   const [moving, setMoving] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -460,19 +455,23 @@ function SalesOrderList({ data, search }: { data: BanpangRealizationResponse; se
   const ungrouped = visible.find((g) => !g.folder);
   const hasFolders = data.groups.some((g) => g.folder);
 
-  const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current as SalesOrderDragData) ?? null);
+  const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current as RowDragData) ?? null);
 
   const onDragEnd = async (e: DragEndEvent) => {
     setDragging(null);
-    const item = e.active.data.current as SalesOrderDragData | undefined;
+    const item = e.active.data.current as RowDragData | undefined;
     const target = e.over?.data.current as { folderUuid: string | null } | undefined;
     if (!item || !target || target.folderUuid === item.fromFolderUuid) return;
 
     setMoving(true);
     try {
-      await moveBanpangSalesOrder({ soNumber: item.soNumber, folderUuid: target.folderUuid });
+      await moveBanpangSalesOrder({
+        soNumber: item.soNumber,
+        destination: item.destination,
+        folderUuid: target.folderUuid,
+      });
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Gagal memindahkan SO ke folder."));
+      toast.error(apiErrorMessage(err, "Gagal memindahkan ke folder."));
     } finally {
       setMoving(false);
     }
@@ -493,7 +492,7 @@ function SalesOrderList({ data, search }: { data: BanpangRealizationResponse; se
             <NewFolderButton onCreate={(name) => createBanpangFolder({ name })} />
             {hasFolders && (
               <span className="text-[11px] text-slate-400">
-                Seret <GripVertical className="inline h-3 w-3 align-[-2px]" /> SO ke folder untuk mengelompokkan.
+                Seret <GripVertical className="inline h-3 w-3 align-[-2px]" /> kecamatan · SO ke folder untuk mengelompokkan.
               </span>
             )}
             {moving && (
@@ -509,7 +508,7 @@ function SalesOrderList({ data, search }: { data: BanpangRealizationResponse; se
             Tidak ada realisasi Badan Pangan Nasional pada rentang tanggal ini.
           </p>
         ) : visible.length === 0 ? (
-          <p className="py-12 text-center text-sm text-slate-400">Tidak ada folder, SO, atau kecamatan yang cocok.</p>
+          <p className="py-12 text-center text-sm text-slate-400">Tidak ada folder, kecamatan, SO, atau dokumen yang cocok.</p>
         ) : hasFolders ? (
           <>
             {folderGroups.map((g) => (
@@ -518,7 +517,7 @@ function SalesOrderList({ data, search }: { data: BanpangRealizationResponse; se
             {ungrouped && <UngroupedSection group={ungrouped} canEdit={canEdit} forceOpen={forceOpen} />}
           </>
         ) : (
-          ungrouped && <SalesOrderRows group={ungrouped} canDrag={false} forceOpen={forceOpen} />
+          ungrouped && <RealizationRows group={ungrouped} canDrag={false} forceOpen={forceOpen} />
         )}
       </div>
 
@@ -580,7 +579,12 @@ export default function BanpangRealizationSection({ cardClass }: { cardClass: st
           tone="violet"
           value={totals ? String(totals.documentCount) : null}
           unit="dokumen"
-          details={totals?.firstDoneAt ? [formatRange(totals)] : []}
+          details={[
+            ...(totals?.firstDate ? [formatRange(totals)] : []),
+            ...(totals && totals.pendingDocumentCount > 0
+              ? [`${totals.pendingDocumentCount} belum selesai (${formatKg(totals.pendingKg)})`]
+              : []),
+          ]}
         />
       </div>
 
@@ -592,8 +596,8 @@ export default function BanpangRealizationSection({ cardClass }: { cardClass: st
               Banpang Realization
             </h2>
             <p className="text-xs text-slate-400">
-              Dokumen keluar selesai untuk Badan Pangan Nasional, per SO lalu per kecamatan (picking ref ERP). Kelompokkan
-              SO ke dalam folder.
+              Dokumen keluar Badan Pangan Nasional (selain cancel dan draft), per kecamatan (picking ref ERP) dan SO. Kelompokkan
+              ke dalam folder.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end">

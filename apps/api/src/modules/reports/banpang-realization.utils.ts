@@ -1,11 +1,10 @@
 import type {
-  BanpangDestination,
   BanpangDocument,
   BanpangFolder,
   BanpangGroup,
   BanpangProductQty,
   BanpangRealizationResponse,
-  BanpangSalesOrder,
+  BanpangRow,
   BanpangSummary,
 } from '@bulog-wms/schema';
 import { parseUom } from '@/core/utils/uom';
@@ -15,15 +14,21 @@ import { round3 } from '@/modules/reports/analytics.utils';
 export const BANPANG_PARTNER_NAME = 'Badan Pangan Nasional';
 export const NO_SALES_ORDER = 'Tanpa SO';
 export const NO_DESTINATION = 'Tanpa kecamatan';
+/** ERP states left out of the realization */
+export const EXCLUDED_STATES = ['cancel', 'draft'];
+export const DONE_STATE = 'done';
 
 export interface BanpangDocumentRow {
   uuid: string;
   documentNumber: string;
+  state: string;
   /** Origin of the picking, the sales order number */
   origin: string | null;
   /** ERP picking_ref from the raw payload, a kecamatan */
   pickingRef: string | null;
-  dateDone: Date | null;
+  /** Done date, or the scheduled date when not done yet */
+  date: Date | null;
+  /** Done quantity, or the demand when not done yet */
   items: {
     productUuid: string;
     sku: string;
@@ -67,80 +72,88 @@ function mergeProducts(lists: BanpangProductQty[][]): BanpangProductQty[] {
 
 function summarize(documents: BanpangDocument[]): BanpangSummary {
   const dates = documents
-    .map((d) => d.dateDone)
+    .map((d) => d.date)
     .filter((d): d is string => Boolean(d))
     .sort();
+  const pending = documents.filter((d) => d.state !== DONE_STATE);
   return {
     documentCount: documents.length,
     kg: round3(documents.reduce((sum, d) => sum + d.kg, 0)),
+    pendingDocumentCount: pending.length,
+    pendingKg: round3(pending.reduce((sum, d) => sum + d.kg, 0)),
     products: mergeProducts(documents.map((d) => d.products)),
-    firstDoneAt: dates[0] ?? null,
-    lastDoneAt: dates[dates.length - 1] ?? null,
+    firstDate: dates[0] ?? null,
+    lastDate: dates[dates.length - 1] ?? null,
   };
 }
 
 const byLatest = (a: BanpangSummary, b: BanpangSummary) =>
-  (b.lastDoneAt || '').localeCompare(a.lastDoneAt || '');
+  (b.lastDate || '').localeCompare(a.lastDate || '');
 
 export interface BanpangFolders {
   /** Folders in their order */
   folders: BanpangFolder[];
-  /** Sales order number → folder uuid */
+  /** placementKey(soNumber, destination) → folder uuid */
   placements: Map<string, string>;
 }
 
+/** Key of a kecamatan + sales order row in the folder placements */
+export const placementKey = (soNumber: string, destination: string) =>
+  `${soNumber}\u0000${destination}`;
+
 const NO_FOLDERS: BanpangFolders = { folders: [], placements: new Map() };
 
+const destinationsOf = (rows: BanpangRow[]) =>
+  new Set(rows.map((r) => r.destination));
+const salesOrdersOf = (rows: BanpangRow[]) =>
+  new Set(rows.map((r) => r.soNumber));
+
 /**
- * Splits sales orders over the manual folders, folders first in their order (kept
- * when empty so they stay drop targets), then the ungrouped sales orders.
+ * Splits rows over the manual folders, folders first in their order (kept when
+ * empty so they stay drop targets), then the ungrouped rows.
  */
 function groupByFolder(
-  salesOrders: BanpangSalesOrder[],
+  rows: BanpangRow[],
   { folders, placements }: BanpangFolders,
   totalKg: number,
 ): BanpangGroup[] {
   const known = new Set(folders.map((f) => f.uuid));
-  const folderOf = (so: BanpangSalesOrder) => {
-    const uuid = placements.get(so.soNumber);
+  const folderOf = (row: BanpangRow) => {
+    const uuid = placements.get(placementKey(row.soNumber, row.destination));
     return uuid && known.has(uuid) ? uuid : null;
   };
   return [...folders, null].map((folder) => {
-    const members = salesOrders.filter(
-      (so) => folderOf(so) === (folder?.uuid ?? null),
-    );
-    const destinations = new Set(
-      members.flatMap((so) => so.destinations.map((d) => d.name)),
-    );
-    const summary = summarize(
-      members.flatMap((so) => so.destinations.flatMap((d) => d.documents)),
-    );
+    const members = rows.filter((r) => folderOf(r) === (folder?.uuid ?? null));
+    const summary = summarize(members.flatMap((r) => r.documents));
     return {
       folder,
       summary: {
         ...summary,
-        salesOrderCount: members.length,
-        destinationCount: destinations.size,
+        rowCount: members.length,
+        salesOrderCount: salesOrdersOf(members).size,
+        destinationCount: destinationsOf(members).size,
         sharePct: totalKg > 0 ? round3((summary.kg / totalKg) * 100) : 0,
       },
-      salesOrders: members,
+      rows: members,
     };
   });
 }
 
 /**
- * Groups done outgoing documents by sales order (origin), then by destination
- * (picking_ref), each level with its own summary, and splits the sales orders over
- * the manual folders. Sales orders are ordered by their latest realization,
- * destinations by Kg.
+ * Groups outgoing documents by kecamatan (picking_ref) + sales order (origin), each
+ * row with its summary, and splits the rows over the manual folders. Rows are ordered
+ * by their latest document, documents newest first.
  */
 export function groupBanpangRealization(
-  rows: BanpangDocumentRow[],
+  documentRows: BanpangDocumentRow[],
   folders: BanpangFolders = NO_FOLDERS,
 ): BanpangRealizationResponse {
-  const bySalesOrder = new Map<string, Map<string, BanpangDocument[]>>();
+  const byRow = new Map<
+    string,
+    { soNumber: string; destination: string; documents: BanpangDocument[] }
+  >();
 
-  for (const row of rows) {
+  for (const row of documentRows) {
     const products = mergeProducts([
       row.items.map((item) => ({
         productUuid: item.productUuid,
@@ -154,54 +167,45 @@ export function groupBanpangRealization(
     const document: BanpangDocument = {
       documentUuid: row.uuid,
       documentNumber: row.documentNumber,
-      dateDone: row.dateDone ? row.dateDone.toISOString() : null,
+      state: row.state,
+      date: row.date ? row.date.toISOString() : null,
       kg: round3(products.reduce((sum, p) => sum + (p.kg ?? 0), 0)),
       products,
     };
 
     const soNumber = row.origin?.trim() || NO_SALES_ORDER;
-    const destinationName = row.pickingRef || NO_DESTINATION;
-    const destinations = bySalesOrder.get(soNumber) || new Map();
-    const documents = destinations.get(destinationName) || [];
-    documents.push(document);
-    destinations.set(destinationName, documents);
-    bySalesOrder.set(soNumber, destinations);
+    const destination = row.pickingRef || NO_DESTINATION;
+    const key = placementKey(soNumber, destination);
+    const entry = byRow.get(key) || { soNumber, destination, documents: [] };
+    entry.documents.push(document);
+    byRow.set(key, entry);
   }
 
-  const allDestinations = new Set<string>();
-  const salesOrders: BanpangSalesOrder[] = Array.from(bySalesOrder.entries())
-    .map(([soNumber, destinationMap]) => {
-      const destinations: BanpangDestination[] = Array.from(
-        destinationMap.entries(),
-      )
-        .map(([name, documents]) => {
-          allDestinations.add(name);
-          const sorted = [...documents].sort((a, b) =>
-            (b.dateDone || '').localeCompare(a.dateDone || ''),
-          );
-          return { name, summary: summarize(sorted), documents: sorted };
-        })
-        .sort((a, b) => b.summary.kg - a.summary.kg);
+  const rows: BanpangRow[] = Array.from(byRow.values())
+    .map(({ soNumber, destination, documents }) => {
+      const sorted = [...documents].sort((a, b) =>
+        (b.date || '').localeCompare(a.date || ''),
+      );
       return {
+        destination,
         soNumber,
-        summary: {
-          ...summarize(destinations.flatMap((d) => d.documents)),
-          destinationCount: destinations.length,
-        },
-        destinations,
+        summary: summarize(sorted),
+        documents: sorted,
       };
     })
-    .sort((a, b) => byLatest(a.summary, b.summary));
+    .sort(
+      (a, b) =>
+        byLatest(a.summary, b.summary) ||
+        a.destination.localeCompare(b.destination),
+    );
 
-  const totals = summarize(
-    salesOrders.flatMap((so) => so.destinations.flatMap((d) => d.documents)),
-  );
+  const totals = summarize(rows.flatMap((r) => r.documents));
   return {
     totals: {
       ...totals,
-      salesOrderCount: salesOrders.length,
-      destinationCount: allDestinations.size,
+      salesOrderCount: salesOrdersOf(rows).size,
+      destinationCount: destinationsOf(rows).size,
     },
-    groups: groupByFolder(salesOrders, folders, totals.kg),
+    groups: groupByFolder(rows, folders, totals.kg),
   };
 }

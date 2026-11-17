@@ -1213,16 +1213,18 @@ model BanpangFolder {
   @@index([warehouseId])
 }
 
-/// Sales order placed in a Banpang folder; sales orders without a row are ungrouped
+/// Kecamatan + sales order pair placed in a Banpang folder; pairs without a row are ungrouped
 model BanpangFolderItem {
   id          Int           @id @default(autoincrement())
   warehouseId Int
   soNumber    String
+  /// Destination kecamatan (ERP picking_ref), or "Tanpa kecamatan"
+  pickingRef  String
   folderId    Int
   updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
   warehouse   Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   folder      BanpangFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
 
-  @@unique([warehouseId, soNumber])
+  @@unique([warehouseId, soNumber, pickingRef])
   @@index([folderId])
 }

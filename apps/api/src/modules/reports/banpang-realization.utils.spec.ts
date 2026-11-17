@@ -3,6 +3,7 @@ import {
   NO_DESTINATION,
   NO_SALES_ORDER,
   normalizePickingRef,
+  placementKey,
   type BanpangDocumentRow,
 } from '@/modules/reports/banpang-realization.utils';
 
@@ -18,14 +19,16 @@ const doc = (
   documentNumber: string,
   origin: string | null,
   pickingRef: string | null,
-  dateDone: string,
+  date: string,
   items: BanpangDocumentRow['items'],
+  state = 'done',
 ): BanpangDocumentRow => ({
   uuid: `uuid-${documentNumber}`,
   documentNumber,
+  state,
   origin,
   pickingRef,
-  dateDone: new Date(dateDone),
+  date: new Date(date),
   items,
 });
 
@@ -52,7 +55,7 @@ describe('groupBanpangRealization', () => {
     ]),
   ];
 
-  it('groups by sales order, then destination, with summaries', () => {
+  it('makes one row per kecamatan + sales order, with its summary', () => {
     const res = groupBanpangRealization(rows);
 
     expect(res.totals).toMatchObject({
@@ -60,34 +63,39 @@ describe('groupBanpangRealization', () => {
       kg: 4600,
       salesOrderCount: 2,
       destinationCount: 3,
-      firstDoneAt: '2026-11-01T02:00:00.000Z',
-      lastDoneAt: '2026-11-05T02:00:00.000Z',
+      pendingDocumentCount: 0,
+      firstDate: '2026-11-01T02:00:00.000Z',
+      lastDate: '2026-11-05T02:00:00.000Z',
     });
 
     // Without folders everything is in the single ungrouped group
     expect(res.groups).toHaveLength(1);
-    expect(res.groups[0].folder).toBeNull();
-    const salesOrders = res.groups[0].salesOrders;
-
-    // Latest realization first
-    expect(salesOrders.map((so) => so.soNumber)).toEqual(['SO/2', 'SO/1']);
-
-    const so1 = salesOrders[1];
-    expect(so1.summary).toMatchObject({
-      documentCount: 3,
-      kg: 4500,
-      destinationCount: 2,
-      firstDoneAt: '2026-11-01T02:00:00.000Z',
-      lastDoneAt: '2026-11-03T02:00:00.000Z',
+    const [ungrouped] = res.groups;
+    expect(ungrouped.folder).toBeNull();
+    expect(ungrouped.summary).toMatchObject({
+      rowCount: 3,
+      salesOrderCount: 2,
+      destinationCount: 3,
     });
-    expect(so1.summary.products).toEqual([{ ...rice(450), kg: 4500 }]);
 
-    // Destinations by Kg, documents newest first
-    expect(so1.destinations.map((d) => [d.name, d.summary.kg])).toEqual([
-      ['KEC BANJARBARU UTARA', 3000],
-      ['KEC LANDASAN ULIN', 1500],
+    // Latest document first; one SO split over two kecamatan gives two rows
+    expect(
+      ungrouped.rows.map((r) => [r.destination, r.soNumber, r.summary.kg]),
+    ).toEqual([
+      [NO_DESTINATION, 'SO/2', 100],
+      ['KEC LANDASAN ULIN', 'SO/1', 1500],
+      ['KEC BANJARBARU UTARA', 'SO/1', 3000],
     ]);
-    expect(so1.destinations[1].documents.map((d) => d.documentNumber)).toEqual([
+
+    const landasan = ungrouped.rows[1];
+    expect(landasan.summary).toMatchObject({
+      documentCount: 2,
+      firstDate: '2026-11-01T02:00:00.000Z',
+      lastDate: '2026-11-03T02:00:00.000Z',
+    });
+    expect(landasan.summary.products).toEqual([{ ...rice(150), kg: 1500 }]);
+    // Documents newest first
+    expect(landasan.documents.map((d) => d.documentNumber)).toEqual([
       'OUT/2',
       'OUT/1',
     ]);
@@ -98,9 +106,9 @@ describe('groupBanpangRealization', () => {
       ...rows,
       doc('OUT/5', null, 'KEC X', '2026-11-04T02:00:00Z', [rice(1)]),
     ]);
-    const salesOrders = res.groups[0].salesOrders;
-    const so2 = salesOrders.find((so) => so.soNumber === 'SO/2')!;
-    expect(so2.destinations[0].name).toBe(NO_DESTINATION);
+    const all = res.groups[0].rows;
+    const so2 = all.find((r) => r.soNumber === 'SO/2')!;
+    expect(so2.destination).toBe(NO_DESTINATION);
     expect(so2.summary.kg).toBe(100);
     expect(so2.summary.products).toEqual([
       { ...rice(10), kg: 100 },
@@ -113,71 +121,106 @@ describe('groupBanpangRealization', () => {
         kg: null,
       },
     ]);
-    expect(salesOrders.map((so) => so.soNumber)).toContain(NO_SALES_ORDER);
+    expect(all.find((r) => r.destination === 'KEC X')?.soNumber).toBe(
+      NO_SALES_ORDER,
+    );
   });
 
-  it('splits sales orders over folders, keeping empty folders', () => {
-    const tahap1 = { uuid: 'f-1', name: 'Tahap 1' };
-    const tahap2 = { uuid: 'f-2', name: 'Tahap 2' };
+  it('counts documents not done yet, on their scheduled date', () => {
+    const res = groupBanpangRealization([
+      ...rows,
+      doc(
+        'OUT/6',
+        'SO/3',
+        'KEC X',
+        '2026-11-08T00:00:00Z',
+        [rice(20)],
+        'assigned',
+      ),
+    ]);
+    expect(res.totals).toMatchObject({
+      documentCount: 5,
+      kg: 4800,
+      pendingDocumentCount: 1,
+      pendingKg: 200,
+      lastDate: '2026-11-08T00:00:00.000Z',
+    });
+    const row = res.groups[0].rows[0];
+    expect([row.destination, row.soNumber]).toEqual(['KEC X', 'SO/3']);
+    expect(row.summary).toMatchObject({
+      pendingDocumentCount: 1,
+      pendingKg: 200,
+    });
+    expect(row.documents[0]).toMatchObject({
+      state: 'assigned',
+      date: '2026-11-08T00:00:00.000Z',
+      kg: 200,
+    });
+  });
+
+  it('splits rows over folders by kecamatan + sales order, keeping empty folders', () => {
+    const kabBanjar = { uuid: 'f-1', name: 'KAB.BANJAR' };
+    const banjarbaru = { uuid: 'f-2', name: 'BANJARBARU' };
+    const empty = { uuid: 'f-3', name: 'KAB TANAH LAUT' };
     const res = groupBanpangRealization(rows, {
-      folders: [tahap1, tahap2],
+      folders: [kabBanjar, banjarbaru, empty],
       placements: new Map([
-        ['SO/1', 'f-1'],
+        // The two kecamatan of SO/1 go to different folders
+        [placementKey('SO/1', 'KEC LANDASAN ULIN'), 'f-1'],
+        [placementKey('SO/1', 'KEC BANJARBARU UTARA'), 'f-2'],
         // Placement in a folder that no longer exists counts as ungrouped
-        ['SO/2', 'f-deleted'],
+        [placementKey('SO/2', NO_DESTINATION), 'f-deleted'],
       ]),
     });
 
     expect(res.groups.map((g) => g.folder?.name ?? null)).toEqual([
-      'Tahap 1',
-      'Tahap 2',
+      'KAB.BANJAR',
+      'BANJARBARU',
+      'KAB TANAH LAUT',
       null,
     ]);
-    const [g1, g2, ungrouped] = res.groups;
-    expect(g1.salesOrders.map((so) => so.soNumber)).toEqual(['SO/1']);
+    const [g1, g2, g3, ungrouped] = res.groups;
+    expect(g1.rows.map((r) => r.destination)).toEqual(['KEC LANDASAN ULIN']);
     expect(g1.summary).toMatchObject({
+      rowCount: 1,
       salesOrderCount: 1,
-      destinationCount: 2,
-      documentCount: 3,
-      kg: 4500,
-      sharePct: 97.826,
+      destinationCount: 1,
+      documentCount: 2,
+      kg: 1500,
+      sharePct: 32.609,
     });
-    expect(g2.salesOrders).toEqual([]);
-    expect(g2.summary).toMatchObject({
-      salesOrderCount: 0,
-      kg: 0,
-      sharePct: 0,
-    });
-    expect(ungrouped.salesOrders.map((so) => so.soNumber)).toEqual(['SO/2']);
+    expect(g2.rows.map((r) => r.destination)).toEqual(['KEC BANJARBARU UTARA']);
+    expect(g2.summary.sharePct).toBe(65.217);
+    expect(g3.rows).toEqual([]);
+    expect(g3.summary).toMatchObject({ rowCount: 0, kg: 0, sharePct: 0 });
+    expect(ungrouped.rows.map((r) => r.soNumber)).toEqual(['SO/2']);
     // Totals stay over everything
     expect(res.totals.kg).toBe(4600);
   });
 
   it('returns empty totals without documents', () => {
+    const empty = {
+      documentCount: 0,
+      kg: 0,
+      pendingDocumentCount: 0,
+      pendingKg: 0,
+      products: [],
+      firstDate: null,
+      lastDate: null,
+    };
     expect(groupBanpangRealization([])).toEqual({
-      totals: {
-        documentCount: 0,
-        kg: 0,
-        products: [],
-        firstDoneAt: null,
-        lastDoneAt: null,
-        salesOrderCount: 0,
-        destinationCount: 0,
-      },
+      totals: { ...empty, salesOrderCount: 0, destinationCount: 0 },
       groups: [
         {
           folder: null,
           summary: {
-            documentCount: 0,
-            kg: 0,
-            products: [],
-            firstDoneAt: null,
-            lastDoneAt: null,
+            ...empty,
+            rowCount: 0,
             salesOrderCount: 0,
             destinationCount: 0,
             sharePct: 0,
           },
-          salesOrders: [],
+          rows: [],
         },
       ],
     });
