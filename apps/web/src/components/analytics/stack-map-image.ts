@@ -99,12 +99,17 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const radius = Math.min(r, w / 2, h / 2);
+  // Lines and quadratic corners only, which the PDF context draws the same way as the canvas
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
   ctx.closePath();
 }
 
@@ -253,8 +258,24 @@ function drawEmpty(ctx: CanvasRenderingContext2D, label: string, x: number, y: n
   ctx.textAlign = "left";
 }
 
-/** Draws the area map on a canvas */
-export function renderStackMapCanvas(layout: StackMapAreaLayout, warehouseName: string, printedAt = new Date()) {
+/** Width of the product legend beside the map */
+const LEGEND_W = 320;
+const LEGEND_ITEM_H = 62;
+/** Every export has the same 16:9 shape, whatever the size of the gudang */
+const RATIO = 16 / 9;
+const MIN_WIDTH = 1600;
+
+/**
+ * Draws the area map on a 16:9 page: header, map with the product legend beside it, footer.
+ * createSurface gets the page size and returns where to draw: a canvas for the PNG, or the
+ * jsPDF 2D context for a vector PDF that stays sharp when zoomed.
+ */
+function paintStackMap(
+  layout: StackMapAreaLayout,
+  warehouseName: string,
+  printedAt: Date,
+  createSurface: (width: number, height: number) => CanvasRenderingContext2D,
+) {
   const products = summarizeProducts(layout);
   const colors = new Map(products.map((p) => [p.productUuid, p.color]));
 
@@ -263,12 +284,8 @@ export function renderStackMapCanvas(layout: StackMapAreaLayout, warehouseName: 
   const rowW = layout.rowWidths.map((n) => n * CELL_W + (n - 1) * GAP);
   const gridInnerW = rowW.reduce((sum, w) => sum + w + GAP, 0) - GAP;
   const gridW = NUMBER_W + Math.max(CELL_W, gridInnerW);
-  const contentW = Math.max(gridW, 640);
-  const width = PAD * 2 + 32 + contentW;
-  const frameX = PAD;
-  const frameW = width - PAD * 2;
-  const gridX = frameX + 16 + (contentW - gridW) / 2;
-  const rowX = rowW.map((_, i) => gridX + NUMBER_W + rowW.slice(0, i).reduce((sum, w) => sum + w + GAP, 0));
+  const contentW = Math.max(gridW, 520);
+  const frameW = contentW + 32;
 
   const columns = Math.max(1, Math.floor((contentW - NUMBER_W + GAP) / (CELL_W + GAP)));
   const otherRows = Math.ceil(layout.others.length / columns);
@@ -276,64 +293,77 @@ export function renderStackMapCanvas(layout: StackMapAreaLayout, warehouseName: 
   const othersH = otherRows > 0 ? (gridH > 0 ? 20 : 0) + 24 + otherRows * (CARD_H + GAP) - GAP : 0;
   const frameH = 32 + gridH + othersH;
 
-  const legendCols = Math.max(1, Math.floor(frameW / 340));
-  const legendRows = Math.ceil(products.length / legendCols);
-  const legendH = products.length > 0 ? 36 + legendRows * 40 : 0;
+  const hasLegend = products.length > 0;
+  const legendH = hasLegend ? 52 + products.length * LEGEND_ITEM_H : 0;
+  const bodyW = frameW + (hasLegend ? 24 + LEGEND_W : 0);
+  const bodyH = Math.max(frameH, legendH);
 
   const headerH = 112;
-  const height = PAD + headerH + frameH + (legendH > 0 ? 24 + legendH : 0) + 16 + FOOTER_H;
+  const naturalW = PAD * 2 + bodyW;
+  const naturalH = PAD + headerH + bodyH + 24 + FOOTER_H;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(width * SCALE);
-  canvas.height = Math.round(height * SCALE);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas tidak tersedia");
-  ctx.scale(SCALE, SCALE);
+  // Grow the page to 16:9 around the content, never shrink the content
+  let width = Math.max(naturalW, naturalH * RATIO, MIN_WIDTH);
+  let height = width / RATIO;
+  if (height < naturalH) {
+    height = naturalH;
+    width = height * RATIO;
+  }
+  width = Math.round(width);
+  height = Math.round(width / RATIO);
+
+  const ctx = createSurface(width, height);
   ctx.textBaseline = "top";
 
-  ctx.fillStyle = COLORS.page;
-  ctx.fillRect(0, 0, width, height);
   ctx.fillStyle = COLORS.brand;
   ctx.fillRect(0, 0, width, 6);
 
-  // Header: title, warehouse and date, then summary chips
-  let y = PAD;
+  // Header across the page: title, warehouse and date, then summary chips
+  const top = PAD;
   ctx.fillStyle = COLORS.brand;
   ctx.font = `bold 12px ${FONT}`;
-  ctx.fillText("PETA TUMPUKAN", PAD, y);
+  ctx.fillText("PETA TUMPUKAN", PAD, top);
   ctx.fillStyle = COLORS.title;
   ctx.font = `bold 28px ${FONT}`;
-  ctx.fillText(fit(ctx, layout.area, width * 0.55), PAD, y + 18);
+  ctx.fillText(fit(ctx, layout.area, width * 0.55), PAD, top + 18);
 
   const dateText = printedAt.toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" });
   ctx.textAlign = "right";
   ctx.fillStyle = COLORS.title;
   ctx.font = `600 14px ${FONT}`;
-  ctx.fillText(fit(ctx, warehouseName || "-", width * 0.4), width - PAD, y + 4);
+  ctx.fillText(fit(ctx, warehouseName || "-", width * 0.4), width - PAD, top + 4);
   ctx.fillStyle = COLORS.muted;
   ctx.font = `12px ${FONT}`;
-  ctx.fillText(`Per ${dateText}`, width - PAD, y + 24);
+  ctx.fillText(`Per ${dateText}`, width - PAD, top + 24);
   ctx.textAlign = "left";
 
   let chipX = PAD;
-  const chipY = y + 62;
   const chips = [
     { text: `${layout.stackCount} tumpukan`, bg: COLORS.brandSoft, fg: COLORS.brand },
     ...(layout.sacks > 0 ? [{ text: `${formatQty(layout.sacks)} sak`, bg: COLORS.qtyBg, fg: COLORS.title }] : []),
     { text: formatStackTotals(layout.totals, 0), bg: COLORS.qtyBg, fg: COLORS.title },
     ...(layout.rows.length > 0 ? [{ text: `Baris ${layout.rows.join(" - ")}`, bg: COLORS.qtyBg, fg: COLORS.muted }] : []),
   ];
-  for (const chip of chips) chipX += drawChip(ctx, chip.text, chipX, chipY, chip) + 8;
-  y += headerH;
+  for (const chip of chips) chipX += drawChip(ctx, chip.text, chipX, top + 62, chip) + 8;
+
+  // Body (map + legend) centred in the space between header and footer
+  const bodyTop = top + headerH;
+  const bodySpace = height - FOOTER_H - 24 - bodyTop;
+  const bodyX = Math.round((width - bodyW) / 2);
+  const bodyY = Math.round(bodyTop + Math.max(0, (bodySpace - bodyH) / 2));
 
   // Map frame
-  roundRect(ctx, frameX, y, frameW, frameH, 14);
+  const frameX = bodyX;
+  roundRect(ctx, frameX, bodyY, frameW, bodyH, 14);
   ctx.fillStyle = COLORS.frame;
   ctx.fill();
   ctx.strokeStyle = COLORS.frameBorder;
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  let gy = y + 16;
+
+  const gridX = frameX + 16 + (contentW - gridW) / 2;
+  const rowX = rowW.map((_, i) => gridX + NUMBER_W + rowW.slice(0, i).reduce((sum, w) => sum + w + GAP, 0));
+  let gy = bodyY + 16 + (bodyH - frameH) / 2;
 
   if (layout.lines.length > 0) {
     // Row letters left to right
@@ -401,50 +431,70 @@ export function renderStackMapCanvas(layout: StackMapAreaLayout, warehouseName: 
       );
     });
   }
-  y += frameH;
 
-  // Legend: each product's color with its total in this area
-  if (products.length > 0) {
-    y += 24;
+  // Legend beside the map: each product's color with its total in this gudang
+  if (hasLegend) {
+    const lx = frameX + frameW + 24;
+    roundRect(ctx, lx, bodyY, LEGEND_W, bodyH, 14);
+    ctx.fillStyle = COLORS.page;
+    ctx.fill();
+    ctx.strokeStyle = COLORS.frameBorder;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
     ctx.fillStyle = COLORS.title;
     ctx.font = `bold 14px ${FONT}`;
-    ctx.fillText("Keterangan produk", PAD, y);
-    y += 30;
-    const colW = (frameW - (legendCols - 1) * 16) / legendCols;
+    ctx.fillText("Keterangan produk", lx + 16, bodyY + 18);
+    const textW = LEGEND_W - 32 - 18;
     products.forEach((p, i) => {
-      const lx = PAD + (i % legendCols) * (colW + 16);
-      const ly = y + Math.floor(i / legendCols) * 40;
-      roundRect(ctx, lx, ly + 2, 14, 30, 4);
+      const iy = bodyY + 52 + i * LEGEND_ITEM_H;
+      if (i > 0) {
+        ctx.fillStyle = COLORS.qtyBg;
+        ctx.fillRect(lx + 16, iy - 8, LEGEND_W - 32, 1.5);
+      }
+      roundRect(ctx, lx + 16, iy, 8, LEGEND_ITEM_H - 18, 4);
       ctx.fillStyle = p.color;
       ctx.fill();
-      const textX = lx + 24;
-      const textW = colW - 24;
-      const qty = `${formatStackTotals(p.totals, p.sacks)} · ${p.stackCount} tumpukan`;
-      ctx.font = `bold 11px ${MONO}`;
+      const tx = lx + 16 + 18;
+      ctx.font = `bold 12px ${MONO}`;
+      ctx.fillStyle = p.color;
+      ctx.fillText(fit(ctx, p.sku, textW), tx, iy);
+      ctx.font = `600 11px ${FONT}`;
       ctx.fillStyle = COLORS.title;
-      ctx.fillText(fit(ctx, p.sku, textW * 0.4), textX, ly + 1);
-      const skuW = Math.min(ctx.measureText(p.sku).width, textW * 0.4);
+      ctx.fillText(fit(ctx, `${formatStackTotals(p.totals, p.sacks)} · ${p.stackCount} tumpukan`, textW), tx, iy + 16);
       ctx.font = `11px ${FONT}`;
-      ctx.fillStyle = COLORS.muted;
-      ctx.fillText(fit(ctx, qty, textW - skuW - 10), textX + skuW + 10, ly + 1);
       ctx.fillStyle = COLORS.text;
-      ctx.fillText(fit(ctx, formatProductName(p.name), textW), textX, ly + 18);
+      wrapLines(ctx, formatProductName(p.name), textW, 1).forEach((line) => ctx.fillText(line, tx, iy + 31));
     });
-    y += legendRows * 40 - 4;
   }
 
-  // Footer
-  y = height - FOOTER_H;
+  // Footer across the page
+  const fy = height - FOOTER_H;
   ctx.fillStyle = COLORS.frameBorder;
-  ctx.fillRect(PAD, y, width - PAD * 2, 1);
+  ctx.fillRect(PAD, fy, width - PAD * 2, 1);
   ctx.fillStyle = COLORS.faint;
   ctx.font = `11px ${FONT}`;
   ctx.textBaseline = "middle";
-  ctx.fillText("Bulog WMS · Visualization · Peta tumpukan", PAD, y + FOOTER_H / 2);
+  ctx.fillText("Bulog WMS · Visualization · Peta tumpukan", PAD, fy + FOOTER_H / 2);
   ctx.textAlign = "right";
-  ctx.fillText("Kuantum dari stok ERP saat ini, termasuk gate belum diadministrasikan", width - PAD, y + FOOTER_H / 2);
+  ctx.fillText("Kuantum dari stok ERP saat ini, termasuk gate belum diadministrasikan", width - PAD, fy + FOOTER_H / 2);
   ctx.textAlign = "left";
+}
 
+/** Draws the area map on a canvas, SCALE× sharper than its layout size */
+export function renderStackMapCanvas(layout: StackMapAreaLayout, warehouseName: string, printedAt = new Date()) {
+  const canvas = document.createElement("canvas");
+  paintStackMap(layout, warehouseName, printedAt, (width, height) => {
+    canvas.width = Math.round(width * SCALE);
+    canvas.height = Math.round(height * SCALE);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas tidak tersedia");
+    ctx.scale(SCALE, SCALE);
+    // White page; the PDF page already is, and a page-sized fill there would add a page
+    ctx.fillStyle = COLORS.page;
+    ctx.fillRect(0, 0, width, height);
+    return ctx;
+  });
   return canvas;
 }
 
@@ -456,18 +506,49 @@ export function renderStackMapImage(layout: StackMapAreaLayout, warehouseName: s
   );
 }
 
-/** Saves the area map as peta-tumpukan-<area>-<date>.png */
-export async function downloadStackMapImage(layout: StackMapAreaLayout, warehouseName: string) {
-  const blob = await renderStackMapImage(layout, warehouseName);
+/**
+ * Draws the area map as a vector PDF (one 16:9 page, 1 pt per layout pixel), so lines and
+ * text stay sharp at any zoom or print size. jsPDF is only loaded when exporting.
+ */
+export async function renderStackMapPdf(layout: StackMapAreaLayout, warehouseName: string, printedAt = new Date()) {
+  const { jsPDF } = await import("jspdf");
+  let doc: InstanceType<typeof jsPDF> | null = null;
+  paintStackMap(layout, warehouseName, printedAt, (width, height) => {
+    doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [width, height], compress: true });
+    doc.setProperties({ title: `Peta tumpukan ${layout.area}`, subject: warehouseName, creator: "Bulog WMS" });
+    // One page: without this jsPDF moves drawings that touch the bottom edge to a new page
+    doc.context2d.autoPaging = false;
+    return doc.context2d as unknown as CanvasRenderingContext2D;
+  });
+  if (!doc) throw new Error("Gagal membuat PDF");
+  return (doc as InstanceType<typeof jsPDF>).output("blob");
+}
+
+/** peta-tumpukan-<area>-<date>.<ext> */
+function exportFileName(layout: StackMapAreaLayout, ext: string) {
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const slug = layout.area.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `peta-tumpukan-${slug || "area"}-${date}.${ext}`;
+}
+
+function saveBlob(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `peta-tumpukan-${slug || "area"}-${date}.png`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
+}
+
+/** Saves the area map as a PNG image */
+export async function downloadStackMapImage(layout: StackMapAreaLayout, warehouseName: string) {
+  saveBlob(await renderStackMapImage(layout, warehouseName), exportFileName(layout, "png"));
+}
+
+/** Saves the area map as a vector PDF */
+export async function downloadStackMapPdf(layout: StackMapAreaLayout, warehouseName: string) {
+  saveBlob(await renderStackMapPdf(layout, warehouseName), exportFileName(layout, "pdf"));
 }

@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   Eye,
   EyeOff,
+  FileText,
   ImageDown,
   LayoutGrid,
   MousePointerClick,
@@ -38,7 +39,7 @@ import {
   type StackMapAreaLayout,
   type StackMapStack,
 } from "@/components/analytics/stack-map";
-import { downloadStackMapImage } from "@/components/analytics/stack-map-image";
+import { downloadStackMapImage, downloadStackMapPdf } from "@/components/analytics/stack-map-image";
 
 interface StackCardProps {
   stack: StackMapStack;
@@ -598,17 +599,19 @@ export default function StackMapSection({
     selected && selected.area === activeArea?.area ? selected : null;
 
   const warehouseName = useAuthStore((s) => s.activeWarehouse?.name);
-  const [exporting, setExporting] = useState(false);
-  const handleExportImage = async () => {
+  const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
+  const handleExport = async (format: "png" | "pdf") => {
     if (!activeArea) return;
-    setExporting(true);
+    const label = format === "pdf" ? "PDF" : "Gambar";
+    setExporting(format);
     try {
-      await downloadStackMapImage(activeArea, warehouseName || "");
-      toast.success(`Gambar ${activeArea.area} berhasil diunduh.`);
+      if (format === "pdf") await downloadStackMapPdf(activeArea, warehouseName || "");
+      else await downloadStackMapImage(activeArea, warehouseName || "");
+      toast.success(`${label} ${activeArea.area} berhasil diunduh.`);
     } catch {
-      toast.error(`Gagal membuat gambar ${activeArea.area}.`);
+      toast.error(`Gagal membuat ${label.toLowerCase()} ${activeArea.area}.`);
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -730,17 +733,28 @@ export default function StackMapSection({
                 {activeArea && (
                   <button
                     type="button"
-                    onClick={handleExportImage}
-                    disabled={exporting}
+                    onClick={() => handleExport("png")}
+                    disabled={exporting !== null}
+                    title={`Unduh gambar PNG ${activeArea.area}`}
                     className="flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
                   >
                     <ImageDown
-                      className="h-4 w-4 text-blue-600 dark:text-blue-400"
+                      className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
                       aria-hidden="true"
                     />
-                    {exporting
-                      ? "Membuat gambar..."
-                      : `Ekspor gambar ${activeArea.area}`}
+                    {exporting === "png" ? "Membuat..." : "Gambar"}
+                  </button>
+                )}
+                {activeArea && (
+                  <button
+                    type="button"
+                    onClick={() => handleExport("pdf")}
+                    disabled={exporting !== null}
+                    title={`Unduh PDF ${activeArea.area} (tetap tajam saat diperbesar atau dicetak)`}
+                    className="flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-xs transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <FileText className="h-4 w-4" aria-hidden="true" />
+                    {exporting === "pdf" ? "Membuat..." : `PDF ${activeArea.area}`}
                   </button>
                 )}
               </div>
