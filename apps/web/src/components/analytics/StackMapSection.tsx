@@ -49,7 +49,6 @@ interface StackCardProps {
 }
 
 function StackCard({ stack, selected, dimmed, onSelect }: StackCardProps) {
-  const [first, ...rest] = stack.products;
   const title = stack.label?.title;
   return (
     <button
@@ -69,7 +68,7 @@ function StackCard({ stack, selected, dimmed, onSelect }: StackCardProps) {
       }`}
     >
       <span className="flex items-center justify-between gap-1">
-        <span className="font-mono text-[10px] text-slate-400">
+        <span className="break-all font-mono text-[11px] text-slate-500 dark:text-slate-400">
           {stack.code}
         </span>
         <span className="flex shrink-0 items-center gap-1">
@@ -87,27 +86,32 @@ function StackCard({ stack, selected, dimmed, onSelect }: StackCardProps) {
           )}
         </span>
       </span>
+      {/* Nothing is cut: long titles and product names wrap */}
       <span
-        className={`truncate text-xs ${
+        className={`break-words text-xs ${
           title
             ? "font-bold text-slate-800 dark:text-slate-100"
-            : "italic text-slate-400"
+            : "italic text-slate-500 dark:text-slate-400"
         }`}
       >
         {title || "Tanpa judul"}
       </span>
-      <span className="truncate font-mono text-[10px] text-slate-500 dark:text-slate-400">
-        {first ? first.sku : "-"}
-        {rest.length > 0 && (
-          <span className="font-sans font-bold"> +{rest.length}</span>
-        )}
-      </span>
-      {first && (
-        <span className="line-clamp-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-          {formatProductName(first.name)}
+      {stack.products.map((p) => (
+        <span key={p.productUuid} className="mt-0.5 flex flex-col">
+          <span className="break-all font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+            {p.sku}
+            {stack.products.length > 1 && (
+              <span className="ml-1 font-sans font-normal text-slate-500 dark:text-slate-400">
+                {formatStackTotals([{ ...p.unit, displayQty: p.displayQty }], p.sacks)}
+              </span>
+            )}
+          </span>
+          <span className="break-words text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+            {formatProductName(p.name)}
+          </span>
         </span>
-      )}
-      <span className="mt-auto truncate text-xs font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+      ))}
+      <span className="mt-auto break-words pt-1 text-xs font-semibold tabular-nums text-slate-800 dark:text-slate-100">
         {formatStackTotals(stack.totals, stack.sacks)}
       </span>
     </button>
@@ -340,7 +344,7 @@ function StackDetail({
             {stack.locationName}
           </p>
           <h3
-            className={`truncate text-base font-bold ${
+            className={`break-words text-base font-bold ${
               stack.label?.title
                 ? "text-slate-900 dark:text-slate-50"
                 : "italic text-slate-400"
@@ -473,7 +477,7 @@ function StackDetail({
                       {lot.lotName || "Tanpa lot"}
                     </p>
                     <p
-                      className="truncate text-slate-500 dark:text-slate-400"
+                      className="break-words text-slate-500 dark:text-slate-400"
                       title={lot.senderName}
                     >
                       {lot.senderName}
