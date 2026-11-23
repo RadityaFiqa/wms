@@ -404,3 +404,44 @@ export const MoveBanpangSalesOrderSchema = z.object({
 export type MoveBanpangSalesOrderInput = z.infer<
   typeof MoveBanpangSalesOrderSchema
 >;
+
+// ---------------------------------------------------------------------------
+// Peta tumpukan: title and note per stack, row order per area (e.g. "GBB 01")
+// ---------------------------------------------------------------------------
+
+/** Title and free note of one stack (location), shown on the stack map */
+export interface StackMapLabel {
+  locationUuid: string;
+  title: string;
+  note: string;
+  /** Hidden from the map for everyone in the warehouse */
+  hidden: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+/** Row order of an area: descending puts row C first (C-B-A), else A-B-C */
+export interface StackMapArea {
+  area: string;
+  descending: boolean;
+}
+
+export interface StackMapSettingsResponse {
+  areas: StackMapArea[];
+  labels: StackMapLabel[];
+}
+
+/** Empty title and note on a shown stack remove the label */
+export const SaveStackMapLabelSchema = z.object({
+  locationUuid: z.string().uuid("Tumpukan tidak valid"),
+  title: z.string().trim().max(80, "Judul maksimal 80 karakter"),
+  note: z.string().trim().max(500, "Catatan maksimal 500 karakter"),
+  hidden: z.boolean().default(false),
+});
+export type SaveStackMapLabelInput = z.infer<typeof SaveStackMapLabelSchema>;
+
+export const SaveStackMapAreaSchema = z.object({
+  area: z.string().trim().min(1, "Area wajib diisi").max(100),
+  descending: z.boolean(),
+});
+export type SaveStackMapAreaInput = z.infer<typeof SaveStackMapAreaSchema>;

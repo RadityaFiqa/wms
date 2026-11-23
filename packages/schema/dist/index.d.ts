@@ -1225,8 +1225,8 @@ export declare const GenerateDocumentSchema: z.ZodObject<{
         objectKey: string;
     }>, "many">>>;
 }, "strip", z.ZodTypeAny, {
-    documentNumber: string;
     title: string;
+    documentNumber: string;
     templateId: string | number;
     placeholder: Record<string, any>;
     attachments: {
@@ -1234,8 +1234,8 @@ export declare const GenerateDocumentSchema: z.ZodObject<{
         objectKey: string;
     }[];
 }, {
-    documentNumber: string;
     title: string;
+    documentNumber: string;
     templateId: string | number;
     placeholder: Record<string, any>;
     attachments?: {

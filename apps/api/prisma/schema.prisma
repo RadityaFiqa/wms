@@ -42,6 +42,7 @@ model User {
   buruhsCreated             Buruh[]
   stockGroupFoldersCreated  StockGroupFolder[]
   banpangFoldersCreated     BanpangFolder[]
+  stackMapLabelsUpdated     StackMapLabel[]
 
   @@index([email])
   @@index([uuid])
@@ -174,6 +175,8 @@ model Warehouse {
   stockGroupFolderItems  StockGroupFolderItem[]
   banpangFolders         BanpangFolder[]
   banpangFolderItems     BanpangFolderItem[]
+  stackMapLabels         StackMapLabel[]
+  stackMapAreas          StackMapArea[]
 
   @@index([uuid])
   @@index([code])
@@ -225,6 +228,7 @@ model Location {
   quants                   Quant[]
   stockOpnameStacks        StockOpnameStack[]
   dailyLocationStockSnapshots DailyLocationStockSnapshot[]
+  stackMapLabels           StackMapLabel[]
 
   @@index([warehouseId])
 }
@@ -1227,4 +1231,35 @@ model BanpangFolderItem {
 
   @@unique([warehouseId, soNumber, pickingRef])
   @@index([folderId])
+}
+
+/// Title and free note of a stack (location) shown on the Peta Tumpukan, per warehouse
+model StackMapLabel {
+  id          Int       @id @default(autoincrement())
+  warehouseId Int
+  locationId  Int
+  title       String    @default("")
+  note        String    @default("")
+  /// Hidden from the map (and its image) for everyone in the warehouse
+  hidden      Boolean   @default(false)
+  updatedById Int?
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  location    Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  updatedBy   User?     @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([warehouseId, locationId])
+  @@index([warehouseId])
+}
+
+/// Row order of an area (part of the location name before "/") on the Peta Tumpukan
+model StackMapArea {
+  id          Int       @id @default(autoincrement())
+  warehouseId Int
+  area        String
+  descending  Boolean   @default(false)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, area])
 }

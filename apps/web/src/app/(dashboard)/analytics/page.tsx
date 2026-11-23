@@ -30,6 +30,7 @@ import ProductFlowBars from "@/components/analytics/ProductFlowBars";
 import InboundGroupingTree from "@/components/analytics/InboundGroupingTree";
 import BanpangRealizationSection from "@/components/analytics/BanpangRealizationSection";
 import PendingGateSummary from "@/components/analytics/PendingGateSummary";
+import StackMapSection from "@/components/analytics/StackMapSection";
 import { formatGroupNumber, formatGroupValue } from "@/components/analytics/format";
 
 const toDateString = (d: Date) =>
@@ -62,6 +63,7 @@ const SECTIONS = [
   { key: "stock", label: "Stok inbound grouping", icon: PackageSearch },
   { key: "trend", label: "Tren masuk vs keluar", icon: TrendingUp },
   { key: "banpang", label: "Banpang Realization", icon: Landmark },
+  { key: "stackMap", label: "Peta tumpukan", icon: LayoutGrid },
 ] as const;
 type SectionKey = (typeof SECTIONS)[number]["key"];
 
@@ -485,6 +487,17 @@ export default function AnalyticsPage() {
       {section === "banpang" && (
         <div id="analytics-panel-banpang" role="tabpanel" aria-labelledby="analytics-tab-banpang">
           <BanpangRealizationSection cardClass={cardClass} />
+        </div>
+      )}
+
+      {section === "stackMap" && (
+        <div id="analytics-panel-stackMap" role="tabpanel" aria-labelledby="analytics-tab-stackMap">
+          <StackMapSection
+            cardClass={cardClass}
+            stockInbound={stockInbound}
+            isLoading={stockLoading}
+            error={stockError}
+          />
         </div>
       )}
     </div>

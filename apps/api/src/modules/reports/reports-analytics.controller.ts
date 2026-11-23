@@ -23,6 +23,10 @@ import {
   RenameStockFolderSchema,
   StockInboundExportQuerySchema,
   MoveBanpangSalesOrderSchema,
+  SaveStackMapAreaSchema,
+  SaveStackMapLabelSchema,
+  type SaveStackMapAreaInput,
+  type SaveStackMapLabelInput,
   type BanpangFolderNameInput,
   type BanpangRealizationQueryInput,
   type MoveBanpangSalesOrderInput,
@@ -42,6 +46,7 @@ import { ReportsAnalyticsService } from '@/modules/reports/reports-analytics.ser
 import { StockFolderService } from '@/modules/reports/stock-folder.service';
 import { BanpangRealizationService } from '@/modules/reports/banpang-realization.service';
 import { BanpangFolderService } from '@/modules/reports/banpang-folder.service';
+import { StackMapService } from '@/modules/reports/stack-map.service';
 import {
   ReportsAnalyticsExportService,
   type ExportFile,
@@ -59,8 +64,38 @@ export class ReportsAnalyticsController {
     private readonly exportService: ReportsAnalyticsExportService,
     private readonly banpang: BanpangRealizationService,
     private readonly banpangFolders: BanpangFolderService,
+    private readonly stackMap: StackMapService,
     private readonly warehouseContext: WarehouseContextService,
   ) {}
+
+  @Get('stack-map')
+  @CheckPolicies((ability) => ability.can('read', 'Report'))
+  getStackMapSettings() {
+    return this.stackMap.getSettings(this.requireWarehouseId());
+  }
+
+  @Put('stack-map/labels')
+  @CheckPolicies((ability) => ability.can('update', 'Report'))
+  saveStackMapLabel(
+    @Body(new ZodValidationPipe(SaveStackMapLabelSchema))
+    body: SaveStackMapLabelInput,
+    @Req() req: { user?: { id: number } },
+  ) {
+    return this.stackMap.saveLabel(
+      this.requireWarehouseId(),
+      body,
+      req.user?.id,
+    );
+  }
+
+  @Put('stack-map/areas')
+  @CheckPolicies((ability) => ability.can('update', 'Report'))
+  saveStackMapArea(
+    @Body(new ZodValidationPipe(SaveStackMapAreaSchema))
+    body: SaveStackMapAreaInput,
+  ) {
+    return this.stackMap.saveArea(this.requireWarehouseId(), body);
+  }
 
   @Get('flow-trend')
   @CheckPolicies((ability) => ability.can('read', 'Report'))

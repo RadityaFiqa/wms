@@ -15,6 +15,11 @@ import type {
   MoveBanpangSalesOrderInput,
   MoveStockFolderItemInput,
   RenameStockFolderInput,
+  SaveStackMapAreaInput,
+  SaveStackMapLabelInput,
+  StackMapArea,
+  StackMapLabel,
+  StackMapSettingsResponse,
   StockInboundResponse,
 } from "@bulog-wms/schema";
 
@@ -61,6 +66,34 @@ export function useStockInbound() {
   );
 
   return { stockInbound: data, error, isLoading };
+}
+
+/** Peta tumpukan settings: stack titles and notes, row order per area */
+export function useStackMapSettings() {
+  const warehouseUuid = useAuthStore((s) => s.activeWarehouse?.uuid);
+  const { data, error, isLoading } = useSWR<StackMapSettingsResponse>(
+    [API_ROUTES.reports.analytics.stackMap, warehouseUuid],
+    fetcher,
+    { keepPreviousData: true },
+  );
+
+  return { stackMapSettings: data, error, isLoading };
+}
+
+const refreshStackMapSettings = () =>
+  mutate((key) => Array.isArray(key) && key[0] === API_ROUTES.reports.analytics.stackMap);
+
+/** Saves the title and note of a stack; both empty removes them */
+export async function saveStackMapLabel(input: SaveStackMapLabelInput) {
+  const res = await api.put<StackMapLabel | null>(API_ROUTES.reports.analytics.stackMapLabels, input);
+  await refreshStackMapSettings();
+  return res.data;
+}
+
+export async function saveStackMapArea(input: SaveStackMapAreaInput) {
+  const res = await api.put<StackMapArea>(API_ROUTES.reports.analytics.stackMapAreas, input);
+  await refreshStackMapSettings();
+  return res.data;
 }
 
 /** Done outgoing documents of Badan Pangan Nasional, grouped by SO and kecamatan */
