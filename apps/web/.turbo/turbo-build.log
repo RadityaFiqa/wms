@@ -1,0 +1,69 @@
+
+> @bulog-wms/web@0.1.0 build C:\Users\Win 11\Documents\wms\apps\web
+> node copy-worker.js && next build
+
+Successfully copied pdf.worker.min.mjs to public/
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 9.9s
+  Running TypeScript ...
+  Finished TypeScript in 9.7s ...
+  Collecting page data using 5 workers ...
+  Generating static pages using 5 workers (0/33) ...
+Warning: Please use the `legacy` build in Node.js environments.
+Warning: Please use the `legacy` build in Node.js environments.
+  Generating static pages using 5 workers (8/33) 
+  Generating static pages using 5 workers (16/33) 
+  Generating static pages using 5 workers (24/33) 
+✓ Generating static pages using 5 workers (33/33) in 512ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /analytics
+├ ○ /audit-logs
+├ ○ /document-generator
+├ ○ /document-generator/history
+├ ○ /document-templates
+├ ƒ /document-templates/[uuid]/assembly
+├ ƒ /document-templates/[uuid]/placeholders
+├ ƒ /document-verification/[token]
+├ ○ /erp-documents
+├ ƒ /erp-documents/[uuid]
+├ ○ /finance/buruh
+├ ○ /finance/non-commodity-documents
+├ ƒ /finance/non-commodity-documents/[uuid]
+├ ○ /finance/tagihan
+├ ƒ /finance/tagihan/[uuid]
+├ ○ /finance/tagihan/create
+├ ○ /forgot-password
+├ ○ /gate-operations
+├ ƒ /gate-operations/[uuid]
+├ ○ /gate-operations/new
+├ ○ /gate-verification
+├ ƒ /gate-verification/[uuid]
+├ ○ /inventory
+├ ○ /kartu-tumpukan
+├ ○ /login
+├ ○ /manage-kartu-tumpukan
+├ ○ /odoo
+├ ○ /pending-operations
+├ ○ /profile
+├ ○ /reconciliation
+├ ○ /reports
+├ ○ /reset-password
+├ ○ /roles
+├ ƒ /sign-document/[type]/[uuid]
+├ ○ /signed-documents
+├ ○ /stock-opname
+├ ƒ /stock-opname/[uuid]
+├ ○ /users
+└ ○ /warehouses
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

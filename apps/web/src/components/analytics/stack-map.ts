@@ -60,10 +60,13 @@ export interface StackMapAreaLayout {
   descending: boolean;
   /** Row letters in display order, left to right */
   rows: string[];
-  /** Per row letter, the most stacks sharing one number (B03.1.1 + B03.1.2 → 2), laid side by side */
+  /**
+   * Per row letter, how many stacks sharing one number sit side by side (B03.1.1 + B03.1.2 → 2),
+   * at most MAX_SIDE_BY_SIDE; more wrap below inside the same position
+   */
   rowWidths: number[];
   /** Numbers top to bottom (1 → max), each with one cell per row */
-  lines: { number: number; cells: StackMapCell[] }[];
+  lines: { number: number; cells: StackMapCell[]; /** Lines of stacks in its tallest position */ stackRows: number }[];
   /** Stacks whose code does not follow the row + number pattern */
   others: StackMapStack[];
   stackCount: number;
@@ -102,6 +105,9 @@ export function formatStackTotals(totals: (AnalyticsUnitGroup & { displayQty: nu
   const qty = totals.length === 0 ? "0" : totals.map((t) => formatGroupValue(t.displayQty, t)).join(" + ");
   return sacks > 0 ? `${formatQty(sacks)} sak | ${qty}` : qty;
 }
+
+/** Stacks on one position shown side by side (B03.1.1, B03.1.2); more wrap below so a row stays narrow */
+export const MAX_SIDE_BY_SIDE = 2;
 
 /** Numbers shown per row even when the last ones are empty (01-04) */
 const MIN_NUMBERS = 4;
@@ -249,7 +255,13 @@ export function buildStackMapAreas(stacks: StackMapStack[], savedOrder: Map<stri
           })),
         };
       });
-      const rowWidths = rows.map((_, i) => Math.max(1, ...lines.map((l) => l.cells[i].stacks.length)));
+      const rowWidths = rows.map((_, i) =>
+        Math.min(MAX_SIDE_BY_SIDE, Math.max(1, ...lines.map((l) => l.cells[i].stacks.length))),
+      );
+      const sizedLines = lines.map((l) => ({
+        ...l,
+        stackRows: Math.max(1, ...l.cells.map((c, i) => Math.ceil(c.stacks.length / rowWidths[i]))),
+      }));
       const totals: StackMapAreaLayout["totals"] = [];
       for (const s of areaStacks) for (const t of s.totals) addTotal(totals, t, t.displayQty);
       return {
@@ -257,7 +269,7 @@ export function buildStackMapAreas(stacks: StackMapStack[], savedOrder: Map<stri
         descending,
         rows,
         rowWidths,
-        lines,
+        lines: sizedLines,
         others: areaStacks
           .filter((s) => !s.row || s.number === null)
           .sort((a, b) => a.code.localeCompare(b.code, "id", { numeric: true })),

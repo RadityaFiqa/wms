@@ -212,11 +212,18 @@ function AreaMap({
                 <div className="flex items-center justify-center text-[11px] font-bold text-slate-400">
                   {formatStackNumber(line.number)}
                 </div>
-                {line.cells.map((cell) =>
+                {line.cells.map((cell, i) =>
                   cell.stacks.length > 0 ? (
-                    <div key={cell.row} className="flex min-w-0 gap-1.5">
+                    // At most rowWidths[i] stacks side by side; more wrap below in the same position
+                    <div
+                      key={cell.row}
+                      className="grid min-w-0 gap-1.5"
+                      style={{
+                        gridTemplateColumns: `repeat(${Math.min(cell.stacks.length, layout.rowWidths[i])}, minmax(0, 1fr))`,
+                      }}
+                    >
                       {cell.stacks.map((s) => (
-                        <div key={s.locationUuid} className="min-w-0 flex-1">
+                        <div key={s.locationUuid} className="min-w-0">
                           {renderStack(s)}
                         </div>
                       ))}

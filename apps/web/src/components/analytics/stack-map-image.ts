@@ -242,8 +242,19 @@ function drawCard(
   ctx.textBaseline = "top";
 }
 
-function drawEmpty(ctx: CanvasRenderingContext2D, label: string, x: number, y: number, width: number) {
-  roundRect(ctx, x + 0.5, y + 0.5, width - 1, CARD_H - 1, 10);
+/** Height of a number line: its position with the most wrapped stacks */
+const lineHeight = (line: StackMapAreaLayout["lines"][number]) =>
+  line.stackRows * CARD_H + (line.stackRows - 1) * GAP;
+
+function drawEmpty(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  x: number,
+  y: number,
+  width: number,
+  height = CARD_H,
+) {
+  roundRect(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 10);
   ctx.setLineDash([6, 4]);
   ctx.strokeStyle = COLORS.dashed;
   ctx.lineWidth = 1.5;
@@ -252,9 +263,9 @@ function drawEmpty(ctx: CanvasRenderingContext2D, label: string, x: number, y: n
   ctx.textAlign = "center";
   ctx.fillStyle = COLORS.faint;
   ctx.font = `11px ${MONO}`;
-  ctx.fillText(label, x + width / 2, y + CARD_H / 2 - 16);
+  ctx.fillText(label, x + width / 2, y + height / 2 - 16);
   ctx.font = `12px ${FONT}`;
-  ctx.fillText("Kosong", x + width / 2, y + CARD_H / 2 + 2);
+  ctx.fillText("Kosong", x + width / 2, y + height / 2 + 2);
   ctx.textAlign = "left";
 }
 
@@ -289,7 +300,10 @@ function paintStackMap(
 
   const columns = Math.max(1, Math.floor((contentW - NUMBER_W + GAP) / (CELL_W + GAP)));
   const otherRows = Math.ceil(layout.others.length / columns);
-  const gridH = layout.lines.length > 0 ? ROW_HEAD_H + GAP + layout.lines.length * (CARD_H + GAP) - GAP : 0;
+  const gridH =
+    layout.lines.length > 0
+      ? ROW_HEAD_H + GAP + layout.lines.reduce((sum, l) => sum + lineHeight(l) + GAP, 0) - GAP
+      : 0;
   const othersH = otherRows > 0 ? (gridH > 0 ? 20 : 0) + 24 + otherRows * (CARD_H + GAP) - GAP : 0;
   const frameH = 32 + gridH + othersH;
 
@@ -383,9 +397,10 @@ function paintStackMap(
 
     // Numbers top to bottom
     for (const line of layout.lines) {
+      const lineH = lineHeight(line);
       const cx = gridX + (NUMBER_W - GAP) / 2;
       ctx.beginPath();
-      ctx.arc(cx, gy + CARD_H / 2, 14, 0, Math.PI * 2);
+      ctx.arc(cx, gy + lineH / 2, 14, 0, Math.PI * 2);
       ctx.fillStyle = COLORS.page;
       ctx.fill();
       ctx.strokeStyle = COLORS.border;
@@ -395,21 +410,30 @@ function paintStackMap(
       ctx.font = `bold 12px ${FONT}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(formatStackNumber(line.number), cx, gy + CARD_H / 2 + 0.5);
+      ctx.fillText(formatStackNumber(line.number), cx, gy + lineH / 2 + 0.5);
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
 
       line.cells.forEach((cell, i) => {
         if (cell.stacks.length === 0) {
-          drawEmpty(ctx, `${cell.row}${formatStackNumber(cell.number)}`, rowX[i], gy, rowW[i]);
+          drawEmpty(ctx, `${cell.row}${formatStackNumber(cell.number)}`, rowX[i], gy, rowW[i], lineH);
         } else {
-          // Share the row width between the stacks on this number
-          const n = cell.stacks.length;
-          const w = (rowW[i] - (n - 1) * GAP) / n;
-          cell.stacks.forEach((s, j) => drawCard(ctx, s, colors, rowX[i] + j * (w + GAP), gy, w));
+          // At most rowWidths[i] stacks side by side, sharing the row width; more wrap below
+          const perLine = Math.min(cell.stacks.length, layout.rowWidths[i]);
+          const w = (rowW[i] - (perLine - 1) * GAP) / perLine;
+          cell.stacks.forEach((s, j) =>
+            drawCard(
+              ctx,
+              s,
+              colors,
+              rowX[i] + (j % perLine) * (w + GAP),
+              gy + Math.floor(j / perLine) * (CARD_H + GAP),
+              w,
+            ),
+          );
         }
       });
-      gy += CARD_H + GAP;
+      gy += lineH + GAP;
     }
     gy -= GAP;
   }
