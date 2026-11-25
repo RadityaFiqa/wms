@@ -27,6 +27,7 @@ import { DocumentModule } from './modules/document/document.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { TagihanModule } from './modules/tagihan/tagihan.module';
 import { BuruhModule } from '@/modules/buruh/buruh.module';
+import { SpkPerawatanModule } from '@/modules/spk-perawatan/spk-perawatan.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interceptor';
 
@@ -70,6 +71,7 @@ import { WarehouseInterceptor } from './core/warehouse-context/warehouse.interce
     FinanceModule,
     TagihanModule,
     BuruhModule,
+    SpkPerawatanModule,
   ],
   controllers: [AppController],
   providers: [

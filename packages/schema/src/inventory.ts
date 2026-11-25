@@ -54,3 +54,8 @@ export interface InventoryListResponse {
   meta: { total: number; page: number; limit: number; totalPages: number };
   summary: InventoryListSummary;
 }
+
+/** Regional office printed on the Kartu Tumpukan sheet (print and Excel) */
+export const KARTU_TUMPUKAN_KANWIL = "KALIMANTAN SELATAN";
+/** City written before the date in the Kartu Tumpukan signature block */
+export const KARTU_TUMPUKAN_SIGN_CITY = "Banjarbaru";

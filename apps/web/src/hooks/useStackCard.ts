@@ -194,6 +194,20 @@ export function useStackCardActions() {
     [],
   );
 
+  /** Downloads every stack card matching the filters as a spreadsheet, with SPK treatment dates */
+  const exportStackCardsXlsx = useCallback(
+    async (query: {
+      search?: string;
+      locationName?: string;
+      snapshotDate?: string;
+      isPublished?: string;
+      dataSource?: "REAL_STOCK" | "CSV";
+    }) => {
+      await downloadStackCardXlsx(API_ROUTES.stackCards.exportXlsx, query);
+    },
+    [],
+  );
+
   return {
     importStackCards,
     updateStackCard,
@@ -202,7 +216,56 @@ export function useStackCardActions() {
     bulkPublishStackCards,
     publishSnapshotDate,
     updateKartuTumpukanSource,
+    exportStackCardsXlsx,
   };
+}
+
+/** Downloads a kartu tumpukan spreadsheet from an export endpoint with the given filters */
+async function downloadStackCardXlsx(
+  url: string,
+  query: Record<string, string | undefined>,
+  filenamePrefix = "kartu-tumpukan",
+) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) searchParams.append(key, value);
+  }
+  const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
+  const res = await api.get(`${url}${qs}`, { responseType: "blob" });
+  const blobUrl = window.URL.createObjectURL(
+    new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+  );
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.setAttribute("download", `${filenamePrefix}-${date}.xlsx`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+
+/** Excel export of the published kartu tumpukan of a tumpukan (unauthenticated) */
+export function usePublicStackCardExport() {
+  const exportPublicStackCardsXlsx = useCallback(
+    async (query: {
+      locationName?: string;
+      snapshotDate?: string;
+      search?: string;
+      printedBy?: string;
+    }) => {
+      const prefix = query.locationName
+        ? `kartu-tumpukan-${query.locationName.replace(/[^\w.-]+/g, "_")}`
+        : "kartu-tumpukan";
+      await downloadStackCardXlsx(API_ROUTES.stackCards.publicExportXlsx, query, prefix);
+    },
+    [],
+  );
+
+  return { exportPublicStackCardsXlsx };
 }
 
 export function usePublicWarehouses() {

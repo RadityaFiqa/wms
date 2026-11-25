@@ -144,6 +144,7 @@ export const API_ROUTES = {
     snapshotDates: "/stack-cards/snapshot-dates",
     locations: "/stack-cards/locations",
     updateSource: "/stack-cards/sources",
+    exportXlsx: "/stack-cards/export/xlsx",
     detail: (uuid: string) => `/stack-cards/${uuid}`,
     update: (uuid: string) => `/stack-cards/${uuid}`,
     delete: (uuid: string) => `/stack-cards/${uuid}`,
@@ -153,6 +154,12 @@ export const API_ROUTES = {
     publicLocations: "/public-stack-cards/locations",
     publicStockOpname: "/public-stack-cards/stock-opname",
     publicWarehouses: "/public-stack-cards/warehouses",
+    publicExportXlsx: "/public-stack-cards/export/xlsx",
+  },
+  spkPerawatan: {
+    list: "/spk-perawatan",
+    sync: "/spk-perawatan/sync",
+    exportXlsx: "/spk-perawatan/export/xlsx",
   },
   reconciliation: {
     list: "/reconciliation",

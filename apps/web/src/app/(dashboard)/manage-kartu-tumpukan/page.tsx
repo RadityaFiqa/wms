@@ -38,6 +38,7 @@ import {
   Check,
   X,
   FileText,
+  FileSpreadsheet,
   User,
   Clock,
   RefreshCw,
@@ -55,7 +56,9 @@ export default function StackCardManagePage() {
     bulkPublishStackCards,
     publishSnapshotDate,
     updateKartuTumpukanSource,
+    exportStackCardsXlsx,
   } = useStackCardActions();
+  const [isExporting, setIsExporting] = useState(false);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"data" | "history">("data");
@@ -143,6 +146,24 @@ export default function StackCardManagePage() {
 
   // Check write permissions
   const canManage = hasPermission("update", "Inventory");
+
+  // Export all rows matching the current filters (not only this page)
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      await exportStackCardsXlsx({
+        search: debouncedSearch,
+        locationName: selectedLocation,
+        snapshotDate: dataSource === "CSV" ? selectedDate : undefined,
+        isPublished: dataSource === "CSV" ? (publishStatus === "all" ? undefined : publishStatus) : undefined,
+        dataSource,
+      });
+    } catch {
+      toast.error("Gagal mengekspor kartu tumpukan.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Format date to Indonesian locale "dd MMM yyyy"
   const formatDate = (dateStr: string | null | undefined) => {
@@ -567,6 +588,18 @@ export default function StackCardManagePage() {
 
         {/* Global actions */}
         <div className="flex items-center space-x-2.5">
+          <button
+            onClick={handleExportExcel}
+            disabled={isExporting}
+            className="flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-350 font-bold px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer text-sm disabled:opacity-50"
+          >
+            {isExporting ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+            )}
+            Export Excel
+          </button>
           {dataSource === "CSV" && (
             <>
               <button
@@ -940,7 +973,7 @@ export default function StackCardManagePage() {
                             {row.expiredDate ? formatDate(row.expiredDate) : "-"}
                           </td>
                           <td className="py-3 px-4 font-semibold">
-                            {row.placement ? row.placement : (row.placementDate ? formatDate(row.placementDate) : "-")}
+                            {row.placementDate ? formatDate(row.placementDate) : row.placement || "-"}
                           </td>
                           <td className="py-3 px-4">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30">

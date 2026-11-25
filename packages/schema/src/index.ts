@@ -5,6 +5,7 @@ export * from "./tagihan-document";
 export * from "./quantity-expression";
 export * from "./analytics";
 export * from "./inventory";
+export * from "./spk-perawatan";
 
 // Authentication Schemas
 export const LoginSchema = z.object({

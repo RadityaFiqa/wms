@@ -430,48 +430,8 @@ export class OdooSyncService {
     this.logger.log(
       `[UNIFIED-SYNC-JOB] Fetching inventory info (res.users context, product.product, stock.location, stock.quant)...`,
     );
-    let uid = 6900;
-    let allowed_company_ids = [122];
-    let current_company_id = 122;
-
-    try {
-      const userRes = await this.safeOdooCall(
-        warehouseId,
-        'res.users',
-        'web_search_read',
-        [],
-        {
-          domain: [['login', '=', username]],
-          specification: {
-            id: {},
-            company_id: { fields: { display_name: {} } },
-            company_ids: { fields: { display_name: {} } },
-          },
-          limit: 1,
-        },
-      );
-      const userRecord = userRes?.records?.[0];
-      if (userRecord) {
-        uid = userRecord.id;
-        current_company_id = userRecord.company_id?.id || 122;
-        allowed_company_ids = Array.isArray(userRecord.company_ids)
-          ? userRecord.company_ids.map((c: any) => c.id).filter(Boolean)
-          : [current_company_id];
-      }
-    } catch (err: any) {
-      this.logger.warn(
-        `[UNIFIED-SYNC-JOB] Failed to fetch res.users context: ${err.message}. Using defaults.`,
-      );
-    }
-
-    const context = {
-      lang: 'id_ID',
-      tz: 'Asia/Makassar',
-      uid,
-      allowed_company_ids,
-      bin_size: true,
-      current_company_id,
-    };
+    const context = await this.getUserContext(warehouseId, username);
+    const { uid, current_company_id } = context;
 
     const productResponse = await this.safeOdooCall(
       warehouseId,
@@ -605,6 +565,55 @@ export class OdooSyncService {
     };
   }
 
+  /**
+   * Odoo request context (uid and companies) of the warehouse's commodity account user.
+   * Falls back to the Bulog defaults when res.users cannot be read.
+   */
+  async getUserContext(warehouseId: number, username: string) {
+    let uid = 6900;
+    let allowed_company_ids = [122];
+    let current_company_id = 122;
+
+    try {
+      const userRes = await this.safeOdooCall(
+        warehouseId,
+        'res.users',
+        'web_search_read',
+        [],
+        {
+          domain: [['login', '=', username]],
+          specification: {
+            id: {},
+            company_id: { fields: { display_name: {} } },
+            company_ids: { fields: { display_name: {} } },
+          },
+          limit: 1,
+        },
+      );
+      const userRecord = userRes?.records?.[0];
+      if (userRecord) {
+        uid = userRecord.id;
+        current_company_id = userRecord.company_id?.id || 122;
+        allowed_company_ids = Array.isArray(userRecord.company_ids)
+          ? userRecord.company_ids.map((c: any) => c.id).filter(Boolean)
+          : [current_company_id];
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[UNIFIED-SYNC-JOB] Failed to fetch res.users context: ${err.message}. Using defaults.`,
+      );
+    }
+
+    return {
+      lang: 'id_ID',
+      tz: 'Asia/Makassar',
+      uid,
+      allowed_company_ids,
+      bin_size: true,
+      current_company_id,
+    };
+  }
+
   private async updateStatusOnFailure(
     warehouseId: number,
     logId: number,
@@ -658,7 +667,7 @@ export class OdooSyncService {
    * If session expires, invalidates, refreshes session and retries.
    * Prevents session storm under restrict_concurrent_login by validating against DB.
    */
-  private async safeOdooCall(
+  async safeOdooCall(
     warehouseId: number,
     model: string,
     method: string,

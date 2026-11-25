@@ -4,7 +4,9 @@ import {
   Query,
   BadRequestException,
   NotFoundException,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { StackCardService } from './stack-card.service';
 import { PrismaService } from '@/core/prisma/prisma.service';
 
@@ -102,6 +104,43 @@ export class StackCardPublicController {
       snapshotDate,
       isPublished: 'true', // strictly published only for public access
     });
+  }
+
+  /** Published kartu tumpukan of a tumpukan / warehouse as a spreadsheet */
+  @Get('export/xlsx')
+  async exportXlsx(
+    @Res() res: Response,
+    @Query('warehouseUuid') warehouseUuid?: string,
+    @Query('search') search?: string,
+    @Query('locationName') locationName?: string,
+    @Query('snapshotDate') snapshotDate?: string,
+    @Query('printedBy') printedBy?: string,
+  ) {
+    const resolvedWarehouseId = await this.getWarehouseId(
+      warehouseUuid,
+      locationName,
+    );
+    if (!resolvedWarehouseId) {
+      throw new NotFoundException('Gudang tidak ditemukan.');
+    }
+    const file = await this.service.exportXlsx(
+      resolvedWarehouseId,
+      {
+        search,
+        locationName,
+        snapshotDate,
+        isPublished: 'true', // strictly published only for public access
+      },
+      // Name shown on "Dicetak Oleh", sent by the page when someone is signed in
+      printedBy?.slice(0, 100),
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename=${file.filename}`,
+      'Content-Length': file.buffer.length,
+    });
+    res.end(file.buffer);
   }
 
   @Get('snapshot-dates')

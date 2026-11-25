@@ -3,6 +3,7 @@ export * from "./tagihan-document";
 export * from "./quantity-expression";
 export * from "./analytics";
 export * from "./inventory";
+export * from "./spk-perawatan";
 export declare const LoginSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
@@ -1640,15 +1641,15 @@ export declare const BuruhQuerySchema: z.ZodObject<{
     isMandor: z.ZodOptional<z.ZodEnum<["true", "false"]>>;
 }, "strip", z.ZodTypeAny, {
     search?: string | undefined;
-    isActive?: "true" | "false" | undefined;
     page?: string | number | undefined;
     limit?: string | number | undefined;
+    isActive?: "true" | "false" | undefined;
     isMandor?: "true" | "false" | undefined;
 }, {
     search?: string | undefined;
-    isActive?: "true" | "false" | undefined;
     page?: string | number | undefined;
     limit?: string | number | undefined;
+    isActive?: "true" | "false" | undefined;
     isMandor?: "true" | "false" | undefined;
 }>;
 export type BuruhQueryInput = z.infer<typeof BuruhQuerySchema>;

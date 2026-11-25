@@ -7,17 +7,17 @@ Successfully copied pdf.worker.min.mjs to public/
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 9.9s
+✓ Compiled successfully in 14.8s
   Running TypeScript ...
-  Finished TypeScript in 9.7s ...
+  Finished TypeScript in 11.1s ...
   Collecting page data using 5 workers ...
-  Generating static pages using 5 workers (0/33) ...
+  Generating static pages using 5 workers (0/34) ...
 Warning: Please use the `legacy` build in Node.js environments.
 Warning: Please use the `legacy` build in Node.js environments.
-  Generating static pages using 5 workers (8/33) 
-  Generating static pages using 5 workers (16/33) 
-  Generating static pages using 5 workers (24/33) 
-✓ Generating static pages using 5 workers (33/33) in 512ms
+  Generating static pages using 5 workers (8/34) 
+  Generating static pages using 5 workers (16/34) 
+  Generating static pages using 5 workers (25/34) 
+✓ Generating static pages using 5 workers (34/34) in 590ms
   Finalizing page optimization ...
 
 Route (app)
@@ -58,6 +58,7 @@ Route (app)
 ├ ○ /roles
 ├ ƒ /sign-document/[type]/[uuid]
 ├ ○ /signed-documents
+├ ○ /spk-perawatan
 ├ ○ /stock-opname
 ├ ƒ /stock-opname/[uuid]
 ├ ○ /users

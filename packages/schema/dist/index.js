@@ -37,6 +37,7 @@ __exportStar(require("./tagihan-document"), exports);
 __exportStar(require("./quantity-expression"), exports);
 __exportStar(require("./analytics"), exports);
 __exportStar(require("./inventory"), exports);
+__exportStar(require("./spk-perawatan"), exports);
 // Authentication Schemas
 exports.LoginSchema = zod_1.z.object({
     email: zod_1.z.string().email("Format email tidak valid"),

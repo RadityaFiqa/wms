@@ -18,6 +18,7 @@ import {
   ReceiptText,
   HardHat,
   LineChart,
+  SprayCan,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -80,6 +81,17 @@ export const menuGroups: MenuGroup[] = [
         permissionSubject: "Inventory",
         permissionAction: "read",
         priority: true,
+      },
+      {
+        name: "SPK Perawatan",
+        description: "Usulan spraying, fumigasi, dan fogging dari Odoo beserta tumpukan terkait.",
+        href: "/spk-perawatan",
+        icon: SprayCan,
+        color: "text-lime-600 bg-lime-50 border-lime-100 dark:bg-lime-950/20 dark:border-lime-900/30",
+        btnText: "Buka SPK",
+        permissionSubject: "Inventory",
+        permissionAction: "read",
+        priority: false,
       },
       {
         name: "Laporan Mutasi",

@@ -8,7 +8,15 @@ import {
   ImportStackCardInput,
   UpdateStackCardInput,
   StackCardQueryInput,
+  KARTU_TUMPUKAN_KANWIL,
+  KARTU_TUMPUKAN_SIGN_CITY,
 } from '@bulog-wms/schema';
+import * as ExcelJS from 'exceljs';
+import {
+  findLatestTreatmentDates,
+  laterDate,
+  toMakassarDate,
+} from '@/modules/spk-perawatan/spk-matching.util';
 
 @Injectable()
 export class StackCardService {
@@ -228,6 +236,7 @@ export class StackCardService {
       });
 
       const now = new Date();
+      const inboundDates = await this.findInboundDates(warehouseId, quants);
       const data = quants.map((q) => {
         const lotInfo = this.parseLotInfo(q.lotName);
         return {
@@ -238,7 +247,8 @@ export class StackCardService {
           shelfLife: lotInfo.shelfAge,
           expiredDate: lotInfo.expiredDate,
           placement: lotInfo.placement,
-          placementDate: null,
+          // Tanggal penempatan is the date of the IN document that brought the lot in
+          placementDate: inboundDates.get(q.id) ?? null,
           snapshotDate: now,
           locationName: q.location?.displayName || '-',
           quantity: q.quantity,
@@ -255,7 +265,7 @@ export class StackCardService {
       });
 
       return {
-        data,
+        data: await this.withSpkTreatments(warehouseId, data),
         total,
         page,
         limit,
@@ -351,7 +361,7 @@ export class StackCardService {
     });
 
     return {
-      data,
+      data: await this.withSpkTreatments(warehouseId, data),
       total,
       page,
       limit,
@@ -363,6 +373,86 @@ export class StackCardService {
         totalQuantum: stats._sum.quantum || 0,
       },
     };
+  }
+
+  /**
+   * Date of the done incoming (IN) document of each quant's product + lot, keyed by
+   * quant id. The earliest IN into the quant's own location wins; when the lot was
+   * received elsewhere (then moved), the earliest IN of the lot is used.
+   */
+  private async findInboundDates(
+    warehouseId: number,
+    quants: {
+      id: number;
+      inventoryId: number;
+      locationId: number;
+      lotName: string | null;
+    }[],
+  ): Promise<Map<number, Date>> {
+    const result = new Map<number, Date>();
+    const lotted = quants.filter((q) => q.lotName);
+    if (!lotted.length) return result;
+
+    const moveLines = await this.prisma.documentReferenceMoveLine.findMany({
+      where: {
+        inventoryId: { in: Array.from(new Set(lotted.map((q) => q.inventoryId))) },
+        lotName: { in: Array.from(new Set(lotted.map((q) => q.lotName!))) },
+        documentReference: {
+          warehouseId,
+          state: 'done',
+          pickingTypeCode: 'incoming',
+        },
+      },
+      select: {
+        inventoryId: true,
+        lotName: true,
+        destinationLocationId: true,
+        date: true,
+        documentReference: { select: { dateDone: true, scheduledDate: true } },
+      },
+    });
+
+    const earliest = (dates: (Date | null)[]) =>
+      dates
+        .filter((d): d is Date => !!d)
+        .reduce<Date | null>((min, d) => (!min || d < min ? d : min), null);
+
+    for (const q of lotted) {
+      const lines = moveLines.filter(
+        (ml) => ml.inventoryId === q.inventoryId && ml.lotName === q.lotName,
+      );
+      const dateOf = (ml: (typeof lines)[number]) =>
+        ml.documentReference.dateDone ??
+        ml.date ??
+        ml.documentReference.scheduledDate;
+      const here = lines.filter((ml) => ml.destinationLocationId === q.locationId);
+      const date = earliest((here.length ? here : lines).map(dateOf));
+      if (date) result.set(q.id, date);
+    }
+    return result;
+  }
+
+  /**
+   * Fills spraying / fumigasi / fogging with the latest SPK Perawatan date of the
+   * same product + lot, keeping a manually entered date when it is later.
+   */
+  private async withSpkTreatments<
+    T extends {
+      productName: string;
+      sku: string;
+      lot: string;
+      spraying: string | null;
+      fumigasi: string | null;
+      fogging: string | null;
+    },
+  >(warehouseId: number, rows: T[]): Promise<T[]> {
+    const dates = await findLatestTreatmentDates(this.prisma, warehouseId, rows);
+    return rows.map((row, i) => ({
+      ...row,
+      spraying: laterDate(row.spraying, dates[i].spraying),
+      fumigasi: laterDate(row.fumigasi, dates[i].fumigasi),
+      fogging: laterDate(row.fogging, dates[i].fogging),
+    }));
   }
 
   async findOne(warehouseId: number, uuid: string) {
@@ -591,6 +681,213 @@ export class StackCardService {
     });
 
     return locations.map((l) => l.locationName);
+  }
+
+  /**
+   * Spreadsheet of the kartu tumpukan with the same filters as the list (all pages),
+   * laid out like the official printed Kartu Tumpukan sheet, treatment dates
+   * included from SPK Perawatan.
+   */
+  async exportXlsx(
+    warehouseId: number,
+    query: StackCardQueryInput,
+    printedBy?: string,
+  ): Promise<{ filename: string; buffer: Buffer }> {
+    const [warehouse, result] = await Promise.all([
+      this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { name: true, kartuTumpukanSource: true },
+      }),
+      this.findAll(warehouseId, { ...query, page: 1, limit: 1_000_000 }),
+    ]);
+    const isRealStock =
+      (query.dataSource ?? warehouse?.kartuTumpukanSource) === 'REAL_STOCK';
+    const rows = result.data as any[];
+    const warehouseName = warehouse?.name ?? '';
+    const dots = '..............................';
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    /** dd/mm/yyyy in the warehouse timezone, like the printed sheet */
+    const printDate = (value: unknown): string => {
+      if (!value || value === '-') return '';
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const [y, m, d] = value.split('-');
+        return `${d}/${m}/${y}`;
+      }
+      const date = new Date(value as string | Date);
+      if (isNaN(date.getTime())) return String(value);
+      const [y, m, d] = toMakassarDate(date).split('-');
+      return `${d}/${m}/${y}`;
+    };
+
+    const sheetDate =
+      !isRealStock &&
+      query.snapshotDate &&
+      !isNaN(Date.parse(query.snapshotDate))
+        ? new Date(query.snapshotDate)
+        : new Date();
+    const [sy, sm, sd] = toMakassarDate(sheetDate).split('-').map(Number);
+    const longDate = new Intl.DateTimeFormat('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(sy, sm - 1, sd)));
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Bulog WMS';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Kartu Tumpukan', {
+      pageSetup: {
+        orientation: 'landscape',
+        paperSize: 9, // A4
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+      },
+    });
+
+    // Column widths follow the printed sheet proportions
+    const widths = [5, 40, 13, 26, 8, 13, 18, 16, 12, 12, 11, 12, 12, 12, 22];
+    widths.forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+    const font: Partial<ExcelJS.Font> = { name: 'Arial', size: 10 };
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' },
+    };
+    const numFmt = '#,##0.##';
+
+    // Title block
+    const titles = [
+      'KARTU TUMPUKAN',
+      `KANTOR WILAYAH ${KARTU_TUMPUKAN_KANWIL}`,
+      (warehouseName || dots).toUpperCase(),
+      `PER TANGGAL ${pad2(sd)}/${pad2(sm)}/${sy}`,
+    ];
+    titles.forEach((text, i) => {
+      sheet.mergeCells(i + 1, 1, i + 1, 15);
+      const cell = sheet.getCell(i + 1, 1);
+      cell.value = text;
+      cell.font = { ...font, size: 12, bold: true };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    // Two-level header
+    const h1 = titles.length + 2;
+    const h2 = h1 + 1;
+    const single: [number, string][] = [
+      [1, 'No'],
+      [2, 'Produk'],
+      [3, 'SKU'],
+      [4, 'Lot'],
+      [5, 'Umur Simpan'],
+      [6, 'Expired Date/Best'],
+      [7, 'Tanggal Penempatan'],
+      [8, 'Lokasi'],
+      [15, 'Keterangan'],
+    ];
+    for (const [col, text] of single) {
+      sheet.mergeCells(h1, col, h2, col);
+      sheet.getCell(h1, col).value = text;
+    }
+    sheet.mergeCells(h1, 9, h1, 11);
+    sheet.getCell(h1, 9).value = 'Persediaan Fisik';
+    sheet.mergeCells(h1, 12, h1, 14);
+    sheet.getCell(h1, 12).value = 'Tanggal Perawatan';
+    ['Kuantitas', 'Kuantum', 'UoM', 'Spraying', 'Fumigasi', 'Fogging'].forEach(
+      (text, i) => (sheet.getCell(h2, 9 + i).value = text),
+    );
+    for (const r of [h1, h2]) {
+      for (let c = 1; c <= 15; c++) {
+        const cell = sheet.getCell(r, c);
+        cell.font = font;
+        cell.border = border;
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle',
+          wrapText: true,
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFBFC4C9' },
+        };
+      }
+    }
+
+    // Data rows
+    rows.forEach((r, i) => {
+      const values: (string | number | null)[] = [
+        i + 1,
+        r.productName,
+        r.sku,
+        r.lot,
+        r.shelfLife ?? '',
+        printDate(r.expiredDate),
+        r.placementDate ? printDate(r.placementDate) : (r.placement ?? ''),
+        r.locationName,
+        r.quantity ?? 0,
+        r.quantum ?? 0,
+        r.uom,
+        printDate(r.spraying),
+        printDate(r.fumigasi),
+        printDate(r.fogging),
+        r.keterangan ?? '',
+      ];
+      const rowNo = h2 + 1 + i;
+      values.forEach((value, c) => {
+        const cell = sheet.getCell(rowNo, c + 1);
+        cell.value = value ?? '';
+        cell.font = font;
+        cell.border = border;
+        cell.alignment = { vertical: 'middle', wrapText: true };
+        if (c === 8 || c === 9) cell.numFmt = numFmt;
+      });
+    });
+
+    // JUMLAH row
+    const totalRow = h2 + rows.length + 1;
+    sheet.mergeCells(totalRow, 2, totalRow, 8);
+    sheet.getCell(totalRow, 2).value = 'JUMLAH';
+    sheet.getCell(totalRow, 9).value = result.summary.totalQuantity;
+    sheet.getCell(totalRow, 10).value = result.summary.totalQuantum;
+    for (let c = 1; c <= 15; c++) {
+      const cell = sheet.getCell(totalRow, c);
+      cell.font = { ...font, bold: true };
+      cell.border = border;
+      cell.alignment = c === 2 ? { horizontal: 'center' } : {};
+      if (c === 9 || c === 10) cell.numFmt = numFmt;
+    }
+
+    // Signature block: right side starts where "Spraying" starts
+    const sign = totalRow + 2;
+    const printedByCell = sheet.getCell(sign + 6, 1);
+    printedByCell.value = `Dicetak Oleh : ${printedBy || dots}`;
+    printedByCell.font = font;
+    const signLines: [number, string, Partial<ExcelJS.Font>?][] = [
+      [sign, `${KARTU_TUMPUKAN_SIGN_CITY}, ${longDate}`],
+      [sign + 1, (warehouseName || dots).toUpperCase()],
+      [sign + 5, `( ${dots} )`, { underline: true }],
+      [sign + 6, 'Kepala Gudang'],
+    ];
+    for (const [row, text, extra] of signLines) {
+      sheet.mergeCells(row, 12, row, 15);
+      const cell = sheet.getCell(row, 12);
+      cell.value = text;
+      cell.font = { ...font, ...extra };
+    }
+
+    sheet.views = [{ state: 'frozen', ySplit: h2 }];
+
+    const location = query.locationName
+      ? `-${query.locationName.replace(/[^\w.-]+/g, '_')}`
+      : '';
+    return {
+      filename: `kartu-tumpukan${location}-${sy}-${pad2(sm)}-${pad2(sd)}.xlsx`,
+      buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
+    };
   }
 
   /**

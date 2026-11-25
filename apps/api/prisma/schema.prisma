@@ -177,6 +177,7 @@ model Warehouse {
   banpangFolderItems     BanpangFolderItem[]
   stackMapLabels         StackMapLabel[]
   stackMapAreas          StackMapArea[]
+  spkPerawatans          SpkPerawatan[]
 
   @@index([uuid])
   @@index([code])
@@ -1262,4 +1263,47 @@ model StackMapArea {
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@unique([warehouseId, area])
+}
+
+/// Pest-control work order (SPK Perawatan, type "usulan") synced from Odoo vit.spk_perawatan
+model SpkPerawatan {
+  id                  Int                @id @default(autoincrement())
+  uuid                String             @unique @default(uuid())
+  warehouseId         Int
+  /// Record id in Odoo, only used to upsert during sync
+  odooId              Int
+  name                String
+  state               String?
+  date                DateTime?          @db.Timestamptz(3)
+  weeklyName          String?
+  locationName        String?
+  namaSuratPemohon    String?
+  jabatanPihakPertama String?
+  /// Treatments set (not false) in Odoo: SPRAYING, FUMIGASI, FOGGING
+  treatmentTypes      String[]
+  /// Raw Odoo value of type_spraying / type_fumigasi / type_fogging when it is text
+  typeSpraying        String?
+  typeFumigasi        String?
+  typeFogging         String?
+  syncedAt            DateTime           @default(now()) @db.Timestamptz(3)
+  createdAt           DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime           @updatedAt @db.Timestamptz(3)
+  warehouse           Warehouse          @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  lines               SpkPerawatanLine[]
+
+  @@unique([warehouseId, odooId])
+  @@index([warehouseId, date])
+}
+
+/// Product + lot treated by an SPK Perawatan (Odoo spk_line_ids)
+model SpkPerawatanLine {
+  id             Int          @id @default(autoincrement())
+  spkPerawatanId Int
+  productName    String
+  lotName        String?
+  jumlahStock    Float?
+  spkPerawatan   SpkPerawatan @relation(fields: [spkPerawatanId], references: [id], onDelete: Cascade)
+
+  @@index([spkPerawatanId])
+  @@index([lotName])
 }

@@ -11,7 +11,10 @@ import {
   UseInterceptors,
   BadRequestException,
   Req,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { ZodValidationPipe } from '@/core/pipes/zod-validation.pipe';
 import { StackCardService } from './stack-card.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WarehouseGuard } from '../../core/warehouse-context/warehouse.guard';
@@ -25,7 +28,9 @@ import {
   ImportStackCardInput,
   UpdateStackCardSchema,
   UpdateStackCardInput,
+  StackCardQuerySchema,
 } from '@bulog-wms/schema';
+import type { StackCardQueryInput } from '@bulog-wms/schema';
 
 @Controller('stack-cards')
 @UseGuards(JwtAuthGuard, WarehouseGuard, PoliciesGuard)
@@ -109,6 +114,34 @@ export class StackCardController {
       isPublished,
       dataSource,
     });
+  }
+
+  @Get('export/xlsx')
+  @CheckPolicies((ability) => ability.can('read', 'Inventory'))
+  async exportXlsx(
+    @Query(new ZodValidationPipe(StackCardQuerySchema))
+    query: StackCardQueryInput,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const warehouseId = this.warehouseContext.getWarehouseId();
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'Warehouse context (header x-warehouse-id) diperlukan.',
+      );
+    }
+    const file = await this.service.exportXlsx(
+      warehouseId,
+      query,
+      req.user?.name,
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename=${file.filename}`,
+      'Content-Length': file.buffer.length,
+    });
+    res.end(file.buffer);
   }
 
   @Get('history')

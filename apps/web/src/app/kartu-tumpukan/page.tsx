@@ -10,8 +10,11 @@ import {
   usePublicStackCardDates,
   usePublicStackCardLocations,
   usePublicStackCardOpname,
+  usePublicStackCardExport,
   type StackCardOpnameCalculation,
 } from "@/hooks/useStackCard";
+import { toast } from "sonner";
+import { KARTU_TUMPUKAN_KANWIL, KARTU_TUMPUKAN_SIGN_CITY } from "@bulog-wms/schema";
 import { useTheme } from "../theme-provider";
 import {
   Warehouse as WarehouseIcon,
@@ -22,6 +25,8 @@ import {
   Box,
   Scale,
   Printer,
+  FileSpreadsheet,
+  Loader2,
   ChevronLeft,
   ChevronRight,
   Info,
@@ -48,12 +53,6 @@ function formatPrintDate(value: string | null | undefined): string {
   const date = parseDate(value);
   if (!date) return value || "";
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
-}
-
-function formatPrintDateTime(value: string | null | undefined): string {
-  const date = parseDate(value);
-  if (!date) return value || "";
-  return `${formatPrintDate(value)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
 function formatPrintNumber(value: number | null | undefined): string {
@@ -163,6 +162,24 @@ function KartuTumpukanContent() {
   // Handle Print Action
   const handlePrint = () => {
     window.print();
+  };
+
+  // Excel of every published row of this tumpukan on the selected date
+  const { exportPublicStackCardsXlsx } = usePublicStackCardExport();
+  const [isExporting, setIsExporting] = useState(false);
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      await exportPublicStackCardsXlsx({
+        locationName: locationParam || undefined,
+        snapshotDate: selectedDate || undefined,
+        printedBy: user?.name || undefined,
+      });
+    } catch {
+      toast.error("Gagal mengekspor kartu tumpukan.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Helper formatter for Date: "dd MMMM yyyy"
@@ -359,13 +376,27 @@ function KartuTumpukanContent() {
 
           {/* Action Area: Print button and Timestamp */}
           <div className="flex flex-col items-end space-y-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center justify-center h-10 bg-slate-800 hover:bg-slate-750 text-white font-bold px-4 rounded-xl shadow-xs transition cursor-pointer text-xs print:hidden"
-            >
-              <Printer className="h-4 w-4 mr-1.5" />
-              Print
-            </button>
+            <div className="flex items-center gap-2 print:hidden">
+              <button
+                onClick={handleExportExcel}
+                disabled={isExporting}
+                className="flex items-center justify-center h-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold px-4 rounded-xl shadow-xs transition cursor-pointer text-xs disabled:opacity-50"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4 mr-1.5 text-emerald-600" />
+                )}
+                Export Excel
+              </button>
+              <button
+                onClick={handlePrint}
+                className="flex items-center justify-center h-10 bg-slate-800 hover:bg-slate-750 text-white font-bold px-4 rounded-xl shadow-xs transition cursor-pointer text-xs"
+              >
+                <Printer className="h-4 w-4 mr-1.5" />
+                Print
+              </button>
+            </div>
             {selectedDate && (
               <span className="text-xs font-bold text-slate-500 dark:text-slate-450 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg flex items-center">
                 <Calendar className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
@@ -579,11 +610,9 @@ function KartuTumpukanContent() {
                           {row.expiredDate ? formatDate(row.expiredDate) : "-"}
                         </td>
                         <td className="py-3 px-4 font-semibold">
-                          {row.placement
-                            ? row.placement
-                            : row.placementDate
-                              ? formatDate(row.placementDate)
-                              : "-"}
+                          {row.placementDate
+                            ? formatDate(row.placementDate)
+                            : row.placement || "-"}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-850 dark:text-slate-100">
                           {formatNumber(row.quantity)}
@@ -841,7 +870,7 @@ function PrintSheet({
     <div className="hidden print:block kartu-tumpukan-print text-black">
       <div className="text-center font-bold leading-snug text-[13px] uppercase mb-4">
         <div>Kartu Tumpukan</div>
-        <div>Kantor Wilayah {dots}</div>
+        <div>Kantor Wilayah {KARTU_TUMPUKAN_KANWIL}</div>
         <div>{warehouseName || dots}</div>
         <div>Per Tanggal {formatPrintDate(sheetDateIso)}</div>
       </div>
@@ -908,7 +937,7 @@ function PrintSheet({
               <td className={td}>{formatPrintDate(row.expiredDate)}</td>
               <td className={td}>
                 {row.placementDate
-                  ? formatPrintDateTime(row.placementDate)
+                  ? formatPrintDate(row.placementDate)
                   : row.placement || ""}
               </td>
               <td className={`${td} break-all`}>{row.locationName}</td>
@@ -950,7 +979,7 @@ function PrintSheet({
         <div className="flex-1">Dicetak Oleh : {printedBy || dots}</div>
         <div className="w-[29%] leading-snug">
           <div>
-            {dots},{" "}
+            {KARTU_TUMPUKAN_SIGN_CITY},{" "}
             {sheetDate.toLocaleDateString("id-ID", {
               day: "2-digit",
               month: "long",
@@ -960,7 +989,7 @@ function PrintSheet({
           <div className="uppercase">{warehouseName || dots}</div>
           <div className="h-16" />
           <div className="underline">( {dots} )</div>
-          <div>Kepala</div>
+          <div>Kepala Gudang</div>
         </div>
       </div>
     </div>
